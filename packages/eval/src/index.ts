@@ -9,5 +9,8 @@ export {
   scoreResult,
   compareResults,
   formatComparisonReport,
+  runTask,
+  runAll,
+  formatEvaluationReport,
 } from "./benchmark-runner.js";
 export type { TaskResult, ComparisonReport } from "./benchmark-runner.js";
