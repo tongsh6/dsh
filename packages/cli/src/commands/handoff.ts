@@ -1,5 +1,4 @@
-import * as path from "node:path";
-import { readTaskState, writeHandoff } from "@dsh/core";
+import { runHandoff, readTaskState } from "@dsh/core";
 
 interface HandoffOptions {
   format?: "markdown" | "json";
@@ -20,18 +19,15 @@ export async function handoffCommand(opts: HandoffOptions): Promise<void> {
   }
 
   const format = opts.format ?? "markdown";
-  const filePath = writeHandoff(state, cwd, format, opts.output ?? path.join(cwd, ".dsh", "handoff"));
+  const filePath = await runHandoff({ cwd, format, outputDir: opts.output });
 
   console.log(`✓ 交接文件已生成: ${filePath}`);
-
-  if (format === "markdown") {
-    console.log("");
-    console.log("## 摘要");
-    console.log(`任务: ${state.task.description}`);
-    console.log(`类型: ${state.task.type}`);
-    console.log(`状态: ${state.status}`);
-    console.log(`修复轮数: ${state.repair_rounds}`);
-    console.log(`补丁数: ${state.patches.length}`);
-    console.log(`验证轮数: ${state.verify_results.length}`);
-  }
+  console.log("");
+  console.log("## 摘要");
+  console.log(`任务: ${state.task.description}`);
+  console.log(`类型: ${state.task.type}`);
+  console.log(`状态: ${state.status}`);
+  console.log(`修复轮数: ${state.repair_rounds}`);
+  console.log(`补丁数: ${state.patches.length}`);
+  console.log(`验证轮数: ${state.verify_results.length}`);
 }
