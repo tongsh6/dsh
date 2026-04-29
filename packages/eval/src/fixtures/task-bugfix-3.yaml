@@ -1,0 +1,17 @@
+id: bugfix-race-condition
+description: "修复并发下单时的库存超卖"
+category: bugfix
+taskPrompt: "修复订单创建时并发导致的库存超卖问题。当前 checkStock 和 reduceStock 之间存在竞态条件。需要使用原子操作保证库存扣减的正确性。"
+expectedFiles:
+  - src/services/order-service.ts
+  - src/services/inventory-service.ts
+expectPass: true
+verificationCommands:
+  - "npx jest src/services/order-service.test.ts"
+  - "npx jest src/services/inventory-service.test.ts"
+  - "npx tsc --noEmit"
+architectureRules:
+  - 使用数据库行锁或乐观锁，不要用应用层锁
+  - 库存扣减必须是原子操作
+  - 不修改 Order 和 Inventory 类型定义
+maxRepairRounds: 3

@@ -1,0 +1,26 @@
+id: bugfix-02-race-condition
+description: 修复异步 token 刷新中的竞态条件
+category: bugfix
+taskPrompt: |
+  在 src/auth/token.ts 中，refreshToken 函数在多个请求同时触发时会发起多次刷新调用。
+  请添加防抖/互斥锁机制，确保同一时刻只有一个刷新请求在执行，其他请求等待其结果。
+
+  当前代码:
+  ```typescript
+  export async function refreshToken(): Promise<string> {
+    const newToken = await api.refresh();
+    store.save(newToken);
+    return newToken;
+  }
+  ```
+
+  要求：多个并发调用 refreshToken 时只产生一次 API 请求。
+expectedFiles:
+  - src/auth/token.ts
+expectPass: true
+verificationCommands:
+  - npx jest src/auth/token.test.ts --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - 使用 Promise 缓存模式而非外部锁库
+  - 刷新失败时应 reject 所有等待者

@@ -1,0 +1,16 @@
+id: bugfix-token-expiry
+description: "修复 token 过期后不自动刷新的 bug"
+category: bugfix
+taskPrompt: "修复 auth 模块中 token 过期不自动刷新的问题。当 token 已过期时，应该在 signToken 之前自动调用刷新逻辑。"
+expectedFiles:
+  - src/auth/token.ts
+  - src/auth/login.ts
+expectPass: true
+verificationCommands:
+  - "npx jest src/auth/token.test.ts"
+  - "npx tsc --noEmit"
+architectureRules:
+  - token 刷新逻辑必须在 token.ts 中
+  - login.ts 不应包含刷新实现细节
+  - 不修改 token 的签名格式
+maxRepairRounds: 3

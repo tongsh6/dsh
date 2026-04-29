@@ -1,0 +1,27 @@
+id: bugfix-04-resource-leak
+description: 修复数据库连接池未正确释放导致的连接泄漏
+category: bugfix
+taskPrompt: |
+  在 src/db/pool.ts 中，query 函数在异常情况下未调用 connection.release() 将连接归还池，
+  导致连接池耗尽。
+
+  当前代码:
+  ```typescript
+  export async function query(sql: string, params: unknown[]) {
+    const conn = await pool.getConnection();
+    const result = await conn.execute(sql, params);
+    conn.release();
+    return result;
+  }
+  ```
+
+  请使用 try/finally 确保连接在任何情况下都被释放。同时记录释放失败的错误日志。
+expectedFiles:
+  - src/db/pool.ts
+expectPass: true
+verificationCommands:
+  - npx jest src/db/pool.test.ts --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - 使用 try/finally 而非 try/catch/release
+  - 不要在 finally 中再次抛出异常

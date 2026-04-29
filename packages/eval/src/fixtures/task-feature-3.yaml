@@ -1,0 +1,16 @@
+id: feature-request-logging
+description: "添加结构化请求日志"
+category: feature
+taskPrompt: "添加一个请求日志中间件，记录每个请求的 method、path、status code、response time（ms）。使用项目已有的 logger 实例，不要引入新的日志库。日志格式为 JSON，包含 timestamp 字段。"
+expectedFiles:
+  - src/middleware/request-logger.ts
+  - src/app.ts
+expectPass: true
+verificationCommands:
+  - "npx jest src/middleware/request-logger.test.ts"
+  - "npx tsc --noEmit"
+architectureRules:
+  - 使用项目已有的 logger 实例
+  - 不引入新的日志库
+  - 中间件不能阻塞请求处理
+maxRepairRounds: 3

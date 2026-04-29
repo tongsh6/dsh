@@ -1,0 +1,17 @@
+id: feature-pagination
+description: "为列表接口添加分页支持"
+category: feature
+taskPrompt: "为 GET /api/users 接口添加分页参数支持。接受 page 和 pageSize 查询参数，默认 page=1, pageSize=20。响应中包含 total, page, pageSize, data 字段。"
+expectedFiles:
+  - src/controllers/user-controller.ts
+  - src/services/user-service.ts
+expectPass: true
+verificationCommands:
+  - "npx jest src/controllers/user-controller.test.ts"
+  - "npx jest src/services/user-service.test.ts"
+  - "npx tsc --noEmit"
+architectureRules:
+  - 分页逻辑在 service 层，controller 只做参数提取
+  - 不修改 User 模型
+  - 使用项目已有的数据库查询方式
+maxRepairRounds: 3

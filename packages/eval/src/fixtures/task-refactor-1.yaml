@@ -1,0 +1,17 @@
+id: refactor-extract-service
+description: "从 Controller 中提取业务逻辑到 Service 层"
+category: refactor
+taskPrompt: "重构 UserController：将 createUser 和 updateUser 中的业务逻辑提取到 UserService 中。Controller 应该只负责参数提取、调用 service、返回响应。不要改变任何外部行为。"
+expectedFiles:
+  - src/controllers/user-controller.ts
+  - src/services/user-service.ts
+expectPass: true
+verificationCommands:
+  - "npx jest src/controllers/user-controller.test.ts"
+  - "npx jest src/services/user-service.test.ts"
+  - "npx tsc --noEmit"
+architectureRules:
+  - Controller 不能直接访问数据库
+  - Service 不能访问 req/res 对象
+  - 现有测试必须全部通过
+maxRepairRounds: 3

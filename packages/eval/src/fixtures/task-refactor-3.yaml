@@ -1,0 +1,17 @@
+id: refactor-consolidate-types
+description: "合并重复的类型定义"
+category: refactor
+taskPrompt: "项目中有三处定义了 User 类型（src/types/user.ts、src/models/user.ts、src/dto/user-dto.ts），它们有大量重复字段。将公共字段提取到 src/types/user.ts，让 models 和 dto 从 types 扩展。确保所有引用处更新。"
+expectedFiles:
+  - src/types/user.ts
+  - src/models/user.ts
+  - src/dto/user-dto.ts
+expectPass: true
+verificationCommands:
+  - "npx jest"
+  - "npx tsc --noEmit"
+architectureRules:
+  - types/user.ts 是唯一的基础类型来源
+  - DTO 可以添加校验装饰器
+  - 不能改变 API 的序列化输出
+maxRepairRounds: 3

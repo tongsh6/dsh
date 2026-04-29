@@ -1,0 +1,11 @@
+id: hallucinated-api
+description: "编造不存在的文件、函数或 API"
+category: failure_mode
+detection:
+  - patch 引用了项目中不存在的导入
+  - 调用了不存在的函数或方法
+  - 引用了不存在的外部库
+strategy:
+  - Task Context 包含相关文件全文，让模型基于真实代码生成
+  - system prompt 明确禁止引用未在上下文中出现的 API
+  - verify 命令会捕获 import/编译错误

@@ -1,0 +1,16 @@
+id: refactor-replace-callback
+description: "将回调风格改为 async/await"
+category: refactor
+taskPrompt: "重构 FileProcessor 类，将现有的回调风格（onSuccess/onError callback）改为基于 Promise 的 async/await 风格。保持所有现有功能不变，包括进度通知（使用 EventEmitter 替代回调）。"
+expectedFiles:
+  - src/processors/file-processor.ts
+  - src/processors/file-processor.test.ts
+expectPass: true
+verificationCommands:
+  - "npx jest src/processors/file-processor.test.ts"
+  - "npx tsc --noEmit"
+architectureRules:
+  - 不修改文件处理的核心逻辑
+  - 不修改 FileProcessor 的公共 API 输入参数
+  - EventEmitter 方式不能影响错误处理
+maxRepairRounds: 3

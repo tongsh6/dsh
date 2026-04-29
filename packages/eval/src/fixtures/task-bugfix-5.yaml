@@ -1,0 +1,15 @@
+id: bugfix-memory-leak
+description: "修复 WebSocket 连接断开后监听器未清理导致的内存泄漏"
+category: bugfix
+taskPrompt: "修复 WebSocket 连接断开后，事件监听器没有被正确移除导致的内存泄漏。需要在连接关闭时清理所有注册的监听器。"
+expectedFiles:
+  - src/ws/connection-manager.ts
+expectPass: true
+verificationCommands:
+  - "npx jest src/ws/connection-manager.test.ts"
+  - "npx tsc --noEmit"
+architectureRules:
+  - 使用 WeakMap 或显式清理，不用全局状态
+  - 不修改 WebSocket 消息协议
+  - 清理逻辑必须在 connection-manager 内部
+maxRepairRounds: 3

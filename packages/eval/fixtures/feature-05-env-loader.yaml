@@ -1,0 +1,24 @@
+id: feature-05-env-loader
+description: 实现类型安全的环境变量加载器
+category: feature
+taskPrompt: |
+  在 src/config/env.ts 中实现类型安全的环境变量加载器。
+  要求：
+  - 使用 zod 定义环境变量 schema
+  - 必需变量：PORT (number, default 3000), NODE_ENV (enum: development|production|test), DATABASE_URL (string)
+  - 可选变量：LOG_LEVEL (enum: debug|info|warn|error, default info), REDIS_URL (string)
+  - 启动时校验所有环境变量，缺失或格式错误时抛出明确错误信息
+  - 导出类型安全的 config 对象（有完整的 TypeScript 类型推断）
+
+  不要使用 dotenv（假设环境变量已在进程环境中）。
+expectedFiles:
+  - src/config/env.ts
+  - src/config/env.test.ts
+expectPass: true
+verificationCommands:
+  - npx jest src/config/env.test.ts --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - 使用 zod 进行 schema 定义和校验
+  - 导出的 config 对象必须是只读的
+  - 错误消息需包含具体哪个变量出了问题

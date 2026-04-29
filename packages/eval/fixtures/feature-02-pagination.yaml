@@ -1,0 +1,25 @@
+id: feature-02-pagination
+description: 为列表查询接口添加分页支持
+category: feature
+taskPrompt: |
+  在 src/services/product.ts 的 listProducts 函数中添加分页支持。
+  当前函数返回所有产品，数据量大时性能差。
+  请添加 page 和 pageSize 参数（默认 page=1, pageSize=20），
+  返回格式: { items: Product[], total: number, page: number, pageSize: number, totalPages: number }。
+
+  需要修改的地方：
+  1. listProducts 函数签名和实现
+  2. 对应的类型定义 src/types/product.ts
+  3. 数据库查询层 src/db/product-repo.ts（添加 LIMIT/OFFSET）
+expectedFiles:
+  - src/services/product.ts
+  - src/types/product.ts
+  - src/db/product-repo.ts
+expectPass: true
+verificationCommands:
+  - npx jest src/services/product.test.ts --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - 分页逻辑在数据库查询层实现，不要在应用层 slice
+  - page 从 1 开始计数
+  - pageSize 最大限制 100

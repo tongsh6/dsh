@@ -1,0 +1,11 @@
+id: scope-creep
+description: "修改范围扩大，在解决目标问题时额外修改了无关代码"
+category: failure_mode
+detection:
+  - 修改文件数超出 plan 声明的文件
+  - 对无关函数或变量进行了重命名/重构
+  - 引入了与任务无关的新依赖或 import
+strategy:
+  - plan 阶段明确 FILES 列表
+  - patch 解析时校验修改文件是否在 FILES 列表中
+  - repair 时提示"只修改 FILES 中列出的文件"

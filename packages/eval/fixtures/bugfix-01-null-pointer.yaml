@@ -1,0 +1,18 @@
+id: bugfix-01-null-pointer
+description: 修复 getUserProfile 未检查 null 返回值导致的崩溃
+category: bugfix
+taskPrompt: |
+  在 src/services/user.ts 中，getUserProfile 函数调用 fetchUserFromDB 后未检查 null 返回值，直接访问 .name 属性导致 TypeError。
+  请添加 null 检查，返回默认值 { name: "Unknown", email: "" }。
+
+  相关文件：src/services/user.ts, src/services/user.test.ts
+expectedFiles:
+  - src/services/user.ts
+expectPass: true
+verificationCommands:
+  - npx jest src/services/user.test.ts --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - 不要引入新的第三方依赖
+  - 使用 early return 模式处理边界条件
+maxRepairRounds: 2

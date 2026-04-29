@@ -1,0 +1,27 @@
+id: refactor-03-interface-segregation
+description: 拆分过于庞大的 UserService 接口
+category: refactor
+taskPrompt: |
+  src/services/user.ts 中的 UserService 类有 15 个方法，涵盖了认证、个人资料、权限、通知四个不相关的领域。
+  请按职责将其拆分为 4 个独立的服务类：
+  - AuthService（login, logout, refreshToken, resetPassword）
+  - ProfileService（getProfile, updateProfile, deleteAccount）
+  - PermissionService（getPermissions, setPermissions, checkPermission）
+  - NotificationService（sendEmail, sendPush, getPreferences, updatePreferences）
+
+  每个服务保持独立的文件，共享的 UserRepository 通过构造函数注入。
+  不要改变任何方法的实现逻辑，只做组织结构上的拆分。
+expectedFiles:
+  - src/services/auth.service.ts
+  - src/services/profile.service.ts
+  - src/services/permission.service.ts
+  - src/services/notification.service.ts
+  - src/services/user.ts
+expectPass: true
+verificationCommands:
+  - npx jest --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - 每个新文件只导出一个服务类
+  - 依赖通过构造函数注入
+  - 原始 UserService 保留为组合类（向后兼容），委托给 4 个子服务

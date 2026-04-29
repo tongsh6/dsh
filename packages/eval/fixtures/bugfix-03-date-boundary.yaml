@@ -1,0 +1,24 @@
+id: bugfix-03-date-boundary
+description: 修复日期范围查询中上边界被排除的 bug
+category: bugfix
+taskPrompt: |
+  在 src/utils/date-range.ts 中，isDateInRange 函数使用 < 而不是 <= 来比较上边界，
+  导致等于上边界日期的记录被错误排除。
+
+  ```typescript
+  export function isDateInRange(date: Date, start: Date, end: Date): boolean {
+    return date >= start && date < end; // BUG: 应该用 <=
+  }
+  ```
+
+  请修复比较逻辑，并更新对应的单元测试（src/utils/date-range.test.ts）以覆盖边界情况。
+expectedFiles:
+  - src/utils/date-range.ts
+  - src/utils/date-range.test.ts
+expectPass: true
+verificationCommands:
+  - npx jest src/utils/date-range.test.ts --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - 不要改动函数签名
+  - 测试用例需覆盖边界日期的正反两个方向

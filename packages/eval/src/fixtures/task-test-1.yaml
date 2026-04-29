@@ -1,0 +1,15 @@
+id: test-cover-branch
+description: "为支付服务添加边界条件测试"
+category: test
+taskPrompt: "为 PaymentService.processRefund 方法添加测试覆盖。需要覆盖：退款金额为 0 时抛出异常、退款金额超过原订单金额时抛出异常、退款到已取消的订单时抛出异常、正常退款流程。当前覆盖率 45%，目标 90% 以上。"
+expectedFiles:
+  - src/services/payment-service.test.ts
+expectPass: true
+verificationCommands:
+  - "npx jest src/services/payment-service.test.ts --coverage"
+  - "npx tsc --noEmit"
+architectureRules:
+  - 不修改 processRefund 的实现
+  - 测试使用 mock，不调用真实支付网关
+  - 使用项目已有的测试框架
+maxRepairRounds: 3

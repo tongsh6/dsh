@@ -1,0 +1,28 @@
+id: test-02-edge-cases
+description: 为价格计算器补充边界条件测试
+category: test
+taskPrompt: |
+  src/services/pricing.ts 中的 calculateDiscount 函数计算折扣价格，规则如下：
+  - 普通用户无折扣
+  - VIP 用户 9 折
+  - 订单满 1000 额外 9.5 折
+  - 促销码 PROMO10 减 10 元（在百分比折扣后应用）
+  - 最终价格不能低于 0
+
+  当前只有 2 个基本测试。请补充以下边界情况的测试：
+  - 折扣叠加顺序（VIP + 满额）
+  - 折扣后低于 0 的情况
+  - 非整数价格
+  - null/undefined 参数
+  - 无效促销码
+  - 大额订单（防止浮点精度问题）
+expectedFiles:
+  - src/services/pricing.test.ts
+expectPass: true
+verificationCommands:
+  - npx jest src/services/pricing.test.ts --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - 每个边界情况一个独立 it 块
+  - 使用 toBeCloseTo 处理浮点数比较
+  - 不要修改被测试的生产代码

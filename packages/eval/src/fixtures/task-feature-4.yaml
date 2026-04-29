@@ -1,0 +1,16 @@
+id: feature-input-validation
+description: "为注册接口添加输入校验"
+category: feature
+taskPrompt: "为 POST /api/register 接口添加请求体校验。要求：username 3-20 个字符、只允许字母数字下划线；email 必须是合法邮箱格式；password 最少 8 个字符、必须包含数字和字母。校验失败返回 400 和具体的错误信息。"
+expectedFiles:
+  - src/validators/register-validator.ts
+  - src/controllers/auth-controller.ts
+expectPass: true
+verificationCommands:
+  - "npx jest src/validators/register-validator.test.ts"
+  - "npx tsc --noEmit"
+architectureRules:
+  - 校验逻辑独立于 controller，放在 validators 目录
+  - 使用 zod 做 schema 校验（项目已安装）
+  - 不修改用户创建逻辑
+maxRepairRounds: 3

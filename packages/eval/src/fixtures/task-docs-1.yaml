@@ -1,0 +1,14 @@
+id: docs-sync-readme
+description: "同步 README 中的 API 文档与代码"
+category: docs
+taskPrompt: "检查并更新 README.md 中的 API 文档部分。确保所有端点描述与当前 routes 目录下的实际路由定义一致。添加最近新增的 /api/health 和 /api/metrics 端点文档。更新示例请求和响应为当前实际格式。"
+expectedFiles:
+  - README.md
+expectPass: true
+verificationCommands:
+  - "npx markdownlint README.md"
+architectureRules:
+  - 不修改任何源代码
+  - 文档格式保持与现有风格一致
+  - 端点描述必须与代码中的路由匹配
+maxRepairRounds: 2

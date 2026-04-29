@@ -1,0 +1,15 @@
+id: test-integration
+description: "为数据库仓库层添加集成测试"
+category: test
+taskPrompt: "为 UserRepository 的 CRUD 方法添加集成测试。使用项目已有的测试数据库（test-db），测试：创建用户、按 ID 查询、按邮箱查询、更新用户、软删除用户。每个测试后清理数据。"
+expectedFiles:
+  - src/repositories/user-repository.integration.test.ts
+expectPass: true
+verificationCommands:
+  - "npx jest src/repositories/user-repository.integration.test.ts"
+  - "npx tsc --noEmit"
+architectureRules:
+  - 使用项目已有的 test-db 配置
+  - 测试之间数据不互相影响
+  - 不修改 UserRepository 的实现
+maxRepairRounds: 3

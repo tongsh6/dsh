@@ -1,0 +1,15 @@
+id: docs-update-rules
+description: "根据最近的架构变更更新 AIEF 规则"
+category: docs
+taskPrompt: "根据最近的架构变更更新 AIEF 规则文件。上个月 Controller-Service-Repository 三层架构已确定，新增了 middleware 层。更新 AIEF/architecture.md 反映当前分层约定，并在 AIEF/coding-standards.md 中补充 middleware 编写规范。"
+expectedFiles:
+  - AIEF/architecture.md
+  - AIEF/coding-standards.md
+expectPass: true
+verificationCommands:
+  - "npx markdownlint AIEF/"
+architectureRules:
+  - 规则文件使用项目统一模板
+  - 不添加与现有规则冲突的内容
+  - 保持 AIEF 文件结构不变
+maxRepairRounds: 2

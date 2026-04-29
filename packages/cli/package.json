@@ -1,0 +1,29 @@
+{
+  "name": "@dsh/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "bin": {
+    "dsh": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/**/*.test.ts"
+  },
+  "dependencies": {
+    "@dsh/core": "workspace:*",
+    "@dsh/provider": "workspace:*",
+    "@dsh/repo": "workspace:*",
+    "cac": "^6.7.14",
+    "js-yaml": "^4.1.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.15.30",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.0"
+  }
+}

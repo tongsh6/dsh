@@ -1,0 +1,23 @@
+id: refactor-01-extract-function
+description: 提取公共的日期格式化函数消除重复代码
+category: refactor
+taskPrompt: |
+  在 src/utils/format.ts 中有 3 个函数（formatDateISO, formatDateLocal, formatDateRelative）
+  都包含相同的日期有效性检查逻辑：
+  ```typescript
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    throw new Error("Invalid date");
+  }
+  ```
+
+  请提取一个 isValidDate 函数，在三个格式化函数中复用它。不要在公共 API 中暴露 isValidDate。
+expectedFiles:
+  - src/utils/format.ts
+expectPass: true
+verificationCommands:
+  - npx jest src/utils/format.test.ts --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - isValidDate 不要从模块导出
+  - 三个公共函数的签名和行为保持不变
+  - 不要改变错误消息内容

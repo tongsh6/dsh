@@ -1,0 +1,10 @@
+id: patch-drift
+description: "patch 格式不稳定，hunk header 行号偏移导致 apply 失败"
+category: failure_mode
+detection:
+  - hunk header 与文件实际行号不匹配
+  - patch apply 失败并报 "Failed to apply"
+strategy:
+  - 要求 DeepSeek 重新读取当前文件内容后再生成 patch
+  - 限制 patch 只改必要行，不重写整个文件
+  - system prompt 强调基于提供的文件行号

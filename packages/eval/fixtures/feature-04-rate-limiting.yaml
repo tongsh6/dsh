@@ -1,0 +1,25 @@
+id: feature-04-rate-limiting
+description: 添加 API 速率限制功能
+category: feature
+taskPrompt: |
+  在 src/middleware/rate-limiter.ts 中实现基于内存的速率限制中间件。
+  要求：
+  - 基于 IP 地址限流
+  - 默认限制：每个 IP 每分钟最多 60 个请求
+  - 超过限制返回 429 Too Many Requests
+  - 响应头包含 X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
+  - 使用滑动窗口算法（而非固定窗口）
+  - 定期清理过期记录（每 5 分钟清理一次）
+
+  纯内存实现，不依赖 Redis。
+expectedFiles:
+  - src/middleware/rate-limiter.ts
+  - src/middleware/rate-limiter.test.ts
+expectPass: true
+verificationCommands:
+  - npx jest src/middleware/rate-limiter.test.ts --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - 纯内存实现，不引入外部存储
+  - 使用 Map 存储 IP -> 请求记录
+  - 清理逻辑使用 setInterval

@@ -1,0 +1,19 @@
+id: docs-02-changelog
+description: 维护 CHANGELOG 遵循 Keep a Changelog 格式
+category: docs
+taskPrompt: |
+  项目的 CHANGELOG.md 已有 v1.5.0 和 v1.4.0 的条目，但格式不完全符合 Keep a Changelog 规范。
+  请按照 https://keepachangelog.com/zh-CN/1.1.0/ 的格式规范化：
+  1. 确保使用 Added / Changed / Deprecated / Removed / Fixed / Security 分类
+  2. v1.4.0 中描述为 "修复了一些 bug" 的条目需要展开为具体的修复内容（已知修复了登录超时和分页计数错误）
+  3. 为即将发布的 v1.6.0 添加 Unreleased 区块，包含最近合并的 3 个 feature PR
+  4. 添加语义化版本号的说明链接
+expectedFiles:
+  - CHANGELOG.md
+expectPass: true
+verificationCommands:
+  - npx markdownlint CHANGELOG.md
+architectureRules:
+  - 严格遵循 Keep a Changelog 格式
+  - 使用语义化版本号
+  - 所有日期使用 YYYY-MM-DD 格式

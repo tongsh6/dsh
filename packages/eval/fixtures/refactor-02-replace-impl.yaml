@@ -1,0 +1,25 @@
+id: refactor-02-replace-impl
+description: 将同步文件读取替换为异步实现
+category: refactor
+taskPrompt: |
+  src/utils/config-loader.ts 当前使用 readFileSync 同步读取配置文件。
+  请将其重构为异步实现（使用 fs/promises 的 readFile），
+  并更新所有 3 个调用方（src/index.ts, src/cli/start.ts, src/scripts/init.ts）。
+
+  要求：
+  - 修改函数签名为 async
+  - 所有调用方添加 await
+  - 错误处理逻辑保持不变
+  - 不要引入新的依赖
+expectedFiles:
+  - src/utils/config-loader.ts
+  - src/index.ts
+  - src/cli/start.ts
+  - src/scripts/init.ts
+expectPass: true
+verificationCommands:
+  - npx jest --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - 使用 fs/promises 而非 util.promisify
+  - 不要在顶层使用 await（需要包装在 async 函数中时保持现有结构）

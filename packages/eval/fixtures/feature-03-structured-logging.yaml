@@ -1,0 +1,24 @@
+id: feature-03-structured-logging
+description: 添加结构化日志记录
+category: feature
+taskPrompt: |
+  在 src/middleware/logger.ts 中实现一个请求日志中间件。
+  记录每个 HTTP 请求的以下信息（JSON 格式输出到 stdout）：
+  - timestamp (ISO 8601)
+  - method, path, statusCode
+  - responseTime (ms)
+  - requestId (uuid，从请求头 x-request-id 读取，若无则生成)
+
+  使用 console.log 输出 JSON（不引入 winston/pino 等外部库）。
+  请同时为中间件编写单元测试。
+expectedFiles:
+  - src/middleware/logger.ts
+  - src/middleware/logger.test.ts
+expectPass: true
+verificationCommands:
+  - npx jest src/middleware/logger.test.ts --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - 不引入新的日志库依赖
+  - requestId 使用 crypto.randomUUID()
+  - 响应时间精确到毫秒

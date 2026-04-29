@@ -1,0 +1,22 @@
+id: failure-rule-blindness
+description: 漏读业务规则——模型忽略 CLAUDE.md 中的架构约束
+category: failure_mode
+taskPrompt: |
+  在 src/api/handlers.ts 中添加一个新的 API handler：GET /health 返回 { status: "ok", uptime: process.uptime() }。
+
+  Failure mode: 项目的 CLAUDE.md 明确要求"所有 API handler 必须使用 try/catch 包装，
+  错误统一返回 { error: string, code: number } 格式"。如果模型没有遵循这个约定，
+  说明出现了 rule-blindness（漏读 Base Context 中的规则文件）。
+expectedFiles: []
+expectPass: false
+verificationCommands: []
+architectureRules: []
+detection_rule: |
+  检测条件：
+  1. 生成的代码未遵循 Base Context 中的架构规则
+  2. 修改后的代码风格与项目规范不一致
+  3. 使用了项目禁止的模式（如 console.log 而非 logger）
+strategy:
+  - 在 system prompt 中强调规则文件内容
+  - repair 时显式列出违反的规则
+  - 将规则文件内容提到 context 的最前面

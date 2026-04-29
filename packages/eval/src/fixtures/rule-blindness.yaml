@@ -1,0 +1,11 @@
+id: rule-blindness
+description: "漏读或忽略项目规则文件中的业务约束"
+category: failure_mode
+detection:
+  - 修改违反了 .cursorrules 或 CLAUDE.md 中的规则
+  - 使用的 API 风格与项目约定不一致
+  - 引入了被禁止的依赖或模式
+strategy:
+  - Base Context 始终包含规则文件内容
+  - system prompt 明确要求先确认理解所有规则
+  - repair 时回灌被违反的具体规则条款

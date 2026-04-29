@@ -1,0 +1,18 @@
+id: refactor-interface-segregation
+description: "拆分过大的接口"
+category: refactor
+taskPrompt: "INotificationService 接口有 15 个方法，其中 8 个与邮件通知相关、5 个与推送通知相关、2 个与短信相关。按照 ISP 原则将接口拆分为 IEmailNotifier、IPushNotifier、ISmsNotifier，让 INotificationService 继承这三个接口。更新所有实现类。"
+expectedFiles:
+  - src/interfaces/notification.ts
+  - src/services/email-notifier.ts
+  - src/services/push-notifier.ts
+  - src/services/sms-notifier.ts
+expectPass: true
+verificationCommands:
+  - "npx jest src/services/"
+  - "npx tsc --noEmit"
+architectureRules:
+  - ISP 原则：使用者只依赖需要的接口
+  - INotificationService 保持向后兼容
+  - 实现类代码不重复
+maxRepairRounds: 3

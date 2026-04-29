@@ -1,0 +1,15 @@
+id: bugfix-date-parsing
+description: "修复不同时区下日期解析错误"
+category: bugfix
+taskPrompt: "修复日期解析工具在处理 ISO 8601 带时区偏移的字符串时，错误地将所有时间转换为 UTC 的问题。应该保留用户原始时区信息用于显示。"
+expectedFiles:
+  - src/utils/date-utils.ts
+expectPass: true
+verificationCommands:
+  - "npx jest src/utils/date-utils.test.ts"
+  - "npx tsc --noEmit"
+architectureRules:
+  - 不修改 API 响应格式
+  - 保留向后兼容性
+  - 不要引入 moment.js 等新依赖
+maxRepairRounds: 3

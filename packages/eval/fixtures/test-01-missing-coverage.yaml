@@ -1,0 +1,27 @@
+id: test-01-missing-coverage
+description: 为未覆盖的 util 函数补充单元测试
+category: test
+taskPrompt: |
+  src/utils/string.ts 中有 4 个工具函数：
+  - truncate(str, maxLen, suffix?: string)
+  - slugify(str)
+  - camelToSnake(str)
+  - parseCSVLine(line)
+
+  其中 truncate 和 camelToSnake 已有测试，但 slugify 和 parseCSVLine 缺少测试覆盖。
+  请为这两个函数编写完整的测试用例。
+
+  slugify 规则：转小写、替换空格和特殊字符为连字符、移除连续连字符、去除首尾连字符。
+  parseCSVLine 规则：按逗号分割、处理引号内字段（含逗号）、去除字段首尾空白。
+
+  请同时补充 truncate 的边界测试（suffix 长度超过 str 的情况）。
+expectedFiles:
+  - src/utils/string.test.ts
+expectPass: true
+verificationCommands:
+  - npx jest src/utils/string.test.ts --coverage --coverageThreshold='{"global":{"branches":90,"functions":90,"lines":90,"statements":90}}'
+  - npx tsc --noEmit
+architectureRules:
+  - 使用 describe/it 组织测试
+  - 每个函数至少 5 个测试用例
+  - 边界条件必须有测试覆盖

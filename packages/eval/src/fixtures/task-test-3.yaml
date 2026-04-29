@@ -1,0 +1,18 @@
+id: test-snapshot
+description: "为 UI 组件添加快照测试"
+category: test
+taskPrompt: "为 Button 和 Input 组件添加快照测试。覆盖：默认状态、disabled 状态、loading 状态、error 状态、不同 size（small/medium/large）、不同 variant（primary/secondary/ghost）。"
+expectedFiles:
+  - src/components/__snapshots__/button.snap
+  - src/components/__snapshots__/input.snap
+  - src/components/button.test.tsx
+  - src/components/input.test.tsx
+expectPass: true
+verificationCommands:
+  - "npx jest src/components/button.test.tsx src/components/input.test.tsx"
+  - "npx tsc --noEmit"
+architectureRules:
+  - 使用项目已有的测试框架和快照工具
+  - 不修改组件实现
+  - 快照文件需要提交
+maxRepairRounds: 2

@@ -1,0 +1,31 @@
+id: test-03-integration
+description: 为用户注册流程编写集成测试
+category: test
+taskPrompt: |
+  为 src/services/registration.ts 的 registerUser 函数编写集成测试。
+  该函数的完整流程：
+  1. 校验输入（username, email, password）
+  2. 检查用户名和邮箱是否已存在
+  3. 哈希密码
+  4. 插入用户记录
+  5. 发送欢迎邮件
+  6. 返回 { userId, username, email }
+
+  请编写测试覆盖：
+  - 成功注册
+  - 用户名已存在
+  - 邮箱已存在
+  - 密码强度不足
+  - 邮件发送失败（不应回滚用户记录，只记录日志）
+
+  Mock 数据库和邮件服务的依赖。
+expectedFiles:
+  - src/services/registration.test.ts
+expectPass: true
+verificationCommands:
+  - npx jest src/services/registration.test.ts --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - 使用 jest.mock 模拟外部依赖
+  - 每个测试用例独立，不依赖执行顺序
+  - 验证 mock 函数被调用的参数

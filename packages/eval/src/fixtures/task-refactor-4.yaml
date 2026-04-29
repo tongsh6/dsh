@@ -1,0 +1,17 @@
+id: refactor-remove-dead-code
+description: "清理未使用的导入和死代码"
+category: refactor
+taskPrompt: "在 src/utils 目录下，移除所有未被引用的导出函数和类型。使用 TypeScript 编译器的 noUnusedLocals 检查作为基准。同时移除对应的测试文件。"
+expectedFiles:
+  - src/utils/helpers.ts
+  - src/utils/formatters.ts
+  - src/utils/validators.ts
+expectPass: true
+verificationCommands:
+  - "npx tsc --noEmit"
+  - "npx jest"
+architectureRules:
+  - 只删除确认未被引用的代码
+  - 被测试文件引用的代码不能删除
+  - 被其他 package 引用的导出不能删除
+maxRepairRounds: 2

@@ -1,0 +1,17 @@
+id: feature-rate-limit
+description: "为 API 端点添加请求频率限制"
+category: feature
+taskPrompt: "为所有 /api 路由添加基于 IP 的请求频率限制中间件。每分钟最多 60 次请求，超出返回 429 Too Many Requests。使用 Express 中间件模式。"
+expectedFiles:
+  - src/middleware/rate-limiter.ts
+  - src/app.ts
+expectPass: true
+verificationCommands:
+  - "npx jest src/middleware/rate-limiter.test.ts"
+  - "npx tsc --noEmit"
+  - "npx eslint src/middleware/rate-limiter.ts"
+architectureRules:
+  - 中间件必须符合 Express 中间件签名
+  - 使用内存存储不要引入 Redis（项目未使用）
+  - 不要在中间件中硬编码限制值，使用配置
+maxRepairRounds: 3

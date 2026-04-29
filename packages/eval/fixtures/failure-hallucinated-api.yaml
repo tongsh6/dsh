@@ -1,0 +1,27 @@
+id: failure-hallucinated-api
+description: 编造不存在的 API——模型调用了项目中不存在的函数
+category: failure_mode
+taskPrompt: |
+  在 src/services/report.ts 中实现 exportToCSV 函数，将数据数组导出为 CSV 字符串。
+
+  Failure mode: 模型可能会编造不存在的工具函数，例如：
+  - 调用 formatCSVField()（实际项目中不存在）
+  - 使用不存在的 csvHelper 模块
+  - 调用项目中未定义的 escapeCsvValue()
+
+  项目实际有的工具函数在 src/utils/string.ts 中：truncate, slugify, camelToSnake, parseCSVLine。
+  并没有 CSV 相关的现成函数。CSV 转义逻辑需要内联实现。
+expectedFiles:
+  - src/services/report.ts
+expectPass: false
+verificationCommands: []
+architectureRules: []
+detection_rule: |
+  检测条件：
+  1. 生成的代码 import 了项目中不存在的模块
+  2. 调用了不存在的函数
+  3. 引用了不存在的外部 API
+strategy:
+  - TypeScript 类型检查自动捕获不存在的导入
+  - 在 context 中明确列出可用的工具函数
+  - prompt 中标注"只使用项目上下文中存在的模块和函数"

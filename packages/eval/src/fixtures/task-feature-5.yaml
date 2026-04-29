@@ -1,0 +1,17 @@
+id: feature-config-env
+description: "支持通过环境变量覆盖配置"
+category: feature
+taskPrompt: "改造配置模块，支持通过环境变量覆盖默认配置。环境变量前缀为 APP__，使用双下划线表示嵌套层级。例如 APP__DB__HOST 覆盖 db.host 配置。需要做类型转换（数字、布尔、字符串）。"
+expectedFiles:
+  - src/config/index.ts
+  - src/config/env-loader.ts
+expectPass: true
+verificationCommands:
+  - "npx jest src/config/env-loader.test.ts"
+  - "npx jest src/config/index.test.ts"
+  - "npx tsc --noEmit"
+architectureRules:
+  - 环境变量覆盖在配置加载的最外层
+  - 不修改配置的读取接口
+  - 类型转换必须安全
+maxRepairRounds: 3

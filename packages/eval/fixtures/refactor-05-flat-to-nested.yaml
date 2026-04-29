@@ -1,0 +1,28 @@
+id: refactor-05-flat-to-nested
+description: 将扁平的路由文件重构为嵌套路由结构
+category: refactor
+taskPrompt: |
+  src/routes/api.ts 当前在一个文件中定义了所有 API 路由（30+ 个路由）。
+  请按资源拆分为嵌套路由结构：
+  - src/routes/index.ts — 路由入口，挂载子路由
+  - src/routes/users.ts — /users/*
+  - src/routes/products.ts — /products/*
+  - src/routes/orders.ts — /orders/*
+  - src/routes/admin.ts — /admin/*
+
+  每个子路由文件导出 Express Router。
+  不要改动任何路由处理函数的业务逻辑。
+expectedFiles:
+  - src/routes/index.ts
+  - src/routes/users.ts
+  - src/routes/products.ts
+  - src/routes/orders.ts
+  - src/routes/admin.ts
+  - src/routes/api.ts
+expectPass: true
+verificationCommands:
+  - npx jest src/routes --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - 使用 Express.Router() 创建子路由
+  - 原始 api.ts 保留为兼容导出（re-export 新的 index.ts）

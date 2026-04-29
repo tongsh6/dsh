@@ -1,0 +1,22 @@
+id: docs-01-readme-sync
+description: 同步 README 文档以反映最新的 API 变更
+category: docs
+taskPrompt: |
+  README.md 中的 API 文档已过时。最近 src/routes/api.ts 中新增了以下端点：
+  - POST /api/v2/users/batch — 批量创建用户
+  - GET /api/v2/products/search?q=&category=&min=&max= — 产品搜索
+  - PATCH /api/v2/orders/:id/status — 更新订单状态
+
+  旧端点 GET /api/v1/users 已被标记为 deprecated，应标注废弃警告。
+
+  请更新 README.md 中的 API 文档部分，按照现有表格格式添加上述端点说明。
+  同时更新目录中对应的章节链接。
+expectedFiles:
+  - README.md
+expectPass: true
+verificationCommands:
+  - npx markdownlint README.md
+architectureRules:
+  - 使用与现有 README 一致的表格格式
+  - deprecated 端点使用 ~~删除线~~ 标记
+  - 不要修改 README 中与 API 无关的部分

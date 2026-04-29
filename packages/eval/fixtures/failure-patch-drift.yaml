@@ -1,0 +1,27 @@
+id: failure-patch-drift
+description: patch 格式偏移——hunk header 行号与实际文件不匹配
+category: failure_mode
+taskPrompt: |
+  在 src/services/cache.ts 中，getCacheKey 函数的实现已多次修改，
+  但 DeepSeek 可能基于旧的上下文生成 patch，导致 hunk header 行号偏移。
+
+  实际文件的 getCacheKey 位于第 42-48 行，签名是：
+  ```typescript
+  export function getCacheKey(prefix: string, params: Record<string, unknown>): string {
+  ```
+
+  任务是添加 JSDoc 注释。如果模型生成的 patch 中 hunk header 不是 @@ -42,7 +42,10 @@，
+  说明发生了 patch-drift。
+expectedFiles: []
+expectPass: false
+verificationCommands: []
+architectureRules: []
+detection_rule: |
+  检测条件：
+  1. unified diff 的 hunk header @@ -l,s +l,s @@ 中行号与实际文件不一致
+  2. patch apply 时 diff 库报错 "Failed to apply"
+  3. context lines 与文件内容不匹配
+strategy:
+  - 在 prompt 中强调"hunk headers MUST match current file line numbers"
+  - patch apply 失败时回灌错误信息让模型重试
+  - 最多 2 次重试，失败后标记为 patch-drift

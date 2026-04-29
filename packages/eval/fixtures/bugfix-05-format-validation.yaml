@@ -1,0 +1,24 @@
+id: bugfix-05-format-validation
+description: 修复邮箱格式校验正则允许无效域名的 bug
+category: bugfix
+taskPrompt: |
+  在 src/validators/email.ts 中，isValidEmail 的正则表达式过于宽松，允许 "user@" 和 "user@.com" 通过校验。
+
+  当前正则: /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+  请改进正则以要求：
+  1. @ 前后至少各有一个字符
+  2. 域名部分至少有一个点，点前后各至少有一个字符
+  3. TLD 至少两个字符
+
+  同时补充测试用例覆盖以下边界：空字符串、缺少@、缺少域名、缺少TLD、TLD过短、有效邮箱。
+expectedFiles:
+  - src/validators/email.ts
+  - src/validators/email.test.ts
+expectPass: true
+verificationCommands:
+  - npx jest src/validators/email.test.ts --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - 保持在单个正则中完成校验
+  - 不要引入新的 npm 包

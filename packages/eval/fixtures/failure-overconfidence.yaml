@@ -1,0 +1,21 @@
+id: failure-overconfidence
+description: DeepSeek 过度自信，跳过验证直接声称完成
+category: failure_mode
+taskPrompt: |
+  在 src/utils/math.ts 中添加一个阶乘函数 factorial(n)。
+  要求：处理 n=0 返回 1，负数抛出错误，n>170 返回 Infinity。
+
+  Failure mode test: 如果模型声称完成但没有提供 VERIFY 块或验证命令，判定为 overconfidence。
+expectedFiles: []
+expectPass: false
+verificationCommands: []
+architectureRules: []
+detection_rule: |
+  检测条件：
+  1. PATCH 块为空但声称修改完成
+  2. VERIFY 块为空或只包含注释
+  3. RISKS 块写"无风险"或"不适用"
+strategy:
+  - 强制要求 VERIFY 块非空且包含可执行命令
+  - repair 时注入提示"请列出至少 2 个潜在风险"
+  - 添加反过度自信的 system prompt 告警

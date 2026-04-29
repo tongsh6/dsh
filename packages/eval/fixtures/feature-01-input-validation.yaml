@@ -1,0 +1,21 @@
+id: feature-01-input-validation
+description: 为 API 路由添加请求体参数校验
+category: feature
+taskPrompt: |
+  在 src/routes/users.ts 的 POST /users 路由中添加请求体参数校验。
+  必需字段：username (string, 3-50 chars), email (valid email), age (number, 0-150)。
+  使用 zod schema 校验，校验失败返回 400 并附带具体错误信息。
+
+  请创建 src/validators/user.schema.ts 定义 schema，
+  在 src/routes/users.ts 中导入并应用校验中间件。
+expectedFiles:
+  - src/validators/user.schema.ts
+  - src/routes/users.ts
+expectPass: true
+verificationCommands:
+  - npx jest src/routes/users.test.ts --no-coverage
+  - npx tsc --noEmit
+architectureRules:
+  - 使用 zod 进行 schema 校验
+  - 错误消息使用英文
+  - 不要修改已有的成功响应格式
