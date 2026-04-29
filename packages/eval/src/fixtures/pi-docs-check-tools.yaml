@@ -1,0 +1,30 @@
+id: pi-docs-check-tools
+description: 补充 tools/README.md 中缺失的 check 工具说明
+category: docs
+taskPrompt: |
+  tools/README.md 当前缺少以下两个工具的说明文档：
+
+  1. tools/check_v2_constraints.py — v2 架构静态约束检查
+     检查项包括：infra 层函数定义唯一性、业务层 subprocess 使用限制、engines 层 use_llm 分支检查
+     用法：python3 tools/check_v2_constraints.py --root .
+     退出码：0 = PASS，1 = FAIL
+
+  2. tools/check_submission_readiness.py — 投递就绪门禁检查
+     检查项：submission_log.json 存在性、status 匹配、mode 为 submit、screenshots >= min
+     用法：python3 tools/check_submission_readiness.py --root outputs/submissions --platform liepin --require-status success --min-screenshots 1
+     退出码：0 = PASS，1 = FAIL
+
+  请在 tools/README.md 的 "CI 校验" 章节之前（约 210 行附近）添加 "## 架构检查与门禁" 章节，
+  按与现有 README 一致的风格补充以上两个工具的文档。
+
+  相关文件：tools/README.md
+expectedFiles:
+  - tools/README.md
+expectPass: true
+verificationCommands:
+  - python3 tools/check_v2_constraints.py --root .
+architectureRules:
+  - 保持 tools/README.md 现有 Markdown 风格一致
+  - 新增章节放在 "CI 校验" 之前
+  - 不修改其他工具的文档
+maxRepairRounds: 2

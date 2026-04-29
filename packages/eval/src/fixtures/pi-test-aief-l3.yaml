@@ -1,0 +1,30 @@
+id: pi-test-aief-l3
+description: 为 check_aief_l3.py 创建单元测试
+category: test
+taskPrompt: |
+  tools/check_aief_l3.py 目前完全没有任何单元测试。请为它的三个核心函数创建测试文件
+  tests/unit/domain/test_check_aief_l3.py：
+
+  1. check_exists(root, rel_path) → (bool, str)
+     测试：文件存在返回 (True, "OK  ...")，不存在返回 (False, "MISS ...")
+
+  2. check_contains(root, rel_path, needle, label) → (bool, str)
+     测试：包含 needle 返回 (True, "OK  ...")，不包含返回 (False, "MISS ...")，文件不存在返回 (False, "MISS ...")
+
+  3. check_min_files(root, rel_dir, pattern, min_count, label) → (bool, str)
+     测试：目录不存在返回 (False, "MISS ...")，文件数 >= min_count 返回 (True, "OK  ...")，不足返回 (False, "MISS ...")
+
+  使用 Python 标准库 unittest.TestCase 和 tempfile.TemporaryDirectory 创建临时目录和文件来模拟各种场景。
+  测试风格参考 tests/unit/domain/test_error_handler.py。
+
+  相关文件：tools/check_aief_l3.py, tests/unit/domain/test_check_aief_l3.py(new)
+expectedFiles:
+  - tests/unit/domain/test_check_aief_l3.py
+expectPass: true
+verificationCommands:
+  - python3 -m pytest tests/unit/domain/test_check_aief_l3.py -v
+architectureRules:
+  - 使用 unittest.TestCase 和 tempfile.TemporaryDirectory
+  - 不引入 pytest 特有装饰器
+  - 测试函数命名：test_check_exists_* / test_check_contains_* / test_check_min_files_*
+maxRepairRounds: 3

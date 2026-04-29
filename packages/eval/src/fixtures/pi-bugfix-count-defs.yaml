@@ -1,0 +1,23 @@
+id: pi-bugfix-count-defs
+description: 修复 check_v2_constraints.py 中 count_definitions 的朴素子串匹配
+category: bugfix
+taskPrompt: |
+  在 tools/check_v2_constraints.py 中，count_definitions() 函数使用 text.count(signature) 做朴素子串匹配，
+  这会将注释、docstring、字符串字面量中的 def xxx( 也统计进去，产生假阳性或假阴性。
+
+  请将 count_definitions() 改为使用正则表达式 re.findall(r'^def ' + re.escape(signature), text, re.MULTILINE)，
+  只匹配行首的 def 声明。find_pattern() 函数不需要修改。
+
+  在文件顶部添加 import re。
+
+  相关文件：tools/check_v2_constraints.py
+expectedFiles:
+  - tools/check_v2_constraints.py
+expectPass: true
+verificationCommands:
+  - python3 -m pytest tests/unit/domain/test_check_v2_constraints.py -v
+architectureRules:
+  - 不修改 check_v2_constraints.py 的 main() 函数和退出码约定
+  - 不用 AST 解析，保持实现简单
+  - count_definitions 的调用方式和返回值类型不变
+maxRepairRounds: 2

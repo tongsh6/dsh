@@ -1,0 +1,26 @@
+id: pi-test-error-handler
+description: 补充 test_error_handler.py 缺失的 PolicyError 和 FabricationGuardError 测试
+category: test
+taskPrompt: |
+  在 tests/unit/domain/test_error_handler.py 中，ErrorHandlerTests 类目前只有 2 个测试方法：
+  - test_route_error_for_unrecoverable_exception（只测了 EvidenceValidationError）
+  - test_route_error_for_unknown_exception（只测了 RuntimeError）
+
+  缺少以下测试覆盖：
+  1. PolicyError → 应返回 "terminate_run"（PolicyError 在 tools/config/validator.py 中被 20+ 处使用，
+     继承自 PiProofError，tools/errors/handler.py 的 route_error 函数应将其路由为 terminate_run）
+  2. FabricationGuardError → 应返回 "terminate_run"
+
+  请补充这两个测试方法。保持与现有测试一致的风格（unittest.TestCase, assertEqual）。
+
+  相关文件：tests/unit/domain/test_error_handler.py
+expectedFiles:
+  - tests/unit/domain/test_error_handler.py
+expectPass: true
+verificationCommands:
+  - python3 -m pytest tests/unit/domain/test_error_handler.py -v
+architectureRules:
+  - 使用 unittest.TestCase 保持和现有测试风格一致
+  - 不要引入 pytest 特有装饰器
+  - import PolicyError 和 FabricationGuardError 从 tools.errors.exceptions
+maxRepairRounds: 2

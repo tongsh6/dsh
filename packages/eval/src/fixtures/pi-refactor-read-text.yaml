@@ -1,0 +1,25 @@
+id: pi-refactor-read-text
+description: 提取 extract_evidence.py 和 extract_evidence_llm.py 中重复的 read_text 函数
+category: refactor
+taskPrompt: |
+  tools/extract_evidence.py 的 read_text() 函数（35-39 行）和 tools/extract_evidence_llm.py 的 read_text() 函数（18-21 行）
+  实现完全相同：检查 path == "-"，是则读 stdin，否则读文件。
+
+  请将 read_text() 提取到 tools/infra/file_io.py（新建文件），然后在两个源文件中删除本地实现，改为：
+  from tools.infra.file_io import read_text
+
+  确保 tools/infra/__init__.py 存在（如果不存在则创建空文件）。
+
+  相关文件：tools/extract_evidence.py, tools/extract_evidence_llm.py, tools/infra/file_io.py(new)
+expectedFiles:
+  - tools/extract_evidence.py
+  - tools/extract_evidence_llm.py
+  - tools/infra/file_io.py
+expectPass: true
+verificationCommands:
+  - python3 -m pytest tests/unit/domain/test_evidence_engines.py -v
+architectureRules:
+  - read_text 的函数签名和目标行为完全不变
+  - 不引入新的第三方依赖
+  - file_io.py 只放 read_text，保持最小化
+maxRepairRounds: 2
