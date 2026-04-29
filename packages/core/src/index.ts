@@ -41,7 +41,6 @@ export type { ParsedPatch, HunkInfo } from "./patch-parser.js";
 
 export {
   runCommand,
-  runVerify,
   isAllPassed,
   formatResults,
   summarizeResults,
@@ -52,3 +51,21 @@ export { runRepairLoop } from "./repair-loop.js";
 export type { RepairConfig, RepairRoundResult } from "./repair-loop.js";
 
 export { writeHandoff } from "./handoff-writer.js";
+
+export {
+  runPlan,
+  runPatch,
+  runVerify,
+  runRepair,
+  runHandoff,
+  runFullPipeline,
+} from "./pipeline.js";
+export type {
+  PlanParams,
+  PatchParams,
+  VerifyParams,
+  RepairParams,
+  HandoffParams,
+  FullPipelineParams,
+  PipelineBase,
+} from "./pipeline.js";
