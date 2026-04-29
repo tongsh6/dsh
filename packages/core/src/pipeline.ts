@@ -50,7 +50,8 @@ export interface PatchParams extends PipelineBase {
   dryRun?: boolean;
 }
 
-export interface VerifyParams extends PipelineBase {
+export interface VerifyParams {
+  cwd: string;
   test?: boolean;
   lint?: boolean;
   typecheck?: boolean;
@@ -77,36 +78,31 @@ export interface FullPipelineParams extends PipelineBase {
 
 // ---- Internal helpers ----
 
-function readLocalConfig(cwd: string): Record<string, any> {
+function readLocalConfigStrict(cwd: string): Record<string, unknown> {
+  const raw = fs.readFileSync(path.join(cwd, ".dsh", "config.yml"), "utf-8");
+  return yaml.load(raw) as Record<string, unknown>;
+}
+
+function readLocalConfig(cwd: string): Record<string, unknown> {
   try {
-    const raw = fs.readFileSync(path.join(cwd, ".dsh", "config.yml"), "utf-8");
-    return (yaml.load(raw) as Record<string, any>) ?? {};
+    return readLocalConfigStrict(cwd);
   } catch {
     return {};
   }
 }
 
-async function buildLayers(cwd: string, description: string): Promise<ContextLayers> {
+async function buildLayers(cwd: string, description: string, taskType: string): Promise<ContextLayers> {
   const config = readLocalConfig(cwd);
   const rules = loadRuleContents(cwd);
   const stack = detectTechStack(cwd);
   const repoContext = generateRepoContext(cwd, stack);
 
-  const state = createTaskState(description, "feature");
+  const state = createTaskState(description, taskType as TaskState["task"]["type"]);
   const allFiles = await scanProjectFiles(cwd);
   const ranked = rankFiles(description, allFiles);
   const taskFiles = loadTopFiles(cwd, ranked, 10);
 
   return assembleContext({ config, rules, repoContext, taskState: state, taskFiles });
-}
-
-function readLocalConfigStrict(cwd: string): Record<string, any> {
-  try {
-    const raw = fs.readFileSync(path.join(cwd, ".dsh", "config.yml"), "utf-8");
-    return (yaml.load(raw) as Record<string, any>) ?? {};
-  } catch {
-    throw new Error("无法读取 .dsh/config.yml 文件，请确认项目已初始化");
-  }
 }
 
 // ---- runPlan ----
@@ -120,7 +116,7 @@ export async function runPlan(params: PlanParams): Promise<TaskState> {
     writeTaskState(cwd, state);
   }
 
-  const layers = await buildLayers(cwd, description);
+  const layers = await buildLayers(cwd, description, taskType);
   const target = classify({ command: "plan" });
 
   const messages = buildMessages({ context: layers, taskDescription: description });
@@ -162,7 +158,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
     throw new Error(`当前状态为 ${state.status}，需要 planned 或 repairing`);
   }
 
-  const layers = await buildLayers(cwd, state.task.description);
+  const layers = await buildLayers(cwd, state.task.description, state.task.type);
   const dynamic = buildDynamicContext(state.patches, state.verify_results, 2);
   const fullLayers = { ...layers, dynamic };
 
@@ -206,7 +202,7 @@ export async function runVerify(params: VerifyParams): Promise<TaskState> {
   let state = readTaskState(cwd);
   if (!state) throw new Error("尚未初始化。请先运行 dsh init");
   if (state.status !== "patched" && state.status !== "repairing") {
-    throw new Error(`当前状态为 ${state.status}，需要 patched`);
+    throw new Error(`当前状态为 ${state.status}，需要 patched 或 repairing`);
   }
 
   const config = readLocalConfigStrict(cwd);
@@ -249,7 +245,7 @@ export async function runRepair(params: RepairParams): Promise<TaskState> {
     throw new Error(`当前状态为 ${state.status}，需要 verification_failed`);
   }
 
-  const layers = await buildLayers(cwd, state.task.description);
+  const layers = await buildLayers(cwd, state.task.description, state.task.type);
 
   const config = readLocalConfigStrict(cwd);
   const verifyConfig = config.verify as Record<string, string> | undefined;
@@ -291,7 +287,7 @@ export async function runFullPipeline(params: FullPipelineParams): Promise<TaskS
   state = await runPatch({ cwd, client, auto });
 
   try {
-    state = await runVerify({ cwd, client });
+    state = await runVerify({ cwd });
   } catch (e) {
     if (e instanceof Error && e.message.includes("没有配置验证命令")) {
       return state;

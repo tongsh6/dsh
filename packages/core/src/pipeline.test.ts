@@ -172,8 +172,7 @@ describe("runVerify", () => {
   it("transitions to verified when all checks pass", async () => {
     const tmp = await setupTempDir("patched");
     try {
-      const client = undefined as any;
-      const state = await runVerify({ cwd: tmp, client });
+      const state = await runVerify({ cwd: tmp });
       assert.equal(state.status, "verified");
       assert.equal(state.verify_results.length, 1);
     } finally {
@@ -207,8 +206,7 @@ describe("runVerify", () => {
         }, null, 2),
         "utf-8",
       );
-      const client = undefined as any;
-      const state = await runVerify({ cwd: tmp, client });
+      const state = await runVerify({ cwd: tmp });
       assert.equal(state.status, "verification_failed");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
