@@ -155,14 +155,19 @@ export function applyPatch(
     const absPath = path.join(cwd, filePath);
 
     let source: string;
-    // Check if this is a new file (--- /dev/null)
-    const isNewFile = /^---\s+\/dev\/null$/m.test(filePatch);
-    try {
-      source = fs.readFileSync(absPath, "utf-8");
-    } catch {
-      if (isNewFile) {
-        source = "";
-      } else {
+    // Check if this is a new file
+    // 1. Explicit /dev/null source header
+    // 2. File doesn't exist and hunk starts at -0,0 (model used --- a/newfile)
+    const hasDevNull = /^---\s+\/dev\/null$/m.test(filePatch);
+    const hasNewFileHunk = /^@@\s+-0,0\s+\+/.test(filePatch);
+    const fileExists = fs.existsSync(absPath);
+
+    if (!fileExists && (hasDevNull || hasNewFileHunk)) {
+      source = "";
+    } else {
+      try {
+        source = fs.readFileSync(absPath, "utf-8");
+      } catch {
         return {
           success: false,
           files: changedFiles,
@@ -170,6 +175,8 @@ export function applyPatch(
         };
       }
     }
+
+    const isNewFile = !fileExists && (hasDevNull || hasNewFileHunk);
 
     // Ensure parent directory exists for new files
     if (isNewFile && !dryRun) {
