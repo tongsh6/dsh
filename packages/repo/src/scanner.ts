@@ -76,12 +76,69 @@ export function detectTechStack(cwd: string): TechStack {
     };
   }
 
+  // Fallback: detect by file extensions
+  const extLang = detectLanguageByFiles(cwd);
+  if (extLang) return extLang;
+
   return {
     language: "unknown",
     packageManager: null,
     framework: null,
     details: {},
   };
+}
+
+function detectLanguageByFiles(cwd: string): TechStack | null {
+  const extCounts: Record<string, number> = {};
+  const maxDepth = 3;
+  const stopDirs = new Set(["node_modules", ".git", "dist", "__pycache__", "target", ".venv", "venv", ".dsh"]);
+
+  function walk(dir: string, depth: number): void {
+    if (depth > maxDepth) return;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (stopDirs.has(entry.name) || entry.name.startsWith(".")) continue;
+        walk(path.join(dir, entry.name), depth + 1);
+      } else if (entry.isFile()) {
+        const ext = path.extname(entry.name).toLowerCase();
+        extCounts[ext] = (extCounts[ext] ?? 0) + 1;
+      }
+    }
+  }
+
+  walk(cwd, 1);
+
+  const pyCount = (extCounts[".py"] ?? 0);
+  const tsCount = (extCounts[".ts"] ?? 0) + (extCounts[".tsx"] ?? 0);
+  const jsCount = (extCounts[".js"] ?? 0) + (extCounts[".jsx"] ?? 0);
+  const goCount = (extCounts[".go"] ?? 0);
+  const rsCount = (extCounts[".rs"] ?? 0);
+
+  const threshold = 3;
+
+  if (pyCount >= threshold) {
+    return { language: "python", packageManager: "pip", framework: null, details: {} };
+  }
+  if (tsCount >= threshold) {
+    return { language: "typescript", packageManager: "npm", framework: null, details: {} };
+  }
+  if (jsCount >= threshold && jsCount > tsCount) {
+    return { language: "javascript", packageManager: "npm", framework: null, details: {} };
+  }
+  if (goCount >= threshold) {
+    return { language: "go", packageManager: null, framework: null, details: {} };
+  }
+  if (rsCount >= threshold) {
+    return { language: "rust", packageManager: null, framework: null, details: {} };
+  }
+
+  return null;
 }
 
 export function detectVerifyCommands(
