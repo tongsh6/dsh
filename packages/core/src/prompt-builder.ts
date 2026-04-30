@@ -58,9 +58,10 @@ command2
 5. List at least 2 risks, even if they seem minor. Never write "无风险" or "No risks"
 6. Only modify files listed in <FILES>
 7. Do NOT reference APIs or files that don't exist in the provided context
-8. Keep changes minimal — don't refactor unrelated code
+8. Keep changes minimal — fix ONLY the specific issue. Never restructure, delete, or move unrelated code
 9. If you are uncertain about any detail, note it in <RISKS> rather than guessing
 10. Output ONLY the XML blocks. Do not add conversational text before or after
+11. NEVER delete existing imports, functions, or code blocks — only add or modify what is necessary
 
 ## Context Layers
 

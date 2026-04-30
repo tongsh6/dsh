@@ -44,9 +44,20 @@ export async function runRepairLoop(
       2,
     );
 
+    const repairConstraints = [
+      "CRITICAL REPAIR RULES:",
+      "1. Make the SMALLEST possible change to fix the failure — change as few lines as possible.",
+      "2. NEVER delete or modify existing imports unless they are directly causing the test failure.",
+      "3. NEVER add new functions, classes, or variables that were not part of the original task.",
+      "4. NEVER restructure or reformat code that is unrelated to the failure.",
+      "5. ONLY fix the specific error in the verify output. Do not make additional improvements.",
+      "6. If the original patch was wrong, revert to the original code and try a different minimal approach.",
+      "7. Preserve ALL existing code that is not related to the error. Every deleted line must be justified by the verify failure output.",
+    ].join("\n");
+
     const messages = buildMessages({
       context: { ...config.contextLayers, dynamic },
-      taskDescription: `The previous patch failed verification. Analyze the errors and fix the code.\n\nOriginal task: ${current.task.description}`,
+      taskDescription: `${repairConstraints}\n\nThe previous patch failed verification. Analyze the errors and fix the code.\n\nOriginal task: ${current.task.description}`,
     });
 
     // Route to Pro + thinking for repair
