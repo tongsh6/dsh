@@ -21,6 +21,7 @@ export interface TaskResult {
   manualInterventions: number;
   handoffQuality: number; // 0-3
   durationMs: number;
+  error?: string;
 }
 
 // ---- Existing Functions ----
@@ -242,16 +243,25 @@ export async function runTask(
 
         if (state.status === "verification_failed") {
           // 6. Repair
-          state = await runRepair({
-            cwd: repoPath,
-            client,
-            maxRounds: fixture.maxRepairRounds ?? 3,
-          });
-          repairRounds = state.repair_rounds;
-          repairSuccess = state.status === "verified";
+          try {
+            state = await runRepair({
+              cwd: repoPath,
+              client,
+              maxRounds: fixture.maxRepairRounds ?? 3,
+            });
+            repairRounds = state.repair_rounds;
+            repairSuccess = state.status === "verified";
+          } catch (repairErr) {
+            result.error = `repair failed: ${repairErr instanceof Error ? repairErr.message : String(repairErr)}`;
+          }
         }
-      } catch {
-        // verify commands might not exist — skip
+      } catch (verifyErr) {
+        const msg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
+        if (msg.includes("没有配置验证命令")) {
+          // No verify commands configured — non-critical
+        } else {
+          result.error = `verify failed: ${msg}`;
+        }
       }
     }
 
@@ -274,8 +284,9 @@ export async function runTask(
     result.extraFiles = extraFiles;
     result.scopeViolation = extraFiles.length > 0;
 
-  } catch {
+  } catch (err) {
     result.completed = false;
+    result.error = err instanceof Error ? err.message : String(err);
   } finally {
     resetToMain(repoPath);
   }
@@ -355,6 +366,9 @@ export function formatEvaluationReport(results: TaskResult[]): string {
     lines.push(`| Rule violations | ${r.ruleViolations.length > 0 ? r.ruleViolations.join(", ") : "0"} |`);
     lines.push(`| Handoff quality | ${r.handoffQuality}/3 |`);
     lines.push(`| Duration | ${(r.durationMs / 1000).toFixed(1)}s |`);
+    if (r.error) {
+      lines.push(`| Error | ${r.error} |`);
+    }
     lines.push("");
   }
 

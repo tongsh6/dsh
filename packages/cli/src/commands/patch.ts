@@ -6,6 +6,52 @@ interface PatchOptions {
   dryRun?: boolean;
 }
 
+interface CategorizedChanges {
+  created: string[];
+  renamed: string[];
+  modified: string[];
+  deleted: string[];
+}
+
+function categorizeChanges(patchText: string): CategorizedChanges {
+  const created: string[] = [];
+  const renamed: string[] = [];
+  const modified: string[] = [];
+  const deleted: string[] = [];
+
+  for (const m of patchText.matchAll(/<CREATE\s+path="([^"]+)"/g)) {
+    if (m[1]) created.push(m[1]);
+  }
+  for (const m of patchText.matchAll(/<RENAME\s+from="([^"]+)"\s+to="([^"]+)"/g)) {
+    if (m[1] && m[2]) renamed.push(`${m[1]} → ${m[2]}`);
+  }
+  for (const m of patchText.matchAll(/<DELETE\s+path="([^"]+)"/g)) {
+    if (m[1]) deleted.push(m[1]);
+  }
+  for (const m of patchText.matchAll(/^---\s+a\/(.+)$/gm)) {
+    if (m[1]) modified.push(m[1]);
+  }
+
+  return { created, renamed, modified, deleted };
+}
+
+function formatChangeSummary(changes: CategorizedChanges): string {
+  const parts: string[] = [];
+  if (changes.created.length > 0) {
+    parts.push(`创建 ${changes.created.length} 个文件`);
+  }
+  if (changes.renamed.length > 0) {
+    parts.push(`重命名 ${changes.renamed.length} 个文件`);
+  }
+  if (changes.modified.length > 0) {
+    parts.push(`修改 ${changes.modified.length} 个文件`);
+  }
+  if (changes.deleted.length > 0) {
+    parts.push(`删除 ${changes.deleted.length} 个文件`);
+  }
+  return parts.join("，") || "无文件变更";
+}
+
 export async function patchCommand(opts: PatchOptions): Promise<void> {
   const cwd = process.cwd();
 
@@ -25,14 +71,21 @@ export async function patchCommand(opts: PatchOptions): Promise<void> {
     process.exit(1);
   }
 
+  const lastPatch = state.patches.at(-1);
+
   if (opts.dryRun) {
-    const lastPatch = state.patches.at(-1);
-    console.log("");
-    console.log(lastPatch?.patch ?? "(no patch)");
-    console.log(`→ 将修改 ${lastPatch?.files_changed.length ?? 0} 个文件 (dry-run)`);
+    if (lastPatch?.patch && lastPatch.patch !== "<empty>") {
+      console.log("");
+      console.log(lastPatch.patch);
+    } else {
+      console.log("(no patch)");
+    }
+    const changes = categorizeChanges(lastPatch?.patch ?? "");
+    console.log(`→ ${formatChangeSummary(changes)} (dry-run)`);
     return;
   }
 
-  console.log(`✓ 已修改 ${state.patches.at(-1)?.files_changed.length ?? 0} 个文件`);
+  const changes = categorizeChanges(lastPatch?.patch ?? "");
+  console.log(`✓ ${formatChangeSummary(changes)}`);
   console.log("→ 下一步: dsh verify");
 }

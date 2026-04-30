@@ -10,9 +10,13 @@ import {
   extractPlanBlock,
   extractFilesBlock,
   extractRisksBlock,
+  extractVerifyBlock,
   parsePatch,
   applyPatch,
+  parseChanges,
+  applyChanges,
 } from "./patch-parser.js";
+import { detectFailures, buildRepairHints } from "./failure-detector.js";
 import { runVerify as runVerifyCommands, isAllPassed, formatResults } from "./verifier.js";
 import { runRepairLoop } from "./repair-loop.js";
 import type { RepairRoundResult } from "./repair-loop.js";
@@ -119,7 +123,7 @@ export async function runPlan(params: PlanParams): Promise<TaskState> {
   const layers = await buildLayers(cwd, description, taskType);
   const target = classify({ command: "plan" });
 
-  const messages = buildMessages({ context: layers, taskDescription: description });
+  const messages = buildMessages({ context: layers, taskDescription: description, phase: "plan" });
   const response = await client.chat({
     model: target.model,
     messages,
@@ -130,8 +134,23 @@ export async function runPlan(params: PlanParams): Promise<TaskState> {
   const planRaw = extractPlanBlock(content);
   const files = extractFilesBlock(content);
   const risks = extractRisksBlock(content);
+  const verifyCommands = extractVerifyBlock(content);
 
   if (!planRaw) {
+    // Fallback: use entire response as plan if no <PLAN> block found
+    const trimmed = content.trim();
+    if (trimmed.length > 50) {
+      state.plan = {
+        summary: trimmed.split("\n")[0]?.replace(/^#+\s*/, "") ?? description,
+        files,
+        risks,
+        raw_xml: trimmed,
+        verify_commands: verifyCommands.length > 0 ? verifyCommands : undefined,
+      };
+      state = transition(state, "planned");
+      writeTaskState(cwd, state);
+      return state;
+    }
     throw new Error("DeepSeek 未返回有效的 PLAN 块");
   }
 
@@ -140,6 +159,7 @@ export async function runPlan(params: PlanParams): Promise<TaskState> {
     files,
     risks,
     raw_xml: planRaw,
+    verify_commands: verifyCommands.length > 0 ? verifyCommands : undefined,
   };
   state = transition(state, "planned");
   writeTaskState(cwd, state);
@@ -165,7 +185,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   const fileCount = state.plan?.files?.length ?? 0;
   const target = classify({ command: "patch", fileCount });
 
-  const messages = buildMessages({ context: fullLayers, taskDescription: state.task.description });
+  const messages = buildMessages({ context: fullLayers, taskDescription: state.task.description, phase: "patch" });
   const response = await client.chat({
     model: target.model,
     messages,
@@ -173,19 +193,68 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   });
 
   const content = response.choices[0]?.message.content ?? "";
-  const parsed = parsePatch(content);
+  const changes = parseChanges(content);
+  let applyResult = dryRun
+    ? { success: true, createdFiles: [] as string[], renamedFiles: [] as string[], patchedFiles: [] as string[], deletedFiles: [] as string[] }
+    : applyChanges(cwd, changes, false);
+
+  // Retry on patch apply failure (patch-drift detection)
+  const MAX_APPLY_RETRIES = 2;
+  for (let retry = 0; !dryRun && !applyResult.success && retry < MAX_APPLY_RETRIES; retry++) {
+    const detections = detectFailures({
+      response: content,
+      planFiles: state.plan?.files ?? [],
+      actualChangedFiles: [],
+      verifyOutput: null,
+      patchApplyError: applyResult.error ?? "patch apply failed",
+    });
+
+    const hints = buildRepairHints(detections);
+    if (!hints) break; // No specific hints, can't retry effectively
+
+    const retryMessages = buildMessages({
+      context: { ...fullLayers, dynamic: buildDynamicContext(state.patches, state.verify_results, 1) },
+      taskDescription: [
+        "PATCH APPLY FAILED — fix the patch format errors and retry.",
+        "",
+        hints,
+        "",
+        "Original task: " + state.task.description,
+      ].join("\n"),
+      phase: "patch",
+    });
+
+    const retryResponse = await client.chat({
+      model: "deepseek-v4-pro", // Always use Pro for retry
+      messages: retryMessages,
+      thinking: true,
+    });
+
+    const retryContent = retryResponse.choices[0]?.message.content ?? "";
+    try {
+      const retryChanges = parseChanges(retryContent);
+      applyResult = applyChanges(cwd, retryChanges, false);
+    } catch {
+      // Continue to next retry
+      applyResult = { success: false, createdFiles: [], renamedFiles: [], patchedFiles: [], deletedFiles: [], error: "parse failed" };
+    }
+  }
 
   if (!dryRun) {
-    const result = applyPatch(cwd, parsed.patchText, false);
-    if (!result.success) {
-      throw new Error(`patch 应用失败 — ${result.error}`);
+    if (!applyResult.success) {
+      throw new Error(`变更应用失败 — ${applyResult.error}`);
     }
 
     state.patches.push({
       round: (state.repair_rounds ?? 0) + 1,
-      patch: parsed.patchText,
+      patch: [
+        ...changes.creates.map((c) => `<CREATE path="${c.path}">\n${c.content}\n</CREATE>`),
+        ...changes.renames.map((r) => `<RENAME from="${r.from}" to="${r.to}" />`),
+        ...changes.deletePaths.map((p) => `<DELETE path="${p}" />`),
+        changes.patchText ?? "",
+      ].filter(Boolean).join("\n\n") || "<empty>",
       apply_status: "ok",
-      files_changed: result.files,
+      files_changed: [...applyResult.createdFiles, ...applyResult.renamedFiles, ...applyResult.patchedFiles, ...applyResult.deletedFiles],
     });
     state = transition(state, "patched");
     writeTaskState(cwd, state);

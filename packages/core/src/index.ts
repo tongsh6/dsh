@@ -23,21 +23,38 @@ export {
   buildMessages,
   estimateTokens,
 } from "./prompt-builder.js";
-export type { PromptConfig } from "./prompt-builder.js";
+export type { PromptConfig, PromptPhase } from "./prompt-builder.js";
 
 export {
   extractPatchBlock,
+  extractCreateBlocks,
+  extractDeleteBlocks,
+  extractRenameBlocks,
   extractFilesBlock,
   extractVerifyBlock,
   extractPlanBlock,
   extractRisksBlock,
   validateDiff,
+  validateCreatePaths,
+  validateRenamePaths,
+  detectCreatePatchConflicts,
   parseHunks,
   parsePatch,
+  parseChanges,
+  applyCreates,
+  applyDeletes,
   applyPatch,
+  applyChanges,
   PatchParseError,
 } from "./patch-parser.js";
-export type { ParsedPatch, HunkInfo } from "./patch-parser.js";
+export type {
+  ParsedPatch,
+  HunkInfo,
+  CreateBlock,
+  RenameBlock,
+  ParsedChanges,
+  ApplyChangesResult,
+} from "./patch-parser.js";
 
 export {
   runCommand,
@@ -49,6 +66,9 @@ export type { VerifyRunResult } from "./verifier.js";
 
 export { runRepairLoop } from "./repair-loop.js";
 export type { RepairConfig, RepairRoundResult } from "./repair-loop.js";
+
+export { detectFailures, buildRepairHints } from "./failure-detector.js";
+export type { FailureDetection, DetectParams } from "./failure-detector.js";
 
 export { writeHandoff } from "./handoff-writer.js";
 

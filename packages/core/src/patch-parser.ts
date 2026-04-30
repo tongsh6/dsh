@@ -16,6 +16,34 @@ export interface HunkInfo {
   newCount: number;
 }
 
+export interface CreateBlock {
+  path: string;
+  content: string;
+}
+
+export interface RenameBlock {
+  from: string;
+  to: string;
+}
+
+export interface ParsedChanges {
+  creates: CreateBlock[];
+  renames: RenameBlock[];
+  patchText: string | null;
+  patchFiles: string[];
+  hunks: HunkInfo[];
+  deletePaths: string[];
+}
+
+export interface ApplyChangesResult {
+  success: boolean;
+  createdFiles: string[];
+  renamedFiles: string[];
+  patchedFiles: string[];
+  deletedFiles: string[];
+  error?: string;
+}
+
 export class PatchParseError extends Error {
   constructor(message: string) {
     super(message);
@@ -29,6 +57,391 @@ export function extractPatchBlock(response: string): string | null {
   const match = response.match(/<PATCH>([\s\S]*?)<\/PATCH>/);
   if (!match || !match[1]) return null;
   return match[1].trim();
+}
+
+export function extractCreateBlocks(response: string): CreateBlock[] {
+  const blocks: CreateBlock[] = [];
+  const regex = /<CREATE\s+path="([^"]+)"\s*>([\s\S]*?)<\/CREATE>/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(response)) !== null) {
+    const filePath = match[1]?.trim();
+    const content = match[2] ?? "";
+    if (filePath) {
+      blocks.push({ path: filePath, content });
+    }
+  }
+  return blocks;
+}
+
+export function extractDeleteBlocks(response: string): string[] {
+  const paths: string[] = [];
+  const regex = /<DELETE\s+path="([^"]+)"\s*\/>/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(response)) !== null) {
+    const filePath = match[1]?.trim();
+    if (filePath) paths.push(filePath);
+  }
+  return paths;
+}
+
+export function extractRenameBlocks(response: string): RenameBlock[] {
+  const blocks: RenameBlock[] = [];
+  const regex = /<RENAME\s+from="([^"]+)"\s+to="([^"]+)"\s*\/>/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(response)) !== null) {
+    const from = match[1]?.trim();
+    const to = match[2]?.trim();
+    if (from && to) {
+      blocks.push({ from, to });
+    }
+  }
+  return blocks;
+}
+
+// ---- Path validation ----
+
+export function validateCreatePaths(blocks: CreateBlock[]): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  for (const block of blocks) {
+    if (!block.path || block.path.trim().length === 0) {
+      errors.push("CREATE block has empty path");
+      continue;
+    }
+
+    if (path.isAbsolute(block.path)) {
+      errors.push(`CREATE path is absolute (must be relative): ${block.path}`);
+    }
+
+    if (block.path.includes("..")) {
+      errors.push(`CREATE path contains '..' (path traversal not allowed): ${block.path}`);
+    }
+
+    if (!block.content || block.content.trim().length === 0) {
+      errors.push(`CREATE block for ${block.path} is empty`);
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+export function detectCreatePatchConflicts(
+  creates: CreateBlock[],
+  patchFiles: string[],
+): string[] {
+  const createPaths = new Set(creates.map((c) => c.path));
+  return patchFiles.filter((f) => createPaths.has(f));
+}
+
+// ---- Apply ----
+
+export function applyCreates(
+  cwd: string,
+  blocks: CreateBlock[],
+  dryRun: boolean = false,
+): { success: boolean; files: string[]; error?: string } {
+  const createdFiles: string[] = [];
+
+  for (const block of blocks) {
+    const absPath = path.join(cwd, block.path);
+
+    // Double-check path safety
+    if (path.isAbsolute(block.path) || block.path.includes("..")) {
+      return {
+        success: false,
+        files: createdFiles,
+        error: `Unsafe path rejected: ${block.path}`,
+      };
+    }
+
+    if (!dryRun) {
+      try {
+        fs.mkdirSync(path.dirname(absPath), { recursive: true });
+        fs.writeFileSync(absPath, block.content, "utf-8");
+      } catch (e) {
+        return {
+          success: false,
+          files: createdFiles,
+          error: `Failed to create ${block.path}: ${e instanceof Error ? e.message : String(e)}`,
+        };
+      }
+    }
+
+    createdFiles.push(block.path);
+  }
+
+  return { success: true, files: createdFiles };
+}
+
+export function applyDeletes(
+  cwd: string,
+  paths: string[],
+  dryRun: boolean = false,
+): { success: boolean; files: string[]; error?: string } {
+  const deletedFiles: string[] = [];
+
+  for (const filePath of paths) {
+    if (path.isAbsolute(filePath) || filePath.includes("..")) {
+      return {
+        success: false,
+        files: deletedFiles,
+        error: `Unsafe path rejected: ${filePath}`,
+      };
+    }
+
+    const absPath = path.join(cwd, filePath);
+
+    if (!dryRun) {
+      try {
+        if (fs.existsSync(absPath)) {
+          fs.unlinkSync(absPath);
+        }
+      } catch (e) {
+        return {
+          success: false,
+          files: deletedFiles,
+          error: `Failed to delete ${filePath}: ${e instanceof Error ? e.message : String(e)}`,
+        };
+      }
+    }
+
+    deletedFiles.push(filePath);
+  }
+
+  return { success: true, files: deletedFiles };
+}
+
+export function validateRenamePaths(blocks: RenameBlock[]): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  for (const block of blocks) {
+    if (!block.from || block.from.trim().length === 0) {
+      errors.push("RENAME has empty 'from' path");
+    }
+    if (!block.to || block.to.trim().length === 0) {
+      errors.push("RENAME has empty 'to' path");
+    }
+    if (path.isAbsolute(block.from) || block.from.includes("..")) {
+      errors.push(`RENAME 'from' path is unsafe: ${block.from}`);
+    }
+    if (path.isAbsolute(block.to) || block.to.includes("..")) {
+      errors.push(`RENAME 'to' path is unsafe: ${block.to}`);
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+export function applyRenames(
+  cwd: string,
+  blocks: RenameBlock[],
+  dryRun: boolean = false,
+): { success: boolean; files: string[]; error?: string } {
+  const renamedFiles: string[] = [];
+
+  for (const block of blocks) {
+    const fromAbs = path.join(cwd, block.from);
+    const toAbs = path.join(cwd, block.to);
+
+    if (path.isAbsolute(block.from) || block.from.includes("..") ||
+        path.isAbsolute(block.to) || block.to.includes("..")) {
+      return {
+        success: false,
+        files: renamedFiles,
+        error: `Unsafe RENAME path: ${block.from} -> ${block.to}`,
+      };
+    }
+
+    if (!dryRun) {
+      try {
+        if (!fs.existsSync(fromAbs)) {
+          return {
+            success: false,
+            files: renamedFiles,
+            error: `Cannot rename — source does not exist: ${block.from}`,
+          };
+        }
+        fs.mkdirSync(path.dirname(toAbs), { recursive: true });
+        fs.renameSync(fromAbs, toAbs);
+      } catch (e) {
+        return {
+          success: false,
+          files: renamedFiles,
+          error: `Failed to rename ${block.from} -> ${block.to}: ${e instanceof Error ? e.message : String(e)}`,
+        };
+      }
+    }
+
+    renamedFiles.push(`${block.from} -> ${block.to}`);
+  }
+
+  return { success: true, files: renamedFiles };
+}
+
+// ---- Combined parsing and application ----
+
+export function parseChanges(response: string): ParsedChanges {
+  const creates = extractCreateBlocks(response);
+  const renames = extractRenameBlocks(response);
+  const patchText = extractPatchBlock(response);
+  const deletePaths = extractDeleteBlocks(response);
+
+  // Validate CREATE paths
+  const pathValidation = validateCreatePaths(creates);
+  if (!pathValidation.valid) {
+    throw new PatchParseError(
+      `CREATE validation failed: ${pathValidation.errors.join("; ")}`,
+    );
+  }
+
+  // Validate RENAME paths
+  const renameValidation = validateRenamePaths(renames);
+  if (!renameValidation.valid) {
+    throw new PatchParseError(
+      `RENAME validation failed: ${renameValidation.errors.join("; ")}`,
+    );
+  }
+
+  // Parse hunks from PATCH block if present
+  let hunks: HunkInfo[] = [];
+  if (patchText) {
+    const validation = validateDiff(patchText);
+    if (!validation.valid) {
+      throw new PatchParseError(
+        `Patch validation failed: ${validation.errors.join("; ")}`,
+      );
+    }
+    hunks = parseHunks(patchText);
+  }
+
+  // Detect conflicts
+  const patchFiles = patchText ? parsePatchFiles(patchText) : [];
+  const conflicts = detectCreatePatchConflicts(creates, patchFiles);
+  if (conflicts.length > 0) {
+    throw new PatchParseError(
+      `CREATE and PATCH target same file(s): ${conflicts.join(", ")}. Use only one operation per file.`,
+    );
+  }
+
+  // Detect RENAME conflicts: RENAME from/to should not overlap with other operations
+  const renameFromSet = new Set(renames.map((r) => r.from));
+  const renameToSet = new Set(renames.map((r) => r.to));
+  const createPaths = new Set(creates.map((c) => c.path));
+  const deletePathSet = new Set(deletePaths);
+
+  for (const r of renames) {
+    if (createPaths.has(r.to)) {
+      throw new PatchParseError(
+        `RENAME destination conflicts with CREATE: ${r.to}`,
+      );
+    }
+    if (deletePathSet.has(r.from)) {
+      throw new PatchParseError(
+        `RENAME source conflicts with DELETE: ${r.from}`,
+      );
+    }
+    if (patchFiles.includes(r.from)) {
+      throw new PatchParseError(
+        `RENAME source conflicts with PATCH: ${r.from}`,
+      );
+    }
+    if (patchFiles.includes(r.to)) {
+      throw new PatchParseError(
+        `RENAME destination conflicts with PATCH: ${r.to}`,
+      );
+    }
+  }
+
+  // Validate DELETE paths
+  for (const dp of deletePaths) {
+    if (path.isAbsolute(dp) || dp.includes("..")) {
+      throw new PatchParseError(
+        `DELETE path is unsafe (must be relative, no ..): ${dp}`,
+      );
+    }
+  }
+
+  // Validate that at least one operation block is present
+  if (creates.length === 0 && renames.length === 0 && !patchText && deletePaths.length === 0) {
+    throw new PatchParseError(
+      "No <CREATE>, <RENAME>, <PATCH>, or <DELETE> blocks found in response",
+    );
+  }
+
+  // Warn about /dev/null usage — recommend CREATE instead
+  if (patchText && /^---\s+\/dev\/null$/m.test(patchText)) {
+    throw new PatchParseError(
+      "PATCH block uses /dev/null for new files. Use <CREATE path=\"...\"> block instead.",
+    );
+  }
+
+  return {
+    creates,
+    renames,
+    patchText,
+    patchFiles,
+    hunks,
+    deletePaths,
+  };
+}
+
+export function applyChanges(
+  cwd: string,
+  changes: ParsedChanges,
+  dryRun: boolean = false,
+): ApplyChangesResult {
+  const createdFiles: string[] = [];
+  const renamedFiles: string[] = [];
+  const patchedFiles: string[] = [];
+  const deletedFiles: string[] = [];
+
+  // Apply CREATE blocks first
+  if (changes.creates.length > 0) {
+    const result = applyCreates(cwd, changes.creates, dryRun);
+    if (!result.success) {
+      return { success: false, createdFiles, renamedFiles, patchedFiles, deletedFiles, error: result.error };
+    }
+    createdFiles.push(...result.files);
+  }
+
+  // Apply RENAME blocks second
+  if (changes.renames.length > 0) {
+    const result = applyRenames(cwd, changes.renames, dryRun);
+    if (!result.success) {
+      return { success: false, createdFiles, renamedFiles, patchedFiles, deletedFiles, error: result.error };
+    }
+    renamedFiles.push(...result.files);
+  }
+
+  // Apply DELETE blocks third
+  if (changes.deletePaths.length > 0) {
+    const result = applyDeletes(cwd, changes.deletePaths, dryRun);
+    if (!result.success) {
+      return { success: false, createdFiles, renamedFiles, patchedFiles, deletedFiles, error: result.error };
+    }
+    deletedFiles.push(...result.files);
+  }
+
+  // Apply PATCH block last
+  if (changes.patchText) {
+    const result = applyPatch(cwd, changes.patchText, dryRun);
+    if (!result.success) {
+      return { success: false, createdFiles, renamedFiles, patchedFiles, deletedFiles, error: result.error };
+    }
+    patchedFiles.push(...result.files);
+  }
+
+  return { success: true, createdFiles, renamedFiles, patchedFiles, deletedFiles };
+}
+
+function parsePatchFiles(patchText: string): string[] {
+  const files: string[] = [];
+  const fileHeader = /^---\s+a\/(.+)$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = fileHeader.exec(patchText)) !== null) {
+    if (m[1]) files.push(m[1]);
+  }
+  return files;
 }
 
 export function extractFilesBlock(response: string): string[] {
