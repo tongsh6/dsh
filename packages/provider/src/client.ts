@@ -78,20 +78,29 @@ export interface DeepSeekClientConfig {
   apiKey: string;
   baseUrl?: string;
   timeoutMs?: number;
+  maxRetries?: number;
+  retryBackoffMs?: number;
 }
 
 const DEFAULT_BASE_URL = "https://api.deepseek.com";
 const DEFAULT_TIMEOUT_MS = 300_000;
+const DEFAULT_MAX_RETRIES = 1;
+const DEFAULT_RETRY_BACKOFF_MS = 5_000;
+const LATENCY_WARN_MS = 60_000;
 
 export class DeepSeekClient {
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
+  private readonly maxRetries: number;
+  private readonly retryBackoffMs: number;
 
   constructor(config: DeepSeekClientConfig) {
     this.apiKey = config.apiKey;
     this.baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
     this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
+    this.retryBackoffMs = config.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS;
   }
 
   static fromEnv(): DeepSeekClient {
@@ -121,6 +130,49 @@ export class DeepSeekClient {
   }
 
   async chat(
+    req: DeepSeekRequest,
+    signal?: AbortSignal,
+  ): Promise<DeepSeekResponse> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      if (attempt > 0) {
+        const delay = this.retryBackoffMs * Math.pow(2, attempt - 1);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+
+      try {
+        const startTime = Date.now();
+        const result = await this._doChat(req, signal);
+        const elapsed = Date.now() - startTime;
+
+        if (elapsed > LATENCY_WARN_MS) {
+          console.warn(
+            `DeepSeek API call took ${(elapsed / 1000).toFixed(0)}s (model: ${req.model}, attempt: ${attempt + 1}/${this.maxRetries + 1})`,
+          );
+        }
+
+        return result;
+      } catch (e) {
+        lastError = e instanceof Error ? e : new Error(String(e));
+
+        // Don't retry on API errors (4xx/5xx) — only on timeout/network
+        if (e instanceof DeepSeekError && e.status) {
+          throw e;
+        }
+
+        if (attempt < this.maxRetries) {
+          console.warn(
+            `DeepSeek API retry ${attempt + 1}/${this.maxRetries} after error: ${lastError.message}`,
+          );
+        }
+      }
+    }
+
+    throw lastError ?? new DeepSeekError("Request failed after retries");
+  }
+
+  private async _doChat(
     req: DeepSeekRequest,
     signal?: AbortSignal,
   ): Promise<DeepSeekResponse> {
