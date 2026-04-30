@@ -183,12 +183,21 @@ export function applyPatch(
       fs.mkdirSync(path.dirname(absPath), { recursive: true });
     }
 
-    // Try the diff library first (strict), fall back to lenient manual apply
+    // For new files with empty source, build from added lines directly
     let result: string | false;
-    try {
-      result = diffApplyPatch(source, filePatch);
-    } catch {
-      result = false;
+    if (isNewFile && source === "") {
+      const addedLines: string[] = [];
+      for (const line of filePatch.split("\n")) {
+        if (line.startsWith("+")) addedLines.push(line.slice(1));
+      }
+      result = addedLines.join("\n");
+    } else {
+      // Try the diff library first (strict), fall back to lenient manual apply
+      try {
+        result = diffApplyPatch(source, filePatch);
+      } catch {
+        result = false;
+      }
     }
 
     if (result === false) {
