@@ -1,6 +1,8 @@
-# DeepSeek-native Coding Harness SPEC v0.1
+# DeepSeek-native Coding Harness SPEC v0.2
 
 > 状态: draft | 日期: 2026-04-29 | 作者: loong
+>
+> **v0.2 变更 (§7.3):** 文件操作协议从单一 `<PATCH>` unified diff 扩展为 `<CREATE>` / `<PATCH>` / `<DELETE>` 三个语义化操作块。依据：业界所有主流工具（Claude Code/Cline/Aider）均用 Whole File 新建文件，unified diff 的 `/dev/null` hack 在 LLM 中成功率为 0%（参见 dsh benchmark 数据）。
 
 ## 1. 项目定位
 
@@ -104,7 +106,7 @@ dsh/
 │   │       ├── task-state.ts      # 状态机 + JSON 读写
 │   │       ├── context-builder.ts # 四层上下文组装
 │   │       ├── prompt-builder.ts  # system prompt + XML 协议模板
-│   │       ├── patch-parser.ts    # unified diff 提取与校验
+│   │       ├── patch-parser.ts    # XML 块提取 + unified diff 校验 + CREATE/DELETE 操作
 │   │       ├── verifier.ts        # 验证命令执行
 │   │       ├── repair-loop.ts     # 修复循环（最多 N 轮）
 │   │       └── handoff-writer.ts  # 交接文件生成
@@ -152,7 +154,7 @@ dsh/
 | `core/task-state` | 读写 `.dsh/task-state.json`，状态机: `init → planned → patched → verified` 或 `verification_failed → repairing → verified` 或 `repair_exhausted → done` |
 | `core/context-builder` | 分层组装 Base / Repo / Task / Dynamic 四个上下文块 |
 | `core/prompt-builder` | 按协议模板构造 system prompt + user message，强制 XML 块输出 |
-| `core/patch-parser` | 提取 `<PATCH>` 块，解析 unified diff，校验格式 |
+| `core/patch-parser` | 提取 `<CREATE>`/`<PATCH>`/`<DELETE>` 块，解析 unified diff，校验格式。新建文件用完整内容，修改用 diff |
 | `core/verifier` | 执行用户定义或自动检测的验证命令 |
 | `core/repair-loop` | 最多 N 轮（默认 3），把失败日志回灌，调用 patch → verify |
 | `core/handoff-writer` | 生成结构化 markdown 交接文件 |
@@ -206,18 +208,32 @@ const ROUTES: Record<string, { model: string; thinking: boolean }> = {
 - **Dynamic Context 每轮截断**: repair 时只保留最近 2 轮失败信息
 - **Base Context 不可变**: 一次 `dsh init` 后固定
 
-### 7.3 Patch 输出协议
+### 7.3 文件操作协议
 
-强制 DeepSeek 按固定 XML 块输出:
+#### 7.3.1 设计依据
+
+业界调研（2025-2026）结论：
+
+| 编辑格式 | LLM 成功率 | Token 开销 | 业界采用 |
+|----------|:--:|:--:|------|
+| Whole File（完整内容） | 60–75% | 极高 | Claude Code / Cline 新建文件 |
+| Unified Diff | 70–85% | 极低 | Aider / Codex CLI 修改文件 |
+| Search/Replace | 80–98% | 低 | Cline / Aider / OpenCode 主方案 |
+
+行业共识：**新建文件 = Whole File，修改文件 = Search/Replace 或 Unified Diff，没有工具用 diff 新建文件**。
+
+DeepSeek 在 Aider benchmark 上的最佳表现：diff 格式 80.5%，whole 格式 78.9%。作为 Editor 模型配合 Architect 可达 85% SOTA。
+
+#### 7.3.2 协议 v0.2：操作语义化
+
+协议从单一的 `<PATCH>` 块扩展为三个独立的操作块，每个块只做一件事：
 
 ```xml
 <PLAN>
 ## 目标
 ...
-
 ## 涉及文件
 ...
-
 ## 修改策略
 ...
 </PLAN>
@@ -227,6 +243,12 @@ const ROUTES: Record<string, { model: string; thinking: boolean }> = {
 - file2
 </FILES>
 
+<!-- 新建文件：输出完整内容，无需 diff 格式 -->
+<CREATE path="tests/unit/test_foo.py">
+文件完整内容，无前缀、无 diff header
+</CREATE>
+
+<!-- 修改已有文件：unified diff（或 Search/Replace，见 7.3.4） -->
 <PATCH>
 --- a/file1
 +++ b/file1
@@ -234,9 +256,11 @@ const ROUTES: Record<string, { model: string; thinking: boolean }> = {
 ...
 </PATCH>
 
+<!-- 删除文件（v0.3） -->
+<DELETE path="tools/deprecated.py" />
+
 <VERIFY>
 command1
-command2
 </VERIFY>
 
 <RISKS>
@@ -244,12 +268,49 @@ command2
 </RISKS>
 ```
 
-解析规则:
-1. 只提取 `<PATCH>` 块内容，忽略块外所有文本
-2. 校验 diff header 格式（`--- a/` `+++ b/`）
-3. 校验 hunk header（`@@ -l,s +l,s @@`）
-4. 解析失败 → 拒绝 apply，回灌格式错误让 DeepSeek 重试（最多 2 次）
-5. `<VERIFY>` 块为空 → 警告用户
+**语义对比：**
+
+| 操作 | v0.1（现状） | v0.2 |
+|------|-------------|------|
+| 新建文件 | `<PATCH>` 中 `/dev/null` hack | `<CREATE path="...">` |
+| 修改文件 | `<PATCH>` unified diff | `<PATCH>` unified diff |
+| 删除文件 | 不支持 | `<DELETE path="..." />`（v0.3） |
+| 重命名 | 不支持 | `<RENAME from="..." to="..." />`（v0.3） |
+
+#### 7.3.3 解析规则（v0.2）
+
+```typescript
+// 处理优先级
+1. <CREATE> 块 → 直接写文件（完整内容，trim 首尾空白）
+2. <PATCH> 块 → 现有 diff apply 逻辑（含 /dev/null 兼容）
+3. <DELETE> 块 → 删除目标文件（v0.3）
+
+// 冲突检测
+4. <CREATE> 和 <PATCH> 指向同一文件 → 拒绝，要求模型重试
+5. <CREATE path="..."> 路径包含 ../ 或绝对路径 → 拒绝
+
+// 格式校验
+6. <CREATE> 块为空 → 警告
+7. <PATCH> 解析失败 → 回灌格式错误，重试（最多 2 次）
+8. <VERIFY> 块为空 → 警告
+9. <PATCH> 中 /dev/null 仍支持，但不推荐 → 建议模型迁移到 <CREATE>
+```
+
+#### 7.3.4 回退策略（v0.3+ 规划）
+
+目标是对标业界 4 层回退标准：
+
+```
+Level 1: 精确 unified diff 匹配（当前方案）
+    ↓ 失败
+Level 2: Search/Replace 匹配（<PATCH type="search">）
+    ↓ 失败
+Level 3: 模糊匹配（空白弹性 + 锚点匹配）
+    ↓ 失败
+Level 4: Whole File 覆写（nuclear option）
+```
+
+DeepSeek 兼容性说明：DeepSeek 在 unified diff 格式上表现优于 Search/Replace（80.5% vs 78.9%），因此 **unified diff 保持为主格式，Search/Replace 作为回退而非替代**。这与 Claude 模型相反（Claude 更擅长 SEARCH/REPLACE）。
 
 ### 7.4 失败模式库
 
@@ -630,7 +691,7 @@ dsh 是独立的执行层，通过文件系统与上下游对接:
 2. **最小 CLI** — 6 个命令可运行
 3. **DeepSeek provider** — HTTP client + router + normalizer
 4. **context builder** — 四层上下文组装
-5. **patch parser** — XML 协议解析 + diff 校验
+5. **patch parser** — XML 协议解析（含 `<CREATE>`/`<PATCH>` 操作块）+ unified diff 校验 + 新建文件直接写
 6. **verify runner** — 自动检测并执行验证命令
 7. **repair loop** — 最多 3 轮修复循环
 8. **handoff writer** — markdown 交接文件
