@@ -188,7 +188,11 @@ export function applyPatch(
     if (isNewFile && source === "") {
       const addedLines: string[] = [];
       for (const line of filePatch.split("\n")) {
+        // Skip diff headers (---, +++, @@) and removed/context lines
+        if (line.startsWith("+++ ") || line.startsWith("--- ") || line.startsWith("@@ ")) continue;
         if (line.startsWith("+")) addedLines.push(line.slice(1));
+        else if (line.startsWith(" ")) addedLines.push(line.slice(1));
+        // lines starting with - have no meaning for new files
       }
       result = addedLines.join("\n");
     } else {
