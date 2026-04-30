@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
 import {
   extractPatchBlock,
   extractFilesBlock,
@@ -9,6 +10,7 @@ import {
   validateDiff,
   parseHunks,
   parsePatch,
+  applyPatch,
   PatchParseError,
 } from "./patch-parser.js";
 
@@ -117,6 +119,11 @@ describe("validateDiff", () => {
     const result = validateDiff("--- a/test.ts\n+++ b/test.ts\njust text");
     assert.equal(result.valid, false);
   });
+
+  it("accepts /dev/null header for new files", () => {
+    const result = validateDiff("--- /dev/null\n+++ b/new.ts\n@@ -0,0 +1,3 @@\n+line1\n+line2\n+line3");
+    assert.equal(result.valid, true);
+  });
 });
 
 describe("parseHunks", () => {
@@ -145,5 +152,45 @@ describe("parsePatch", () => {
       () => parsePatch("no patch"),
       PatchParseError,
     );
+  });
+});
+
+describe("applyPatch", () => {
+  it("creates new file from /dev/null diff", () => {
+    const tmp = fs.mkdtempSync("dsh-patch-test-");
+    try {
+      const newFilePatch = "--- /dev/null\n+++ b/newfile.py\n@@ -0,0 +1,2 @@\n+#!/usr/bin/env python3\n+# new file";
+      const result = applyPatch(tmp, newFilePatch, false);
+      assert.equal(result.success, true);
+      assert.ok(result.files.includes("newfile.py"));
+      const content = fs.readFileSync(`${tmp}/newfile.py`, "utf-8");
+      assert.ok(content.includes("#!/usr/bin/env python3"));
+      assert.ok(content.includes("# new file"));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("handles multiple new files in one patch", () => {
+    const tmp = fs.mkdtempSync("dsh-patch-test-");
+    try {
+      const multiFile = [
+        "--- /dev/null",
+        "+++ b/a.py",
+        "@@ -0,0 +1,1 @@",
+        "+# file a",
+        "--- /dev/null",
+        "+++ b/sub/b.py",
+        "@@ -0,0 +1,1 @@",
+        "+# file b",
+      ].join("\n");
+      const result = applyPatch(tmp, multiFile, false);
+      assert.equal(result.success, true);
+      assert.equal(result.files.length, 2);
+      assert.ok(fs.existsSync(`${tmp}/a.py`));
+      assert.ok(fs.existsSync(`${tmp}/sub/b.py`));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

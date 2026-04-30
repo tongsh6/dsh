@@ -77,9 +77,9 @@ export function validateDiff(patchText: string): { valid: boolean; errors: strin
     return { valid: false, errors };
   }
 
-  const fileHeaders = patchText.match(/^---\s+a\//gm);
+  const fileHeaders = patchText.match(/^---\s+(a\/|\/dev\/null)/gm);
   if (!fileHeaders || fileHeaders.length === 0) {
-    errors.push("No unified diff headers found (--- a/...)");
+    errors.push("No unified diff headers found (--- a/... or --- /dev/null)");
   }
 
   const hunkHeaders = patchText.match(/^@@\s+-\d+(?:,\d+)?\s+\+\d+(?:,\d+)?\s+@@/gm);
@@ -155,14 +155,25 @@ export function applyPatch(
     const absPath = path.join(cwd, filePath);
 
     let source: string;
+    // Check if this is a new file (--- /dev/null)
+    const isNewFile = /^---\s+\/dev\/null$/m.test(filePatch);
     try {
       source = fs.readFileSync(absPath, "utf-8");
     } catch {
-      return {
-        success: false,
-        files: changedFiles,
-        error: `Cannot read ${filePath}`,
-      };
+      if (isNewFile) {
+        source = "";
+      } else {
+        return {
+          success: false,
+          files: changedFiles,
+          error: `Cannot read ${filePath}`,
+        };
+      }
+    }
+
+    // Ensure parent directory exists for new files
+    if (isNewFile && !dryRun) {
+      fs.mkdirSync(path.dirname(absPath), { recursive: true });
     }
 
     // Try the diff library first (strict), fall back to lenient manual apply
@@ -284,7 +295,8 @@ function applyPatchLenient(source: string, patchText: string): string | null {
 
 function splitPatchByFile(patchText: string): { filePath: string; filePatch: string }[] {
   const result: { filePath: string; filePatch: string }[] = [];
-  const fileHeader = /^---\s+a\/(.+)$/gm;
+  // Match both --- a/file and --- /dev/null
+  const fileHeader = /^---\s+(a\/.+|\/dev\/null)$/gm;
 
   // Find all file header start positions
   const positions: number[] = [];
@@ -297,10 +309,14 @@ function splitPatchByFile(patchText: string): { filePath: string; filePatch: str
     const start = positions[i]!;
     const end = i + 1 < positions.length ? positions[i + 1]! : patchText.length;
     const filePatch = patchText.slice(start, end).trim();
-    // Use exec (not match) to get capturing groups with /g regex
-    const headerMatch = /^---\s+a\/(.+)$/m.exec(filePatch);
-    if (headerMatch && headerMatch[1]) {
-      result.push({ filePath: headerMatch[1], filePatch });
+    // Extract file path from --- a/file or +++ b/file (for new files)
+    const srcMatch = /^---\s+a\/(.+)$/m.exec(filePatch);
+    const newFileMatch = /^---\s+\/dev\/null$/m.exec(filePatch);
+    const destMatch = /^\+\+\+\s+b\/(.+)$/m.exec(filePatch);
+    if (srcMatch && srcMatch[1]) {
+      result.push({ filePath: srcMatch[1], filePatch });
+    } else if (newFileMatch && destMatch && destMatch[1]) {
+      result.push({ filePath: destMatch[1], filePatch });
     }
   }
 
