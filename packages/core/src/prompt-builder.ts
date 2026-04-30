@@ -36,6 +36,12 @@ Your response MUST contain these blocks in order:
 -context line
 +changed line
  context line
+For NEW files, use /dev/null as source:
+--- /dev/null
++++ b/path/to/new/file
+@@ -0,0 +1,count @@
++new line 1
++new line 2
 </PATCH>
 
 <VERIFY>
