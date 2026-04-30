@@ -81,7 +81,7 @@ export interface DeepSeekClientConfig {
 }
 
 const DEFAULT_BASE_URL = "https://api.deepseek.com";
-const DEFAULT_TIMEOUT_MS = 120_000;
+const DEFAULT_TIMEOUT_MS = 300_000;
 
 export class DeepSeekClient {
   private readonly apiKey: string;

@@ -167,8 +167,9 @@ export function detectVerifyCommands(
 
   if (stack.language === "python") {
     const pm = stack.packageManager === "poetry" ? "poetry run" : "";
+    const testDir = fs.existsSync(path.join(cwd, "tests")) ? "tests/ -x" : "-x";
     return {
-      test: `${pm}pytest`.trim() || null,
+      test: `${pm}pytest ${testDir}`.trim() || null,
       lint: `${pm}ruff check .`.trim() || null,
       typecheck: `${pm}mypy .`.trim() || null,
       build: null,
