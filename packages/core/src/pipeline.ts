@@ -298,6 +298,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
     const parseOrApplyError = applyResult.error ?? "patch apply failed";
     const isParseError = parseOrApplyError.includes("validation failed") || parseOrApplyError.includes("No hunk headers") || parseOrApplyError.includes("No <CREATE>");
     const isSearchMismatch = parseOrApplyError.includes("Search block not found");
+    const isCreateRejected = parseOrApplyError.includes("CREATE rejected") || parseOrApplyError.includes("already exists");
 
     const detections = detectFailures({
       response: content,
@@ -314,7 +315,26 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
       "",
       "Error: " + parseOrApplyError,
     ];
-    if (isParseError) {
+    if (isCreateRejected) {
+      retryHintParts.push("CREATE REJECTED — the file already exists (possibly created in a previous attempt).");
+      retryHintParts.push("");
+      retryHintParts.push("Use <PATCH> or <PATCH type=\"search\"> to modify the existing file instead of CREATE.");
+      retryHintParts.push("");
+      retryHintParts.push("For REPLACING existing text:");
+      retryHintParts.push("<PATCH type=\"search\" file=\"path/to/file\">");
+      retryHintParts.push("<SEARCH>existing code to replace</SEARCH>");
+      retryHintParts.push("<REPLACE>new code</REPLACE>");
+      retryHintParts.push("</PATCH>");
+      retryHintParts.push("");
+      retryHintParts.push("For small changes, unified diff:");
+      retryHintParts.push("<PATCH>");
+      retryHintParts.push("--- a/file");
+      retryHintParts.push("+++ b/file");
+      retryHintParts.push("@@ -line,count +line,count @@");
+      retryHintParts.push(" context");
+      retryHintParts.push("+added");
+      retryHintParts.push("</PATCH>");
+    } else if (isParseError) {
       retryHintParts.push("");
     if (isSearchMismatch) {
       retryHintParts.push("SEARCH TEXT MISMATCH — the <SEARCH> block did not match any text in the file.");
