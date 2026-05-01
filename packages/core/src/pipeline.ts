@@ -284,16 +284,13 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
     ];
     if (isParseError) {
       retryHintParts.push("");
-      retryHintParts.push("The unified diff format failed to parse. Use <PATCH type=\"search\" file=\"path\"> with SEARCH/REPLACE blocks instead:");
+      retryHintParts.push("The unified diff format failed to parse. Use <PATCH type=\"search\" file=\"path\"> with XML sub-tags instead:");
       retryHintParts.push("<PATCH type=\"search\" file=\"path/to/file\">");
-      retryHintParts.push("<<<<<<< SEARCH");
-      retryHintParts.push("exact code copied from the file content");
-      retryHintParts.push("=======");
-      retryHintParts.push("replacement code");
-      retryHintParts.push(">>>>>>> REPLACE");
+      retryHintParts.push("<SEARCH>exact code copied from the file content</SEARCH>");
+      retryHintParts.push("<REPLACE>replacement code</REPLACE>");
       retryHintParts.push("</PATCH>");
       retryHintParts.push("");
-      retryHintParts.push("Copy the EXACT text you want to replace from the file content — whitespace, indentation, everything must match.");
+      retryHintParts.push("Copy the EXACT text from the file content into <SEARCH> — whitespace, indentation, everything must match.");
     }
     if (hints) {
       retryHintParts.push("");

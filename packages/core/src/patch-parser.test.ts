@@ -1093,21 +1093,18 @@ const SEARCH_REPLACE_RESPONSE = `
 <PLAN>Fix the validate function</PLAN>
 <FILES>- src/utils.ts</FILES>
 <PATCH type="search" file="src/utils.ts">
-<<<<<<< SEARCH
-function validate(input: string) {
+<SEARCH>function validate(input: string) {
   if (!input) {
     return false;
   }
   return true;
-}
-=======
-function validate(input: string): boolean {
+}</SEARCH>
+<REPLACE>function validate(input: string): boolean {
   if (!input || input.trim().length === 0) {
     return false;
   }
   return true;
-}
->>>>>>> REPLACE
+}</REPLACE>
 </PATCH>
 <VERIFY>npx jest</VERIFY>
 <RISKS>- None</RISKS>
@@ -1247,11 +1244,8 @@ describe("parseChanges conflict detection", () => {
   it("throws when CREATE and SEARCH/REPLACE target same file", () => {
     const response = `<CREATE path="foo.ts">content</CREATE>
 <PATCH type="search" file="foo.ts">
-<<<<<<< SEARCH
-old
-=======
-new
->>>>>>> REPLACE
+<SEARCH>old</SEARCH>
+<REPLACE>new</REPLACE>
 </PATCH>`;
     assert.throws(
       () => parseChanges(response),
@@ -1262,11 +1256,8 @@ new
   it("throws when DELETE and SEARCH/REPLACE target same file", () => {
     const response = `<DELETE path="foo.ts" />
 <PATCH type="search" file="foo.ts">
-<<<<<<< SEARCH
-old
-=======
-new
->>>>>>> REPLACE
+<SEARCH>old</SEARCH>
+<REPLACE>new</REPLACE>
 </PATCH>`;
     assert.throws(
       () => parseChanges(response),

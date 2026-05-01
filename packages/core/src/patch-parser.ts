@@ -107,13 +107,9 @@ export function extractRenameBlocks(response: string): RenameBlock[] {
 
 /**
  * Extract SEARCH/REPLACE blocks from response.
- * Format: <PATCH type="search" file="path/to/file">
- * <<<<<<< SEARCH
- * original code
- * =======
- * replacement code
- * >>>>>>> REPLACE
- * </PATCH>
+ * Uses XML sub-tags matching DeepSeek's native XML block output style:
+ * <SEARCH>exact code</SEARCH>
+ * <REPLACE>replacement code</REPLACE>
  */
 export function extractSearchReplaceBlocks(response: string): SearchReplaceBlock[] {
   const blocks: SearchReplaceBlock[] = [];
@@ -126,11 +122,12 @@ export function extractSearchReplaceBlocks(response: string): SearchReplaceBlock
 
     if (!filePath) continue;
 
-    const srMatch = body.match(/<<<<<<< SEARCH\n([\s\S]*?)=======\n([\s\S]*?)>>>>>>> REPLACE/);
-    if (!srMatch) continue;
+    const searchMatch = body.match(/<SEARCH>([\s\S]*?)<\/SEARCH>/);
+    const replaceMatch = body.match(/<REPLACE>([\s\S]*?)<\/REPLACE>/);
+    if (!searchMatch || !replaceMatch) continue;
 
-    const search = srMatch[1] ?? "";
-    const replace = srMatch[2] ?? "";
+    const search = searchMatch[1] ?? "";
+    const replace = replaceMatch[1] ?? "";
 
     blocks.push({ filePath, search, replace });
   }

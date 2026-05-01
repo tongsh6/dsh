@@ -96,21 +96,18 @@ Use the correct operation block for each file:
 ### DELETE — for removing files
 <DELETE path="path/to/deprecated/file.ts" />
 
-### SEARCH/REPLACE — fallback when unified diff is too complex
-Use this format when the diff is hard to get right (e.g., large blocks, complex indentation changes):
+### SEARCH/REPLACE — for MODIFYING existing files (exact string match)
+Use this format when you need to replace a specific block of text — especially for large files where line numbers are unreliable:
 <PATCH type="search" file="path/to/file.ts">
-<<<<<<< SEARCH
-exact code to find in the file (copy-paste from context)
-=======
-replacement code
->>>>>>> REPLACE
+<SEARCH>exact code to find — copy-paste from the file content in your context</SEARCH>
+<REPLACE>replacement code</REPLACE>
 </PATCH>
 
 ## CRITICAL: CREATE vs PATCH vs SEARCH/REPLACE
 
 - Use <CREATE> ONLY for files that DO NOT already exist in the repo
-- Use <PATCH> (unified diff) ONLY for files that ALREADY exist — this is the PRIMARY method
-- Use <PATCH type="search"> ONLY as fallback when unified diff failed in a previous attempt
+- Use <PATCH> (unified diff) for small, precise changes to existing files
+- Use <PATCH type="search"> for large files or complex changes — it avoids line-number errors
 - NEVER use both <CREATE> and <PATCH> for the same file path
 - NEVER use /dev/null in PATCH headers — use <CREATE> instead
 - <CREATE> blocks contain RAW FILE CONTENT — no diff formatting whatsoever
@@ -141,7 +138,7 @@ command2
 11. NEVER delete existing imports, functions, or code blocks — only add or modify what is necessary
 12. CREATE paths MUST be relative to project root — no ../ or absolute paths
 13. CREATE blocks MUST NOT be empty — every new file needs content
-14. When using <PATCH type="search">, copy the SEARCH block EXACTLY from the file content in the context — whitespace must match perfectly
+14. When using <PATCH type="search">, wrap the original text in <SEARCH>...</SEARCH> and the replacement in <REPLACE>...</REPLACE>. Copy the SEARCH text EXACTLY from file content — whitespace must match perfectly
 
 ## Context Layers
 
