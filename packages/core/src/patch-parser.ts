@@ -357,13 +357,47 @@ export function applySearchReplace(
     // Try exact match first, then lenient matching
     let newContent: string | null = null;
 
-    // Level 0: case-insensitive exact match (handles ML-made-up casing)
+    // Level 0: case-insensitive substring match
     if (newContent === null) {
       const lowerContent = content.toLowerCase();
       const lowerSearch = block.search.toLowerCase();
       const idx = lowerContent.indexOf(lowerSearch);
       if (idx >= 0) {
         newContent = content.slice(0, idx) + block.replace + content.slice(idx + block.search.length);
+      }
+    }
+
+    // Level 0.5: anchor search — for short search text, find any line containing a keyword
+    if (newContent === null) {
+      const searchLines = block.search.split("\n").filter((l) => l.trim().length > 0);
+      // Extract potential keywords (words with >= 5 chars or containing dots/slashes)
+      const keywords = searchLines.flatMap((l) =>
+        l.match(/[a-zA-Z0-9_\/\.\-]{5,}/g) ?? []
+      );
+      // Prefer file-like patterns
+      const filePattern = block.search.match(/([a-zA-Z0-9_\/\.\-]+\.(?:py|ts|js|md|yml|yaml|json))/);
+      const anchorCandidates = filePattern ? [filePattern[1]!] : keywords;
+
+      if (anchorCandidates.length > 0) {
+        const contentLines = content.split("\n");
+        // Find the first line that contains any anchor keyword
+        let anchorIdx = -1;
+        for (const kw of anchorCandidates) {
+          const idx = contentLines.findIndex((l) => l.includes(kw));
+          if (idx >= 0) { anchorIdx = idx; break; }
+        }
+        if (anchorIdx >= 0) {
+          // Replace the anchored region with the replacement
+          const replaceLines = block.replace.split("\n");
+          // Replace from anchorIdx to anchorIdx + searchLines.length
+          const endIdx = Math.min(anchorIdx + searchLines.length, contentLines.length);
+          const resultLines = [
+            ...contentLines.slice(0, anchorIdx),
+            ...replaceLines,
+            ...contentLines.slice(endIdx),
+          ];
+          newContent = resultLines.join("\n");
+        }
       }
     }
 
