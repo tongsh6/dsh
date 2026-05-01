@@ -290,31 +290,42 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
       retryHintParts.push("");
       retryHintParts.push("Here is the ACTUAL file content. COPY text DIRECTLY from here into <SEARCH>:");
 
-      // Read the target file(s) and include their content
+      // Read the target file(s) and extract headings as anchor candidates
       const targetFiles = state.plan?.files ?? [];
       for (const f of targetFiles) {
         try {
           const fileContent = fs.readFileSync(path.join(cwd, f), "utf-8");
-          // Include first 3000 chars — enough to find good anchor text
-          const snippet = fileContent.length > 3000
-            ? fileContent.slice(0, 3000) + "\n... (truncated, total " + fileContent.length + " chars)"
-            : fileContent;
+
+          // Extract markdown headings and section markers as anchor candidates
+          const headings = fileContent.match(/^#{1,4}\s+.+$/gm) ?? [];
+          const uniqueHeadings = [...new Set(headings)].slice(0, 20);
+
           retryHintParts.push("");
-          retryHintParts.push("=== " + f + " (ACTUAL FILE CONTENT) ===");
-          retryHintParts.push(snippet);
-          retryHintParts.push("=== END " + f + " ===");
+          retryHintParts.push("=== " + f + " — AVAILABLE ANCHORS (use EXACTLY one of these) ===");
+          if (uniqueHeadings.length > 0) {
+            uniqueHeadings.forEach((h: string) => retryHintParts.push("  " + h));
+          } else {
+            // For non-markdown files, show first lines
+            const lines = fileContent.split("\n").slice(0, 10);
+            lines.forEach((l: string) => retryHintParts.push("  " + l));
+          }
+          retryHintParts.push("=== END ANCHORS ===");
         } catch {
           // file not readable, skip
         }
       }
 
       retryHintParts.push("");
-      retryHintParts.push("Find the exact text you want to replace in the content above.");
-      retryHintParts.push("COPY-PASTE it character-for-character into <SEARCH>.");
+      retryHintParts.push("Pick ONE anchor from the list above. Use it EXACTLY AS SHOWN.");
       retryHintParts.push("");
-      retryHintParts.push("Format:");
+      retryHintParts.push("Use INSERT format for adding new content:");
+      retryHintParts.push("<INSERT position=\"before\" anchor=\"exact heading from the list\" file=\"path/to/file\">");
+      retryHintParts.push("your new content here");
+      retryHintParts.push("</INSERT>");
+      retryHintParts.push("");
+      retryHintParts.push("Or use SEARCH/REPLACE format for replacing existing text:");
       retryHintParts.push("<PATCH type=\"search\" file=\"path/to/file\">");
-      retryHintParts.push("<SEARCH>exact text copied from the file content above</SEARCH>");
+      retryHintParts.push("<SEARCH>exact text copied from the anchors above</SEARCH>");
       retryHintParts.push("<REPLACE>replacement text</REPLACE>");
       retryHintParts.push("</PATCH>");
     } else {
