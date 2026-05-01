@@ -11,15 +11,18 @@ import {
   extractFilesBlock,
   extractRisksBlock,
   extractVerifyBlock,
-  parsePatch,
-  applyPatch,
   parseChanges,
   applyChanges,
 } from "./patch-parser.js";
 import { detectFailures, buildRepairHints } from "./failure-detector.js";
-import { runVerify as runVerifyCommands, isAllPassed, formatResults } from "./verifier.js";
+import { runVerify as runVerifyCommands, isAllPassed } from "./verifier.js";
 import { runRepairLoop } from "./repair-loop.js";
 import type { RepairRoundResult } from "./repair-loop.js";
+import {
+  repairStaticScanTopN,
+  resolveStaticScanConfig,
+  runStaticScan,
+} from "./static-scanner.js";
 import {
   createTaskState,
   readTaskState,
@@ -109,6 +112,57 @@ async function buildLayers(cwd: string, description: string, taskType: string): 
   return assembleContext({ config, rules, repoContext, taskState: state, taskFiles });
 }
 
+async function runPostImplementationStaticScan(params: {
+  cwd: string;
+  client: DeepSeekClient;
+  state: TaskState;
+  changedFiles: string[];
+}): Promise<TaskState> {
+  const { cwd, client, changedFiles } = params;
+  const { state } = params;
+  const scanConfig = resolveStaticScanConfig(readLocalConfig(cwd));
+
+  if (!scanConfig.enabled || !scanConfig.command) {
+    return state;
+  }
+
+  const scanRound = (state.static_scan_runs?.length ?? 0) + 1;
+  const scan = runStaticScan(
+    cwd,
+    scanConfig.command,
+    scanRound,
+    changedFiles,
+    scanConfig.topN,
+  );
+  state.static_scan_runs.push(scan.run);
+  writeTaskState(cwd, state);
+
+  if (scan.run.status === "passed" || scan.run.selected_top_n.length === 0) {
+    return state;
+  }
+
+  const repair = await repairStaticScanTopN({
+    cwd,
+    client,
+    state,
+    scanRun: scan.run,
+    selectedFindings: scan.run.selected_top_n,
+    command: scanConfig.command,
+    topN: scanConfig.topN,
+  });
+
+  state.static_repair_results.push(repair.repair);
+  if (repair.patchRecord) {
+    state.patches.push(repair.patchRecord);
+  }
+  if (repair.postScan) {
+    state.static_scan_runs.push(repair.postScan.run);
+  }
+  writeTaskState(cwd, state);
+
+  return state;
+}
+
 // ---- runPlan ----
 
 export async function runPlan(params: PlanParams): Promise<TaskState> {
@@ -170,7 +224,7 @@ export async function runPlan(params: PlanParams): Promise<TaskState> {
 // ---- runPatch ----
 
 export async function runPatch(params: PatchParams): Promise<TaskState> {
-  const { cwd, client, auto, dryRun } = params;
+  const { cwd, client, dryRun } = params;
 
   let state = readTaskState(cwd);
   if (!state) throw new Error("尚未初始化。请先运行 dsh init");
@@ -193,31 +247,63 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   });
 
   const content = response.choices[0]?.message.content ?? "";
-  const changes = parseChanges(content);
-  let applyResult = dryRun
-    ? { success: true, createdFiles: [] as string[], renamedFiles: [] as string[], patchedFiles: [] as string[], deletedFiles: [] as string[] }
-    : applyChanges(cwd, changes, false);
 
-  // Retry on patch apply failure (patch-drift detection)
+  // Try to parse changes; if unified diff fails, retry with SEARCH/REPLACE hint
+  let changes: ReturnType<typeof parseChanges>;
+  let applyResult = dryRun
+    ? { success: true as const, createdFiles: [] as string[], renamedFiles: [] as string[], patchedFiles: [] as string[], deletedFiles: [] as string[] }
+    : undefined as { success: boolean; createdFiles: string[]; renamedFiles: string[]; patchedFiles: string[]; deletedFiles: string[]; error?: string } | undefined;
+  try {
+    changes = parseChanges(content);
+  } catch (parseErr) {
+    changes = { creates: [], renames: [], patchText: null, patchFiles: [], hunks: [], deletePaths: [], searchReplaceBlocks: [] };
+    applyResult = { success: false, createdFiles: [], renamedFiles: [], patchedFiles: [], deletedFiles: [], error: parseErr instanceof Error ? parseErr.message : "parse failed" };
+  }
+  applyResult ??= applyChanges(cwd, changes, false);
+
+  // Retry on parse failure or patch apply failure
   const MAX_APPLY_RETRIES = 2;
   for (let retry = 0; !dryRun && !applyResult.success && retry < MAX_APPLY_RETRIES; retry++) {
+    const parseOrApplyError = applyResult.error ?? "patch apply failed";
+    const isParseError = parseOrApplyError.includes("validation failed") || parseOrApplyError.includes("No hunk headers") || parseOrApplyError.includes("No <CREATE>");
+
     const detections = detectFailures({
       response: content,
       planFiles: state.plan?.files ?? [],
       actualChangedFiles: [],
       verifyOutput: null,
-      patchApplyError: applyResult.error ?? "patch apply failed",
+      patchApplyError: parseOrApplyError,
     });
 
     const hints = buildRepairHints(detections);
-    if (!hints) break; // No specific hints, can't retry effectively
+
+    const retryHintParts = [
+      "PATCH FORMAT FAILED — the previous attempt had format errors. Fix and retry.",
+      "",
+      "Error: " + parseOrApplyError,
+    ];
+    if (isParseError) {
+      retryHintParts.push("");
+      retryHintParts.push("The unified diff format failed to parse. Use <PATCH type=\"search\" file=\"path\"> with SEARCH/REPLACE blocks instead:");
+      retryHintParts.push("<PATCH type=\"search\" file=\"path/to/file\">");
+      retryHintParts.push("<<<<<<< SEARCH");
+      retryHintParts.push("exact code copied from the file content");
+      retryHintParts.push("=======");
+      retryHintParts.push("replacement code");
+      retryHintParts.push(">>>>>>> REPLACE");
+      retryHintParts.push("</PATCH>");
+      retryHintParts.push("");
+      retryHintParts.push("Copy the EXACT text you want to replace from the file content — whitespace, indentation, everything must match.");
+    }
+    if (hints) {
+      retryHintParts.push("");
+      retryHintParts.push(hints);
+    }
 
     const retryMessages = buildMessages({
       context: { ...fullLayers, dynamic: buildDynamicContext(state.patches, state.verify_results, 1) },
       taskDescription: [
-        "PATCH APPLY FAILED — fix the patch format errors and retry.",
-        "",
-        hints,
+        ...retryHintParts,
         "",
         "Original task: " + state.task.description,
       ].join("\n"),
@@ -245,6 +331,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
       throw new Error(`变更应用失败 — ${applyResult.error}`);
     }
 
+    const changedFiles = [...applyResult.createdFiles, ...applyResult.renamedFiles, ...applyResult.patchedFiles, ...applyResult.deletedFiles];
     state.patches.push({
       round: (state.repair_rounds ?? 0) + 1,
       patch: [
@@ -254,10 +341,11 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
         changes.patchText ?? "",
       ].filter(Boolean).join("\n\n") || "<empty>",
       apply_status: "ok",
-      files_changed: [...applyResult.createdFiles, ...applyResult.renamedFiles, ...applyResult.patchedFiles, ...applyResult.deletedFiles],
+      files_changed: changedFiles,
     });
     state = transition(state, "patched");
     writeTaskState(cwd, state);
+    state = await runPostImplementationStaticScan({ cwd, client, state, changedFiles });
   }
 
   return state;
@@ -308,7 +396,7 @@ export async function runVerify(params: VerifyParams): Promise<TaskState> {
 export async function runRepair(params: RepairParams): Promise<TaskState> {
   const { cwd, client, maxRounds = 3, onRound } = params;
 
-  let state = readTaskState(cwd);
+  const state = readTaskState(cwd);
   if (!state) throw new Error("尚未初始化。请先运行 dsh init");
   if (state.status !== "verification_failed") {
     throw new Error(`当前状态为 ${state.status}，需要 verification_failed`);
@@ -324,13 +412,23 @@ export async function runRepair(params: RepairParams): Promise<TaskState> {
     state.plan = { ...state.plan, verify_commands: commands };
   }
 
-  const finalState = await runRepairLoop(state, {
+  let finalState = await runRepairLoop(state, {
     client,
     cwd,
     maxRounds,
     contextLayers: layers,
     onRound,
   });
+
+  const lastPatch = finalState.patches.at(-1);
+  if (lastPatch?.apply_status === "ok" && lastPatch.files_changed.length > 0) {
+    finalState = await runPostImplementationStaticScan({
+      cwd,
+      client,
+      state: finalState,
+      changedFiles: lastPatch.files_changed,
+    });
+  }
 
   return finalState;
 }
@@ -352,8 +450,8 @@ export async function runHandoff(params: HandoffParams): Promise<string> {
 export async function runFullPipeline(params: FullPipelineParams): Promise<TaskState> {
   const { cwd, client, description, taskType, auto = true, maxRepairRounds = 3 } = params;
 
-  let state = await runPlan({ cwd, client, description, taskType });
-  state = await runPatch({ cwd, client, auto });
+  await runPlan({ cwd, client, description, taskType });
+  let state = await runPatch({ cwd, client, auto });
 
   try {
     state = await runVerify({ cwd });
