@@ -6,6 +6,7 @@ import {
   extractCreateBlocks,
   extractDeleteBlocks,
   extractRenameBlocks,
+  extractSearchReplaceBlocks,
   extractFilesBlock,
   extractVerifyBlock,
   extractPlanBlock,
@@ -19,6 +20,7 @@ import {
   applyCreates,
   applyDeletes,
   applyRenames,
+  applySearchReplace,
   applyPatch,
   applyChanges,
   PatchParseError,
@@ -587,6 +589,7 @@ describe("applyChanges", () => {
         renames: [],
         hunks: [],
         deletePaths: [],
+        searchReplaceBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -610,6 +613,7 @@ describe("applyChanges", () => {
         renames: [],
         hunks: [],
         deletePaths: [],
+        searchReplaceBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -632,6 +636,7 @@ describe("applyChanges", () => {
         renames: [],
         hunks: [],
         deletePaths: [],
+        searchReplaceBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -652,6 +657,7 @@ describe("applyChanges", () => {
         renames: [],
         hunks: [],
         deletePaths: [],
+        searchReplaceBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -673,6 +679,7 @@ describe("applyChanges", () => {
         renames: [],
         hunks: [],
         deletePaths: [],
+        searchReplaceBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, true);
@@ -832,6 +839,7 @@ describe("applyChanges with DELETE", () => {
         renames: [],
         hunks: [],
         deletePaths: ["remove-me.ts"],
+        searchReplaceBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -859,6 +867,7 @@ describe("applyChanges with DELETE", () => {
         renames: [],
         hunks: [],
         deletePaths: ["old.ts"],
+        searchReplaceBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -880,6 +889,7 @@ describe("applyChanges with DELETE", () => {
         renames: [],
         hunks: [],
         deletePaths: ["../escape.sh"],
+        searchReplaceBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -1063,6 +1073,7 @@ describe("applyChanges with RENAME", () => {
         patchFiles: [],
         hunks: [],
         deletePaths: [],
+        searchReplaceBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -1070,6 +1081,129 @@ describe("applyChanges with RENAME", () => {
       assert.equal(result.renamedFiles.length, 1);
       assert.ok(!fs.existsSync(`${tmp}/to-rename.ts`));
       assert.ok(fs.existsSync(`${tmp}/renamed.ts`));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---- Search/Replace block tests ----
+
+const SEARCH_REPLACE_RESPONSE = `
+<PLAN>Fix the validate function</PLAN>
+<FILES>- src/utils.ts</FILES>
+<PATCH type="search" file="src/utils.ts">
+<<<<<<< SEARCH
+function validate(input: string) {
+  if (!input) {
+    return false;
+  }
+  return true;
+}
+=======
+function validate(input: string): boolean {
+  if (!input || input.trim().length === 0) {
+    return false;
+  }
+  return true;
+}
+>>>>>>> REPLACE
+</PATCH>
+<VERIFY>npx jest</VERIFY>
+<RISKS>- None</RISKS>
+`;
+
+describe("extractSearchReplaceBlocks", () => {
+  it("extracts SEARCH/REPLACE blocks from response", () => {
+    const blocks = extractSearchReplaceBlocks(SEARCH_REPLACE_RESPONSE);
+    assert.equal(blocks.length, 1);
+    assert.equal(blocks[0].filePath, "src/utils.ts");
+    assert.ok(blocks[0].search.includes("function validate"));
+    assert.ok(blocks[0].replace.includes(": boolean"));
+  });
+
+  it("returns empty array when no SEARCH/REPLACE blocks", () => {
+    const blocks = extractSearchReplaceBlocks("no search replace here");
+    assert.equal(blocks.length, 0);
+  });
+});
+
+describe("applySearchReplace", () => {
+  it("applies search/replace to a file", () => {
+    const tmp = fs.mkdtempSync("dsh-sr-test-");
+    try {
+      fs.mkdirSync(`${tmp}/src`, { recursive: true });
+      fs.writeFileSync(
+        `${tmp}/src/utils.ts`,
+        "function validate(input: string) {\n  if (!input) {\n    return false;\n  }\n  return true;\n}\n",
+        "utf-8",
+      );
+
+      const blocks = extractSearchReplaceBlocks(SEARCH_REPLACE_RESPONSE);
+      const result = applySearchReplace(tmp, blocks, false);
+
+      assert.ok(result.success);
+      const modified = fs.readFileSync(`${tmp}/src/utils.ts`, "utf-8");
+      assert.ok(modified.includes(": boolean"));
+      assert.ok(modified.includes("trim().length === 0"));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("returns error when search not found in file", () => {
+    const tmp = fs.mkdtempSync("dsh-sr-test-");
+    try {
+      fs.mkdirSync(`${tmp}/src`, { recursive: true });
+      fs.writeFileSync(`${tmp}/src/utils.ts`, "completely different content\n", "utf-8");
+      const blocks = extractSearchReplaceBlocks(SEARCH_REPLACE_RESPONSE);
+      const result = applySearchReplace(tmp, blocks, false);
+      assert.ok(!result.success);
+      assert.ok(result.error?.includes("Search block not found"));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("parseChanges with Search/Replace", () => {
+  it("parses response with SEARCH/REPLACE block and no PATCH", () => {
+    const changes = parseChanges(SEARCH_REPLACE_RESPONSE);
+    assert.equal(changes.searchReplaceBlocks.length, 1);
+    assert.equal(changes.searchReplaceBlocks[0].filePath, "src/utils.ts");
+    assert.ok(changes.searchReplaceBlocks[0].search.includes("function validate"));
+    assert.equal(changes.patchText, null);
+    assert.equal(changes.creates.length, 0);
+  });
+});
+
+describe("applyChanges with Search/Replace", () => {
+  it("applies SEARCH/REPLACE as part of combined changes", () => {
+    const tmp = fs.mkdtempSync("dsh-changes-test-");
+    try {
+      fs.mkdirSync(`${tmp}/src`, { recursive: true });
+      fs.writeFileSync(
+        `${tmp}/src/utils.ts`,
+        "function validate(input: string) {\n  if (!input) {\n    return false;\n  }\n  return true;\n}\n",
+        "utf-8",
+      );
+
+      const changes = {
+        creates: [],
+        renames: [],
+        patchText: null,
+        patchFiles: [],
+        hunks: [],
+        deletePaths: [],
+        searchReplaceBlocks: extractSearchReplaceBlocks(SEARCH_REPLACE_RESPONSE),
+      };
+
+      const result = applyChanges(tmp, changes, false);
+      assert.equal(result.success, true);
+      assert.equal(result.patchedFiles.length, 1);
+      assert.ok(result.patchedFiles.includes("src/utils.ts"));
+      const modified = fs.readFileSync(`${tmp}/src/utils.ts`, "utf-8");
+      assert.ok(modified.includes(": boolean"));
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

@@ -21,6 +21,12 @@ export interface CreateBlock {
   content: string;
 }
 
+export interface SearchReplaceBlock {
+  filePath: string;
+  search: string;
+  replace: string;
+}
+
 export interface RenameBlock {
   from: string;
   to: string;
@@ -33,6 +39,7 @@ export interface ParsedChanges {
   patchFiles: string[];
   hunks: HunkInfo[];
   deletePaths: string[];
+  searchReplaceBlocks: SearchReplaceBlock[];
 }
 
 export interface ApplyChangesResult {
@@ -95,6 +102,39 @@ export function extractRenameBlocks(response: string): RenameBlock[] {
       blocks.push({ from, to });
     }
   }
+  return blocks;
+}
+
+/**
+ * Extract SEARCH/REPLACE blocks from response.
+ * Format: <PATCH type="search" file="path/to/file">
+ * <<<<<<< SEARCH
+ * original code
+ * =======
+ * replacement code
+ * >>>>>>> REPLACE
+ * </PATCH>
+ */
+export function extractSearchReplaceBlocks(response: string): SearchReplaceBlock[] {
+  const blocks: SearchReplaceBlock[] = [];
+  const blockRegex = /<PATCH\s+type="search"\s+file="([^"]+)"\s*>([\s\S]*?)<\/PATCH>/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = blockRegex.exec(response)) !== null) {
+    const filePath = match[1]?.trim();
+    const body = match[2] ?? "";
+
+    if (!filePath) continue;
+
+    const srMatch = body.match(/<<<<<<< SEARCH\n([\s\S]*?)=======\n([\s\S]*?)>>>>>>> REPLACE/);
+    if (!srMatch) continue;
+
+    const search = srMatch[1] ?? "";
+    const replace = srMatch[2] ?? "";
+
+    blocks.push({ filePath, search, replace });
+  }
+
   return blocks;
 }
 
@@ -278,6 +318,58 @@ export function applyRenames(
   return { success: true, files: renamedFiles };
 }
 
+export function applySearchReplace(
+  cwd: string,
+  blocks: SearchReplaceBlock[],
+  dryRun: boolean = false,
+): { success: boolean; files: string[]; error?: string } {
+  const changedFiles: string[] = [];
+
+  for (const block of blocks) {
+    const absPath = path.join(cwd, block.filePath);
+
+    // Path safety check
+    if (path.isAbsolute(block.filePath) || block.filePath.includes("..")) {
+      return {
+        success: false,
+        files: changedFiles,
+        error: `Unsafe path rejected: ${block.filePath}`,
+      };
+    }
+
+    let content: string;
+    try {
+      content = fs.readFileSync(absPath, "utf-8");
+    } catch {
+      return {
+        success: false,
+        files: changedFiles,
+        error: `Cannot read ${block.filePath}`,
+      };
+    }
+
+    // Exact match
+    if (!content.includes(block.search)) {
+      return {
+        success: false,
+        files: changedFiles,
+        error: `Search block not found in ${block.filePath}`,
+      };
+    }
+
+    // Replace only the FIRST occurrence (safe, predictable)
+    const newContent = content.replace(block.search, block.replace);
+
+    if (!dryRun) {
+      fs.writeFileSync(absPath, newContent, "utf-8");
+    }
+
+    changedFiles.push(block.filePath);
+  }
+
+  return { success: true, files: changedFiles };
+}
+
 // ---- Combined parsing and application ----
 
 export function parseChanges(response: string): ParsedChanges {
@@ -285,6 +377,7 @@ export function parseChanges(response: string): ParsedChanges {
   const renames = extractRenameBlocks(response);
   const patchText = extractPatchBlock(response);
   const deletePaths = extractDeleteBlocks(response);
+  const searchReplaceBlocks = extractSearchReplaceBlocks(response);
 
   // Validate CREATE paths
   const pathValidation = validateCreatePaths(creates);
@@ -362,9 +455,9 @@ export function parseChanges(response: string): ParsedChanges {
   }
 
   // Validate that at least one operation block is present
-  if (creates.length === 0 && renames.length === 0 && !patchText && deletePaths.length === 0) {
+  if (creates.length === 0 && renames.length === 0 && !patchText && deletePaths.length === 0 && searchReplaceBlocks.length === 0) {
     throw new PatchParseError(
-      "No <CREATE>, <RENAME>, <PATCH>, or <DELETE> blocks found in response",
+      "No <CREATE>, <RENAME>, <PATCH>, <DELETE>, or <PATCH type=\"search\"> blocks found in response",
     );
   }
 
@@ -382,6 +475,7 @@ export function parseChanges(response: string): ParsedChanges {
     patchFiles,
     hunks,
     deletePaths,
+    searchReplaceBlocks,
   };
 }
 
@@ -420,6 +514,15 @@ export function applyChanges(
       return { success: false, createdFiles, renamedFiles, patchedFiles, deletedFiles, error: result.error };
     }
     deletedFiles.push(...result.files);
+  }
+
+  // Apply Search/Replace blocks (before diff PATCH for predictability)
+  if (changes.searchReplaceBlocks.length > 0) {
+    const result = applySearchReplace(cwd, changes.searchReplaceBlocks, dryRun);
+    if (!result.success) {
+      return { success: false, createdFiles, renamedFiles, patchedFiles, deletedFiles, error: result.error };
+    }
+    patchedFiles.push(...result.files);
   }
 
   // Apply PATCH block last
