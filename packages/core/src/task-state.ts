@@ -69,7 +69,7 @@ const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   "planned": ["patched"],
   "patched": ["verified", "verification_failed"],
   "verified": ["done"],
-  "verification_failed": ["repairing"],
+  "verification_failed": ["repairing", "repair_exhausted"],
   "repairing": ["patched", "repair_exhausted"],
   "repair_exhausted": ["done"],
   "done": [],

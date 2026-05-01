@@ -34,6 +34,10 @@ describe("canTransition", () => {
     assert.equal(canTransition("verification_failed", "repairing"), true);
   });
 
+  it("allows verification_failed -> repair_exhausted", () => {
+    assert.equal(canTransition("verification_failed", "repair_exhausted"), true);
+  });
+
   it("allows repairing -> patched (retry loop)", () => {
     assert.equal(canTransition("repairing", "patched"), true);
   });
