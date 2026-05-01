@@ -28,3 +28,5 @@ export {
   getGitInfo,
 } from "./git.js";
 export type { GitInfo } from "./git.js";
+
+export { loadDshConfig } from "./config-loader.js";

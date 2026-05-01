@@ -34,12 +34,15 @@ const verifyRoundSchema = z.object({
 
 const staticScanFindingSchema = z.object({
   id: z.string(),
+  scanner: z.string().default("generic"),
   file: z.string(),
   line: z.number().nullable(),
   column: z.number().nullable(),
-  severity: z.enum(["error", "warning", "info"]),
+  severity: z.enum(["critical", "high", "error", "medium", "warning", "low", "info"]),
+  category: z.enum(["bug", "type", "style", "security", "secret", "dependency", "unknown"]).default("unknown"),
   message: z.string(),
   rule: z.string().nullable(),
+  raw: z.unknown().optional(),
 });
 
 const staticScanRunSchema = z.object({

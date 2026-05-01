@@ -2,13 +2,24 @@ import { DeepSeekClient } from "./packages/provider/dist/client.js";
 import { loadAllFixtures } from "./packages/eval/dist/task-fixtures.js";
 import { runTask, formatEvaluationReport } from "./packages/eval/dist/benchmark-runner.js";
 import type { TaskResult } from "./packages/eval/dist/benchmark-runner.js";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixturesDir = path.join(__dirname, "packages/eval/src/fixtures");
 const DSH_REPO = __dirname;
 const PI_REPO = "/tmp/pi-proof-forge";
+const REPORTS_DIR = path.join(__dirname, "docs", "superpowers", "reports");
+
+function gitShortHash(): string {
+  try {
+    return execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf-8", timeout: 3000 }).trim();
+  } catch {
+    return "unknown";
+  }
+}
 
 const allFixtures = loadAllFixtures(fixturesDir);
 const benchFixtures = allFixtures
@@ -20,7 +31,9 @@ benchFixtures.forEach((f) => console.log(`  - ${f.id}: ${f.category}`));
 console.log();
 
 const client = DeepSeekClient.fromEnv();
-const startTime = Date.now();
+const runStart = new Date();
+const runId = `${runStart.getFullYear().toString().slice(2)}${String(runStart.getMonth() + 1).padStart(2, "0")}${String(runStart.getDate()).padStart(2, "0")}-${String(runStart.getHours()).padStart(2, "0")}${String(runStart.getMinutes()).padStart(2, "0")}${String(runStart.getSeconds()).padStart(2, "0")}`;
+const runDir = path.join(REPORTS_DIR, runId);
 
 const results: TaskResult[] = [];
 for (const fixture of benchFixtures) {
@@ -33,7 +46,31 @@ for (const fixture of benchFixtures) {
   if (result.error) console.log(`  -> Error: ${result.error}`);
 }
 
-const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+const runEnd = new Date();
+const elapsed = ((runEnd.getTime() - runStart.getTime()) / 1000).toFixed(0);
 const report = formatEvaluationReport(results);
 console.log("\n" + report);
 console.log(`\nTotal time: ${elapsed}s`);
+
+// ── Archive ──
+fs.mkdirSync(runDir, { recursive: true });
+
+const metadata = {
+  run_id: runId,
+  started_at: runStart.toISOString(),
+  completed_at: runEnd.toISOString(),
+  elapsed_seconds: Number(elapsed),
+  dsh_commit: gitShortHash(),
+  fixture_count: benchFixtures.length,
+  fixtures: benchFixtures.map((f) => ({
+    id: f.id,
+    category: f.category,
+    repo: f.repoPath ?? (f.id.startsWith("dsh-") ? "dsh" : "pi-proof-forge"),
+  })),
+};
+
+fs.writeFileSync(path.join(runDir, "metadata.json"), JSON.stringify(metadata, null, 2), "utf-8");
+fs.writeFileSync(path.join(runDir, "results.json"), JSON.stringify(results, null, 2), "utf-8");
+fs.writeFileSync(path.join(runDir, "report.md"), report, "utf-8");
+
+console.log(`\nBenchmark artifacts saved to: ${runDir}`);
