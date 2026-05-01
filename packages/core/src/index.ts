@@ -92,6 +92,16 @@ export {
 } from "./static-scanner.js";
 export type { StaticScanConfig, StaticScanResult } from "./static-scanner.js";
 
+export {
+  eslintParser,
+  tscParser,
+  sarifParser,
+  fallbackParser,
+  resolveParser,
+  parseFindings,
+} from "./static-finding-parser.js";
+export type { StaticFindingParser } from "./static-finding-parser.js";
+
 export { writeHandoff } from "./handoff-writer.js";
 
 export {

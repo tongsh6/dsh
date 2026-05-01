@@ -12,6 +12,7 @@ import type { RankedFile } from "@dsh/repo";
 import { assembleContext } from "./context-builder.js";
 import { buildMessages } from "./prompt-builder.js";
 import { applyChanges, parseChanges } from "./patch-parser.js";
+import { parseFindings } from "./static-finding-parser.js";
 import type {
   StaticRepairResult,
   StaticScanFinding,
@@ -220,62 +221,10 @@ export function parseStaticScanFindings(
   round: number,
   includeFallback: boolean = true,
 ): StaticScanFinding[] {
-  const findings: StaticScanFinding[] = [];
-  let currentFile: string | null = null;
-
-  for (const line of output.split(/\r?\n/)) {
-    const trimmed = line.trimEnd();
-    if (!trimmed) continue;
-
-    const fileOnly = normalizeFile(trimmed, cwd);
-    if (fileOnly && !trimmed.includes(" ")) {
-      currentFile = fileOnly;
-      continue;
-    }
-
-    const eslintMatch = trimmed.match(/^\s*(\d+):(\d+)\s+(error|warning|info)\s+(.+?)(?:\s{2,}([\w@/-]+(?:\/[\w-]+)?))?$/);
-    if (eslintMatch && currentFile) {
-      findings.push(makeFinding({
-        round,
-        index: findings.length + 1,
-        file: currentFile,
-        line: Number(eslintMatch[1]),
-        column: Number(eslintMatch[2]),
-        severity: toSeverity(eslintMatch[3]),
-        message: eslintMatch[4]?.trim() ?? "",
-        rule: eslintMatch[5]?.trim() ?? null,
-      }));
-      continue;
-    }
-
-    const tscMatch = trimmed.match(/^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+([A-Z]+\d+):\s+(.+)$/);
-    if (tscMatch) {
-      findings.push(makeFinding({
-        round,
-        index: findings.length + 1,
-        file: normalizeFile(tscMatch[1] ?? "", cwd) ?? (tscMatch[1] ?? "<unknown>"),
-        line: Number(tscMatch[2]),
-        column: Number(tscMatch[3]),
-        severity: toSeverity(tscMatch[4]),
-        message: tscMatch[6]?.trim() ?? "",
-        rule: tscMatch[5]?.trim() ?? null,
-      }));
-    }
+  const findings = parseFindings(output, cwd, round);
+  if (!includeFallback) {
+    return findings.filter((f) => f.scanner !== "generic");
   }
-
-  if (includeFallback && findings.length === 0 && output.trim().length > 0) {
-    findings.push(makeFinding({
-      round,
-      index: 1,
-      file: "<project>",
-      line: null,
-      column: null,
-      severity: "error",
-      message: output.trim().split(/\r?\n/).slice(0, 12).join("\n"),
-      rule: null,
-    }));
-  }
-
   return findings;
 }
 
@@ -385,46 +334,14 @@ function formatLocation(finding: StaticScanFinding): string {
   return `${finding.file}${line}${column}`;
 }
 
-function makeFinding(params: {
-  round: number;
-  index: number;
-  file: string;
-  line: number | null;
-  column: number | null;
-  severity: "error" | "warning" | "info";
-  message: string;
-  rule: string | null;
-}): StaticScanFinding {
-  return {
-    id: `S${params.round}-${params.index}`,
-    file: params.file,
-    line: params.line,
-    column: params.column,
-    severity: params.severity,
-    message: params.message,
-    rule: params.rule,
-  };
-}
-
-function normalizeFile(value: string, cwd: string): string | null {
-  const cleaned = value.trim();
-  if (!cleaned) return null;
-  const absolute = path.isAbsolute(cleaned) ? cleaned : path.join(cwd, cleaned);
-  const relative = path.relative(cwd, absolute);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) return cleaned;
-  return relative || cleaned;
-}
-
-function toSeverity(value: string | undefined): "error" | "warning" | "info" {
-  if (value === "warning") return "warning";
-  if (value === "info") return "info";
-  return "error";
-}
-
 function severityScore(severity: StaticScanFinding["severity"]): number {
+  if (severity === "critical") return 2000;
+  if (severity === "high") return 1500;
   if (severity === "error") return 1000;
+  if (severity === "medium") return 700;
   if (severity === "warning") return 500;
-  return 100;
+  if (severity === "low") return 200;
+  return 100; // info
 }
 
 function bufferToString(value: string | Buffer | undefined): string {
