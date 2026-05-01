@@ -237,9 +237,40 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   const fullLayers = { ...layers, dynamic };
 
   const fileCount = state.plan?.files?.length ?? 0;
+
+  // Preemptively detect large file edits and inject two-step hint
+  let taskDescription = state.task.description;
+  const planFiles = state.plan?.files ?? [];
+  const LARGE_FILE_THRESHOLD = 200; // lines
+  let hasLargeFile = false;
+  for (const f of planFiles) {
+    try {
+      const filePath = path.join(cwd, f);
+      if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, "utf-8");
+        const lineCount = content.split("\n").length;
+        if (lineCount > LARGE_FILE_THRESHOLD) {
+          hasLargeFile = true;
+          break;
+        }
+      }
+    } catch { /* skip */ }
+  }
+
+  if (hasLargeFile) {
+    taskDescription = [
+      taskDescription,
+      "",
+      "LARGE FILE DETECTED. Use two-step CREATE + INSERT approach:",
+      "1. Write the new/modified content to a temp file using <CREATE path=\"...\">",
+      "2. Insert it with <INSERT position=\"before|after\" anchor=\"section heading\" file=\"target\" from=\"temp-file\" />",
+      "DO NOT use unified diff — it will fail on large files.",
+    ].join("\n");
+  }
+
   const target = classify({ command: "patch", fileCount });
 
-  const messages = buildMessages({ context: fullLayers, taskDescription: state.task.description, phase: "patch" });
+  const messages = buildMessages({ context: fullLayers, taskDescription, phase: "patch" });
   const response = await client.chat({
     model: target.model,
     messages,
