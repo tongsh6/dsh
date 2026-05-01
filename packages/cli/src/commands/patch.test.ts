@@ -112,7 +112,7 @@ describe("patchCommand", () => {
     const { patchCommand } = await import("./patch.js");
 
     const origExit = process.exit;
-    process.exit = ((code?: number) => { throw new Error("exit"); }) as any;
+    process.exit = ((_code?: number) => { throw new Error("exit"); }) as any;
 
     try { await patchCommand({}); } catch {}
     process.exit = origExit;

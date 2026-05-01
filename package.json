@@ -5,7 +5,15 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r run build",
+    "lint": "eslint . --max-warnings=0",
+    "scan": "pnpm run lint && pnpm run typecheck && pnpm run test",
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.2.1",
+    "globals": "^17.5.0",
+    "typescript-eslint": "^8.59.1"
   }
 }

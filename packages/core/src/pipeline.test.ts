@@ -26,6 +26,29 @@ function mockClient(responseContent: string): DeepSeekClient {
   } as unknown as DeepSeekClient;
 }
 
+function mockClientSequence(responseContents: string[]): DeepSeekClient {
+  let index = 0;
+  return {
+    chat: async () => {
+      const content = responseContents[Math.min(index, responseContents.length - 1)] ?? "";
+      index++;
+      return {
+        id: "test-id",
+        object: "chat.completion",
+        created: Date.now(),
+        model: "deepseek-v4-pro",
+        choices: [{
+          index: 0,
+          message: { role: "assistant" as const, content },
+          finish_reason: "stop",
+        }],
+        usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+      };
+    },
+    chatStream: async function* () { yield undefined as any; },
+  } as unknown as DeepSeekClient;
+}
+
 const VALID_PLAN_RESPONSE = `
 <PLAN>
 ## Goal
@@ -68,6 +91,33 @@ echo ok
 </VERIFY>
 <RISKS>
 - Minor risk
+</RISKS>
+`;
+
+const STATIC_REPAIR_PATCH_RESPONSE = `
+<PLAN>
+## Goal
+Fix selected static scan finding
+## Strategy
+Add the missing lint marker comment
+</PLAN>
+<FILES>
+- dummy.py
+</FILES>
+<PATCH>
+--- a/dummy.py
++++ b/dummy.py
+@@ -1,2 +1,3 @@
+ # test
+ # fixed
++# lint fixed
+</PATCH>
+<VERIFY>
+node scan.mjs
+</VERIFY>
+<RISKS>
+- Scanner expectations may change
+- Comment-only fix may not satisfy future stricter rules
 </RISKS>
 `;
 
@@ -160,6 +210,53 @@ describe("runPatch", () => {
         () => runPatch({ cwd: tmp, client }),
         /需要 planned 或 repairing/,
       );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("runs static scan after patch and repairs selected top findings", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "python" },
+          verify: { test: "echo ok" },
+          static_scan: { enabled: true, command: "node scan.mjs", top_n: 1 },
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, "scan.mjs"),
+        [
+          "import fs from 'node:fs';",
+          "const content = fs.readFileSync('dummy.py', 'utf-8');",
+          "if (!content.includes('# lint fixed')) {",
+          "  console.log(process.cwd() + '/dummy.py');",
+          "  console.log('  2:1  error  Missing lint marker  dsh/no-marker');",
+          "  process.exit(1);",
+          "}",
+          "console.log('clean');",
+        ].join("\n"),
+        "utf-8",
+      );
+
+      const client = mockClientSequence([VALID_PATCH_RESPONSE, STATIC_REPAIR_PATCH_RESPONSE]);
+      const state = await runPatch({ cwd: tmp, client, auto: true });
+
+      assert.equal(state.status, "patched");
+      assert.equal(state.static_scan_runs.length, 2);
+      assert.equal(state.static_scan_runs[0]!.status, "failed");
+      assert.equal(state.static_scan_runs[0]!.selected_top_n.length, 1);
+      assert.equal(state.static_repair_results.length, 1);
+      assert.equal(state.static_repair_results[0]!.apply_status, "ok");
+      assert.equal(state.static_repair_results[0]!.post_scan_status, "passed");
+      assert.equal(state.static_repair_results[0]!.remaining_findings, 0);
+      assert.ok(fs.existsSync(path.join(tmp, state.static_scan_runs[0]!.output_path)));
+      assert.ok(fs.readFileSync(path.join(tmp, "dummy.py"), "utf-8").includes("# lint fixed"));
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

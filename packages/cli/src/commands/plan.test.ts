@@ -87,7 +87,7 @@ describe("planCommand", () => {
     const { planCommand } = await import("./plan.js");
 
     const origExit = process.exit;
-    process.exit = ((code?: number) => { throw new Error("exit"); }) as any;
+    process.exit = ((_code?: number) => { throw new Error("exit"); }) as any;
 
     try { await planCommand("test task", {}); } catch {}
     process.exit = origExit;

@@ -32,6 +32,45 @@ const verifyRoundSchema = z.object({
   results: z.array(verifyResultSchema),
 });
 
+const staticScanFindingSchema = z.object({
+  id: z.string(),
+  file: z.string(),
+  line: z.number().nullable(),
+  column: z.number().nullable(),
+  severity: z.enum(["error", "warning", "info"]),
+  message: z.string(),
+  rule: z.string().nullable(),
+});
+
+const staticScanRunSchema = z.object({
+  round: z.number(),
+  command: z.string(),
+  status: z.enum(["passed", "failed"]),
+  exit_code: z.number(),
+  duration_ms: z.number(),
+  output_path: z.string(),
+  output_excerpt: z.string(),
+  total_findings: z.number(),
+  selected_top_n: z.array(staticScanFindingSchema),
+  top_n_reasoning: z.array(z.string()),
+  created_at: z.string(),
+});
+
+const staticRepairResultSchema = z.object({
+  round: z.number(),
+  scan_round: z.number(),
+  selected_finding_ids: z.array(z.string()),
+  strategy: z.string(),
+  patch: z.string(),
+  apply_status: z.enum(["ok", "failed", "skipped"]),
+  files_changed: z.array(z.string()),
+  post_scan_round: z.number().optional(),
+  post_scan_status: z.enum(["passed", "failed", "skipped"]),
+  remaining_findings: z.number(),
+  error: z.string().optional(),
+  created_at: z.string(),
+});
+
 export const taskStateSchema = z.object({
   version: z.literal("0.1"),
   status: z.enum([
@@ -52,6 +91,8 @@ export const taskStateSchema = z.object({
   plan: planSchema.optional(),
   patches: z.array(patchRecordSchema).default([]),
   verify_results: z.array(verifyRoundSchema).default([]),
+  static_scan_runs: z.array(staticScanRunSchema).default([]),
+  static_repair_results: z.array(staticRepairResultSchema).default([]),
   repair_rounds: z.number().default(0),
   handoff_path: z.string().optional(),
 });
@@ -59,6 +100,9 @@ export const taskStateSchema = z.object({
 export type TaskState = z.infer<typeof taskStateSchema>;
 export type VerifyResult = z.infer<typeof verifyResultSchema>;
 export type PatchRecord = z.infer<typeof patchRecordSchema>;
+export type StaticScanFinding = z.infer<typeof staticScanFindingSchema>;
+export type StaticScanRun = z.infer<typeof staticScanRunSchema>;
+export type StaticRepairResult = z.infer<typeof staticRepairResultSchema>;
 
 export type TaskStatus = TaskState["status"];
 
@@ -130,6 +174,8 @@ export function createTaskState(
     },
     patches: [],
     verify_results: [],
+    static_scan_runs: [],
+    static_repair_results: [],
     repair_rounds: 0,
   };
 }

@@ -59,7 +59,7 @@ function extractKeywords(description: string): string[] {
   return [...new Set(
     description
       .toLowerCase()
-      .split(/[\s,;:.!?()\[\]{}"']+/)
+      .split(/[\s,;:.!?()[\]{}"']+/)
       .filter((w) => w.length > 1),
   )];
 }

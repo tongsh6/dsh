@@ -5,7 +5,6 @@ import { buildDynamicContext } from "./context-builder.js";
 import { buildMessages } from "./prompt-builder.js";
 import { parseChanges, applyChanges } from "./patch-parser.js";
 import { runVerify, isAllPassed, formatResults } from "./verifier.js";
-import { buildUserMessage } from "./prompt-builder.js";
 import type { ContextLayers } from "./context-builder.js";
 import { detectFailures, buildRepairHints } from "./failure-detector.js";
 

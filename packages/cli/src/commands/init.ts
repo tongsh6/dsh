@@ -34,6 +34,11 @@ export async function initCommand(opts: InitOptions): Promise<void> {
       typecheck: verify.typecheck ?? "",
       build: verify.build ?? "",
     },
+    static_scan: {
+      enabled: true,
+      command: verify.lint ?? "",
+      top_n: 5,
+    },
     rules: {
       files: rules.map((r) => ({ path: r.path })),
     },

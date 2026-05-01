@@ -1,5 +1,4 @@
 import { execSync } from "node:child_process";
-import type { VerifyResult } from "./task-state.js";
 
 export interface VerifyCommand {
   name: string;

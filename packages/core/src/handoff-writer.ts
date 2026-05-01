@@ -11,7 +11,6 @@ export function writeHandoff(
   const dir = outputDir ?? path.join(cwd, ".dsh", "handoff");
   fs.mkdirSync(dir, { recursive: true });
 
-  const timestamp = state.task.created_at.replace(/[:.]/g, "-");
   const taskSlug = state.task.description.slice(0, 40).replace(/[^a-zA-Z0-9一-鿿]/g, "-");
 
   if (format === "json") {
@@ -86,6 +85,43 @@ function buildMarkdown(state: TaskState): string {
       for (const r of round.results) {
         const icon = r.status === "passed" ? "✓" : "✗";
         lines.push(`- ${icon} \`${r.command}\` (${(r.duration_ms / 1000).toFixed(1)}s)`);
+      }
+      lines.push("");
+    }
+  }
+
+  if (state.static_scan_runs.length > 0) {
+    lines.push("## 静态扫描");
+    lines.push("");
+    for (const scan of state.static_scan_runs) {
+      const icon = scan.status === "passed" ? "✓" : "✗";
+      lines.push(`### Scan Round ${scan.round}`);
+      lines.push("");
+      lines.push(`- ${icon} \`${scan.command}\` (${(scan.duration_ms / 1000).toFixed(1)}s)`);
+      lines.push(`- 原始输出: \`${scan.output_path}\``);
+      lines.push(`- 发现问题: ${scan.total_findings}`);
+      if (scan.selected_top_n.length > 0) {
+        lines.push(`- Top N 选择: ${scan.selected_top_n.map((f) => f.id).join(", ")}`);
+      }
+      lines.push("");
+    }
+  }
+
+  if (state.static_repair_results.length > 0) {
+    lines.push("## 静态扫描 Top N 修复");
+    lines.push("");
+    for (const repair of state.static_repair_results) {
+      const icon = repair.apply_status === "ok" ? "✓" : repair.apply_status === "skipped" ? "◐" : "✗";
+      lines.push(`### Repair Round ${repair.round}`);
+      lines.push("");
+      lines.push(`- ${icon} 处理扫描轮次: ${repair.scan_round}`);
+      lines.push(`- 处理的问题: ${repair.selected_finding_ids.join(", ") || "无"}`);
+      lines.push(`- 处理方式: ${repair.strategy}`);
+      lines.push(`- 应用结果: ${repair.apply_status}`);
+      lines.push(`- 复扫结果: ${repair.post_scan_status}`);
+      lines.push(`- 剩余问题: ${repair.remaining_findings}`);
+      if (repair.files_changed.length > 0) {
+        lines.push(`- 修改文件: ${repair.files_changed.join(", ")}`);
       }
       lines.push("");
     }

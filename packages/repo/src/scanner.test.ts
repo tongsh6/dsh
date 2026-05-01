@@ -5,12 +5,6 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { detectTechStack } from "./scanner.js";
 
-function mkdir(...parts: string[]): string {
-  const p = path.join(...parts);
-  fs.mkdirSync(p, { recursive: true });
-  return p;
-}
-
 function touch(filePath: string, content: string = ""): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content, "utf-8");

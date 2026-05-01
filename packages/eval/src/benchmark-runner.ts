@@ -143,15 +143,6 @@ export function formatComparisonReport(report: ComparisonReport): string {
 
 // ---- Git helpers (internal) ----
 
-function git(cwd: string, args: string): string {
-  return execSync(`git ${args}`, {
-    cwd,
-    encoding: "utf-8",
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: 10_000,
-  }).trim();
-}
-
 function gitQuiet(cwd: string, args: string): void {
   try {
     execSync(`git ${args}`, {

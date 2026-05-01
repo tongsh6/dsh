@@ -13,6 +13,26 @@ interface CategorizedChanges {
   deleted: string[];
 }
 
+interface StaticScanSummary {
+  round: number;
+  status: "passed" | "failed";
+  total_findings: number;
+  selected_top_n: unknown[];
+}
+
+interface StaticRepairSummary {
+  scan_round: number;
+  post_scan_round?: number;
+  apply_status: "ok" | "failed" | "skipped";
+  post_scan_status: "passed" | "failed" | "skipped";
+  remaining_findings: number;
+}
+
+interface StaticScanState {
+  static_scan_runs?: StaticScanSummary[];
+  static_repair_results?: StaticRepairSummary[];
+}
+
 function categorizeChanges(patchText: string): CategorizedChanges {
   const created: string[] = [];
   const renamed: string[] = [];
@@ -87,5 +107,15 @@ export async function patchCommand(opts: PatchOptions): Promise<void> {
 
   const changes = categorizeChanges(lastPatch?.patch ?? "");
   console.log(`✓ ${formatChangeSummary(changes)}`);
+  const scanState = state as StaticScanState;
+  const latestScan = scanState.static_scan_runs?.at(-1);
+  if (latestScan) {
+    const selected = latestScan.selected_top_n.length;
+    console.log(`✓ 静态扫描: ${latestScan.status}，发现 ${latestScan.total_findings} 个问题，Top N ${selected} 个`);
+    const latestRepair = scanState.static_repair_results?.at(-1);
+    if (latestRepair?.scan_round === latestScan.round || latestRepair?.post_scan_round === latestScan.round) {
+      console.log(`✓ Top N 修复: ${latestRepair.apply_status}，复扫 ${latestRepair.post_scan_status}，剩余 ${latestRepair.remaining_findings} 个`);
+    }
+  }
   console.log("→ 下一步: dsh verify");
 }

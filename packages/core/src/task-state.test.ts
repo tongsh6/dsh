@@ -11,7 +11,6 @@ import {
   canTransition,
   taskStateSchema,
 } from "./task-state.js";
-import type { TaskStatus } from "./task-state.js";
 
 describe("canTransition", () => {
   it("allows init -> planned", () => {

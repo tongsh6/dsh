@@ -149,12 +149,6 @@ export function detectVerifyCommands(
 
   if (stack.language === "typescript" || stack.language === "javascript") {
     const scripts = pkg?.scripts ?? {};
-    const pm = stack.packageManager === "yarn"
-      ? "yarn"
-      : stack.packageManager === "pnpm"
-      ? "pnpm"
-      : "npm";
-
     return {
       test: findScript(scripts, ["test", "jest", "vitest", "mocha"]),
       lint: findScript(scripts, ["lint", "eslint"]),
@@ -208,7 +202,7 @@ export function generateRepoContext(
 
 // ---- helpers ----
 
-function listFiles(cwd: string, depth: number): Set<string> {
+function listFiles(cwd: string, _depth: number): Set<string> {
   const result = new Set<string>();
   try {
     for (const entry of fs.readdirSync(cwd, { withFileTypes: true })) {
@@ -277,7 +271,6 @@ function findScript(
   if (!scripts) return null;
   for (const name of candidates) {
     if (typeof scripts[name] === "string") {
-      const pm = process.env["npm_command"] ?? "";
       return scripts[name] as string;
     }
   }
