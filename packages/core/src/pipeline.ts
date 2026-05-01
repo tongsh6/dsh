@@ -318,13 +318,19 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
       retryHintParts.push("<REPLACE>replacement text</REPLACE>");
       retryHintParts.push("</PATCH>");
     } else {
-      retryHintParts.push("The unified diff format failed to parse. Use <PATCH type=\"search\" file=\"path\"> with XML sub-tags instead:");
+      retryHintParts.push("The unified diff format failed to parse. Use <INSERT> or <PATCH type=\"search\"> instead:");
+      retryHintParts.push("");
+      retryHintParts.push("For ADDING new content (recommended):");
+      retryHintParts.push("<INSERT position=\"before\" anchor=\"a unique heading or phrase\" file=\"path/to/file\">");
+      retryHintParts.push("new content to insert");
+      retryHintParts.push("</INSERT>");
+      retryHintParts.push("The anchor is any text that EXISTS in the file — just name it, don't copy it exactly.");
+      retryHintParts.push("");
+      retryHintParts.push("For REPLACING existing text:");
       retryHintParts.push("<PATCH type=\"search\" file=\"path/to/file\">");
-      retryHintParts.push("<SEARCH>exact code copied from the file content</SEARCH>");
+      retryHintParts.push("<SEARCH>exact code from the file content</SEARCH>");
       retryHintParts.push("<REPLACE>replacement code</REPLACE>");
       retryHintParts.push("</PATCH>");
-      retryHintParts.push("");
-      retryHintParts.push("Copy the EXACT text from the file content into <SEARCH> — whitespace, indentation, everything must match.");
     }
     }
     if (hints) {
