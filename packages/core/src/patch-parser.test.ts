@@ -1209,3 +1209,68 @@ describe("applyChanges with Search/Replace", () => {
     }
   });
 });
+
+describe("applyChanges safety checks", () => {
+  it("rejects CREATE when file already exists", () => {
+    const tmp = fs.mkdtempSync("dsh-create-exists-test-");
+    try {
+      fs.writeFileSync(`${tmp}/existing.ts`, "original content", "utf-8");
+      const changes = {
+        creates: [{ path: "existing.ts", content: "new content" }],
+        renames: [] as any[],
+        patchText: null,
+        patchFiles: [] as string[],
+        hunks: [] as any[],
+        deletePaths: [] as string[],
+        searchReplaceBlocks: [] as any[],
+      };
+      const result = applyChanges(tmp, changes as any, false);
+      assert.ok(!result.success);
+      assert.ok(result.error?.includes("already exists"));
+      const content = fs.readFileSync(`${tmp}/existing.ts`, "utf-8");
+      assert.equal(content, "original content");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("parseChanges conflict detection", () => {
+  it("throws when CREATE and DELETE target same file", () => {
+    const response = `<CREATE path="foo.ts">content</CREATE>\n<DELETE path="foo.ts" />`;
+    assert.throws(
+      () => parseChanges(response),
+      /CREATE and DELETE target same file/,
+    );
+  });
+
+  it("throws when CREATE and SEARCH/REPLACE target same file", () => {
+    const response = `<CREATE path="foo.ts">content</CREATE>
+<PATCH type="search" file="foo.ts">
+<<<<<<< SEARCH
+old
+=======
+new
+>>>>>>> REPLACE
+</PATCH>`;
+    assert.throws(
+      () => parseChanges(response),
+      /CREATE and SEARCH\/REPLACE target same file/,
+    );
+  });
+
+  it("throws when DELETE and SEARCH/REPLACE target same file", () => {
+    const response = `<DELETE path="foo.ts" />
+<PATCH type="search" file="foo.ts">
+<<<<<<< SEARCH
+old
+=======
+new
+>>>>>>> REPLACE
+</PATCH>`;
+    assert.throws(
+      () => parseChanges(response),
+      /DELETE and SEARCH\/REPLACE target same file/,
+    );
+  });
+});

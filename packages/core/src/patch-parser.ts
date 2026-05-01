@@ -194,6 +194,15 @@ export function applyCreates(
       };
     }
 
+    // CREATE is for NEW files only — reject if file already exists
+    if (fs.existsSync(absPath)) {
+      return {
+        success: false,
+        files: createdFiles,
+        error: `CREATE rejected: ${block.path} already exists. Use <PATCH> or <PATCH type="search"> to modify existing files.`,
+      };
+    }
+
     if (!dryRun) {
       try {
         fs.mkdirSync(path.dirname(absPath), { recursive: true });
@@ -417,8 +426,6 @@ export function parseChanges(response: string): ParsedChanges {
   }
 
   // Detect RENAME conflicts: RENAME from/to should not overlap with other operations
-  const renameFromSet = new Set(renames.map((r) => r.from));
-  const renameToSet = new Set(renames.map((r) => r.to));
   const createPaths = new Set(creates.map((c) => c.path));
   const deletePathSet = new Set(deletePaths);
 
@@ -441,6 +448,32 @@ export function parseChanges(response: string): ParsedChanges {
     if (patchFiles.includes(r.to)) {
       throw new PatchParseError(
         `RENAME destination conflicts with PATCH: ${r.to}`,
+      );
+    }
+  }
+
+  // Detect CREATE+DELETE same file conflicts
+  for (const c of creates) {
+    if (deletePathSet.has(c.path)) {
+      throw new PatchParseError(
+        `CREATE and DELETE target same file: ${c.path}. Use only one operation per file.`,
+      );
+    }
+  }
+
+  // Detect Search/Replace conflicts with CREATE and DELETE
+  const srPaths = new Set(searchReplaceBlocks.map((s) => s.filePath));
+  for (const c of creates) {
+    if (srPaths.has(c.path)) {
+      throw new PatchParseError(
+        `CREATE and SEARCH/REPLACE target same file: ${c.path}. Use only one operation per file.`,
+      );
+    }
+  }
+  for (const dp of deletePaths) {
+    if (srPaths.has(dp)) {
+      throw new PatchParseError(
+        `DELETE and SEARCH/REPLACE target same file: ${dp}. Use only one operation per file.`,
       );
     }
   }
@@ -608,8 +641,6 @@ export function validateDiff(patchText: string): { valid: boolean; errors: strin
 
 export function parseHunks(patchText: string): HunkInfo[] {
   const hunks: HunkInfo[] = [];
-  const hunkRegex = /^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@/gm;
-  const fileRegex = /^---\s+a\/(.+)$/gm;
 
   // Find file before each hunk
   let currentFile = "";
