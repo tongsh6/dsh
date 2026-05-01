@@ -1,0 +1,30 @@
+id: dsh-refactor-config
+description: "将 CLI 中的 readConfig 工具函数移到 repo 包中"
+category: refactor
+taskPrompt: |
+  当前 packages/cli/src/utils/config.ts 中有一个 readConfig 函数，它读取 .dsh/config.yml 并解析为 Record<string, unknown>。
+  同时 packages/core/src/pipeline.ts 中有一个功能几乎相同的 readLocalConfig / readLocalConfigStrict 函数。
+
+  请：
+  1. 将 readConfig 的逻辑统一移到 packages/repo/src/ 中，新建 config-loader.ts
+  2. 导出为 loadDshConfig(cwd: string): Record<string, unknown>
+  3. 更新 cli/src/utils/config.ts 改为 re-export
+  4. 更新 pipeline.ts 中的 readLocalConfig/readLocalConfigStrict 改为使用新函数
+
+  相关文件：
+  - packages/repo/src/config-loader.ts (新建)
+  - packages/cli/src/utils/config.ts
+  - packages/core/src/pipeline.ts
+expectedFiles:
+  - packages/repo/src/config-loader.ts
+  - packages/cli/src/utils/config.ts
+  - packages/core/src/pipeline.ts
+expectPass: true
+verificationCommands:
+  - "pnpm -r run typecheck"
+  - "pnpm -r run test"
+architectureRules:
+  - 不改变 config.yml 的结构和解析方式
+  - 保持向后兼容，现有测试必须通过
+  - config-loader.ts 只放 config 读取逻辑，不混入 rule 加载
+maxRepairRounds: 2

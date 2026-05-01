@@ -1,0 +1,28 @@
+id: dsh-bugfix-scanner-ts
+description: "改进 scanner 对 pnpm workspace TypeScript 项目的检测"
+category: bugfix
+taskPrompt: |
+  packages/repo/src/scanner.ts 的 detectTechStack 函数在检测 TypeScript 项目时的当前逻辑：
+  1. 检查根目录的 package.json，看 devDependencies 或 dependencies 是否包含 "typescript"
+  2. 如果没有找到，返回 { language: "unknown" }
+
+  问题：对于 pnpm workspace 项目（如 dsh 自身），根 package.json 通常只包含 workspace 脚本配置，
+  而 typescript 依赖在 tsconfig.base.json 中有引用但在根 package.json 中可能不存在。
+
+  请改进 detectTechStack：
+  1. 如果根 package.json 没有 typescript 依赖，继续检查是否存在 tsconfig.json 或 tsconfig.base.json
+  2. 如果存在 tsconfig*.json 或任何 .ts/.tsx 文件在 src/ 目录中，也识别为 TypeScript 项目
+  3. 添加对应的单元测试
+
+  相关文件：packages/repo/src/scanner.ts, packages/repo/src/scanner.test.ts
+expectedFiles:
+  - packages/repo/src/scanner.ts
+  - packages/repo/src/scanner.test.ts
+expectPass: true
+verificationCommands:
+  - "pnpm --filter @dsh/repo test"
+architectureRules:
+  - 不改变 detectTechStack 的函数签名和返回值类型
+  - 保持对现有项目类型（Python/Go）的检测逻辑不变
+  - 新增检测方法放在现有逻辑之后，作为 fallback
+maxRepairRounds: 2
