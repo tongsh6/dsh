@@ -357,8 +357,18 @@ export function applySearchReplace(
     // Try exact match first, then lenient matching
     let newContent: string | null = null;
 
+    // Level 0: case-insensitive exact match (handles ML-made-up casing)
+    if (newContent === null) {
+      const lowerContent = content.toLowerCase();
+      const lowerSearch = block.search.toLowerCase();
+      const idx = lowerContent.indexOf(lowerSearch);
+      if (idx >= 0) {
+        newContent = content.slice(0, idx) + block.replace + content.slice(idx + block.search.length);
+      }
+    }
+
     // Level 1: exact match
-    if (content.includes(block.search)) {
+    if (newContent === null && content.includes(block.search)) {
       newContent = content.replace(block.search, block.replace);
     }
 
@@ -418,6 +428,8 @@ export function applySearchReplace(
     }
 
     if (newContent === null) {
+      const debugInfo = `SEARCH length=${block.search.length}, file=${block.filePath} size=${content.length}, search preview="${block.search.slice(0, 120).replace(/\n/g, '\\n')}"`;
+      console.error("[DEBUG] Search block not found:", debugInfo);
       return {
         success: false,
         files: changedFiles,

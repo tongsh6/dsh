@@ -288,14 +288,33 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
     if (isSearchMismatch) {
       retryHintParts.push("SEARCH TEXT MISMATCH — the <SEARCH> block did not match any text in the file.");
       retryHintParts.push("");
-      retryHintParts.push("You MUST copy the EXACT text from the file content in your context into the <SEARCH> block.");
-      retryHintParts.push("- Every space, tab, newline, and character must be identical");
-      retryHintParts.push("- Copy a LARGER surrounding block — more context = more unique match");
-      retryHintParts.push("- Pick text that appears ONLY ONCE in the file");
-      retryHintParts.push("- Do NOT retype the text — copy-paste it character-for-character from the context");
+      retryHintParts.push("Here is the ACTUAL file content. COPY text DIRECTLY from here into <SEARCH>:");
+
+      // Read the target file(s) and include their content
+      const targetFiles = state.plan?.files ?? [];
+      for (const f of targetFiles) {
+        try {
+          const fileContent = fs.readFileSync(path.join(cwd, f), "utf-8");
+          // Include first 3000 chars — enough to find good anchor text
+          const snippet = fileContent.length > 3000
+            ? fileContent.slice(0, 3000) + "\n... (truncated, total " + fileContent.length + " chars)"
+            : fileContent;
+          retryHintParts.push("");
+          retryHintParts.push("=== " + f + " (ACTUAL FILE CONTENT) ===");
+          retryHintParts.push(snippet);
+          retryHintParts.push("=== END " + f + " ===");
+        } catch {
+          // file not readable, skip
+        }
+      }
+
       retryHintParts.push("");
-      retryHintParts.push("Format: <PATCH type=\"search\" file=\"tools/README.md\">");
-      retryHintParts.push("<SEARCH>exact text from file — copy from context above</SEARCH>");
+      retryHintParts.push("Find the exact text you want to replace in the content above.");
+      retryHintParts.push("COPY-PASTE it character-for-character into <SEARCH>.");
+      retryHintParts.push("");
+      retryHintParts.push("Format:");
+      retryHintParts.push("<PATCH type=\"search\" file=\"path/to/file\">");
+      retryHintParts.push("<SEARCH>exact text copied from the file content above</SEARCH>");
       retryHintParts.push("<REPLACE>replacement text</REPLACE>");
       retryHintParts.push("</PATCH>");
     } else {
