@@ -96,10 +96,21 @@ Use the correct operation block for each file:
 ### DELETE — for removing files
 <DELETE path="path/to/deprecated/file.ts" />
 
-## CRITICAL: CREATE vs PATCH
+### SEARCH/REPLACE — fallback when unified diff is too complex
+Use this format when the diff is hard to get right (e.g., large blocks, complex indentation changes):
+<PATCH type="search" file="path/to/file.ts">
+<<<<<<< SEARCH
+exact code to find in the file (copy-paste from context)
+=======
+replacement code
+>>>>>>> REPLACE
+</PATCH>
+
+## CRITICAL: CREATE vs PATCH vs SEARCH/REPLACE
 
 - Use <CREATE> ONLY for files that DO NOT already exist in the repo
-- Use <PATCH> ONLY for files that ALREADY exist
+- Use <PATCH> (unified diff) ONLY for files that ALREADY exist — this is the PRIMARY method
+- Use <PATCH type="search"> ONLY as fallback when unified diff failed in a previous attempt
 - NEVER use both <CREATE> and <PATCH> for the same file path
 - NEVER use /dev/null in PATCH headers — use <CREATE> instead
 - <CREATE> blocks contain RAW FILE CONTENT — no diff formatting whatsoever
@@ -130,6 +141,7 @@ command2
 11. NEVER delete existing imports, functions, or code blocks — only add or modify what is necessary
 12. CREATE paths MUST be relative to project root — no ../ or absolute paths
 13. CREATE blocks MUST NOT be empty — every new file needs content
+14. When using <PATCH type="search">, copy the SEARCH block EXACTLY from the file content in the context — whitespace must match perfectly
 
 ## Context Layers
 

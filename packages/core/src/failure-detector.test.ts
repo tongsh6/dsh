@@ -262,6 +262,33 @@ describe("detectFailures", () => {
     });
   });
 
+  it("detects search-replace mismatch", () => {
+    const detections = detectFailures({
+      response: "",
+      planFiles: [],
+      actualChangedFiles: [],
+      verifyOutput: null,
+      patchApplyError: "Search block not found in src/utils.ts",
+    });
+    const hasSearchMismatch = detections.some((d) => d.mode === "search-replace-mismatch");
+    assert.ok(hasSearchMismatch);
+    const detection = detections.find((d) => d.mode === "search-replace-mismatch")!;
+    assert.equal(detection.confidence, "high");
+    assert.ok(detection.repairHint.includes("SEARCH block did not match"));
+  });
+
+  it("does not flag on unrelated apply errors", () => {
+    const detections = detectFailures({
+      response: "",
+      planFiles: [],
+      actualChangedFiles: [],
+      verifyOutput: null,
+      patchApplyError: "Failed to apply patch to src/utils.ts",
+    });
+    const hasSearchMismatch = detections.some((d) => d.mode === "search-replace-mismatch");
+    assert.ok(!hasSearchMismatch);
+  });
+
   describe("multiple failure modes", () => {
     it("detects multiple modes simultaneously", () => {
       const params: DetectParams = {

@@ -72,6 +72,7 @@ export async function runRepairLoop(
       "5. ONLY fix the specific error in the verify output. Do not make additional improvements.",
       "6. If the original patch was wrong, revert to the original code and try a different minimal approach.",
       "7. Preserve ALL existing code that is not related to the error. Every deleted line must be justified by the verify failure output.",
+      "8. If unified diff failed to apply in the previous round, use <PATCH type=\"search\" file=\"path\"> with SEARCH/REPLACE blocks instead. Copy the SEARCH block EXACTLY from the file content — this avoids line-number errors.",
     ].join("\n");
 
     const taskDescription = [

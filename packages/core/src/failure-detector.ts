@@ -213,6 +213,27 @@ function detectHallucinatedApi(params: DetectParams): FailureDetection | null {
   return null;
 }
 
+function detectSearchReplaceMismatch(params: DetectParams): FailureDetection | null {
+  if (params.patchApplyError?.includes("Search block not found")) {
+    return {
+      mode: "search-replace-mismatch",
+      description: "SEARCH block does not match actual file content",
+      confidence: "high",
+      evidence: params.patchApplyError,
+      repairHint: [
+        "SEARCH block did not match the actual file content.",
+        "1. Read the current file content from the Task Context",
+        "2. Copy the EXACT section you want to replace — whitespace, indentation, and blank lines must match",
+        "3. Use the EXACT same text in your SEARCH block as it appears in the file",
+        "4. If the file has changed since the context was generated, read it again",
+        "",
+        "The exact error was: " + params.patchApplyError,
+      ].join("\n"),
+    };
+  }
+  return null;
+}
+
 // ---- Main ----
 
 const DETECTORS = [
@@ -221,6 +242,7 @@ const DETECTORS = [
   detectScopeCreep,
   detectRuleBlindness,
   detectHallucinatedApi,
+  detectSearchReplaceMismatch,
 ];
 
 export function detectFailures(params: DetectParams): FailureDetection[] {
