@@ -37,6 +37,7 @@ export interface InsertBlock {
   anchor: string;
   position: "before" | "after";
   content: string;
+  fromFile?: string;  // if set, read content from this file instead
 }
 
 export interface ParsedChanges {
@@ -154,18 +155,20 @@ export function extractSearchReplaceBlocks(response: string): SearchReplaceBlock
  */
 export function extractInsertBlocks(response: string): InsertBlock[] {
   const blocks: InsertBlock[] = [];
-  const blockRegex = /<INSERT\s+position="(before|after)"\s+anchor="([^"]*)"\s+file="([^"]+)"\s*>([\s\S]*?)<\/INSERT>/g;
+  // Match both inline and from-file INSERT blocks
+  const blockRegex = /<INSERT\s+position="(before|after)"\s+anchor="([^"]*)"\s+file="([^"]+)"(?:\s+from="([^"]+)")?\s*>([\s\S]*?)<\/INSERT>/g;
   let match: RegExpExecArray | null;
 
   while ((match = blockRegex.exec(response)) !== null) {
     const position = (match[1] ?? "before") as "before" | "after";
     const anchor = match[2] ?? "";
     const filePath = match[3]?.trim() ?? "";
-    const content = match[4] ?? "";
+    const fromFile = match[4]?.trim() || undefined;
+    const content = match[5] ?? "";
 
     if (!filePath || !anchor.trim()) continue;
 
-    blocks.push({ filePath, anchor, position, content });
+    blocks.push({ filePath, anchor, position, content, fromFile });
   }
 
   return blocks;
@@ -183,6 +186,19 @@ export function applyInserts(
 
     if (path.isAbsolute(block.filePath) || block.filePath.includes("..")) {
       return { success: false, files: changedFiles, error: `Unsafe path rejected: ${block.filePath}` };
+    }
+
+    // Resolve insert content: from fromFile if specified, otherwise inline
+    let insertContent = block.content;
+    if (block.fromFile) {
+      const fromPath = path.join(cwd, block.fromFile);
+      try {
+        insertContent = fs.readFileSync(fromPath, "utf-8");
+        // Clean up the temp file after reading
+        try { fs.unlinkSync(fromPath); } catch { /* best effort */ }
+      } catch {
+        return { success: false, files: changedFiles, error: `Cannot read from file: ${block.fromFile}` };
+      }
     }
 
     let content: string;
@@ -212,8 +228,8 @@ export function applyInserts(
 
     const newContent = content.slice(0, insertionPoint) +
       (insertionPoint > 0 && !content.slice(insertionPoint - 1, insertionPoint).match(/\n/) ? "" : "") +
-      block.content +
-      (block.content.endsWith("\n") ? "" : "\n") +
+      insertContent +
+      (insertContent.endsWith("\n") ? "" : "\n") +
       (block.position === "before" ? "\n" : "") +
       content.slice(insertionPoint);
 

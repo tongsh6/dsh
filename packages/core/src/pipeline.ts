@@ -316,18 +316,21 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
       }
 
       retryHintParts.push("");
-      retryHintParts.push("Pick ONE anchor from the list above. Use it EXACTLY AS SHOWN.");
+      retryHintParts.push("=== SIMPLE APPROACH: Write new content to a temp file ===");
+      retryHintParts.push("Don't try to edit the large file. Instead, use CREATE to write your new content to a temp file.");
+      retryHintParts.push("The system will handle inserting it at the right place.");
       retryHintParts.push("");
-      retryHintParts.push("Use INSERT format for adding new content:");
-      retryHintParts.push("<INSERT position=\"before\" anchor=\"exact heading from the list\" file=\"path/to/file\">");
-      retryHintParts.push("your new content here");
-      retryHintParts.push("</INSERT>");
+      retryHintParts.push("Step 1 — write the new section to a temp file:");
+      retryHintParts.push("<CREATE path=\"tools/README-new-section.md\">");
+      retryHintParts.push("## 架构检查与门禁");
       retryHintParts.push("");
-      retryHintParts.push("Or use SEARCH/REPLACE format for replacing existing text:");
-      retryHintParts.push("<PATCH type=\"search\" file=\"path/to/file\">");
-      retryHintParts.push("<SEARCH>exact text copied from the anchors above</SEARCH>");
-      retryHintParts.push("<REPLACE>replacement text</REPLACE>");
-      retryHintParts.push("</PATCH>");
+      retryHintParts.push("... your documentation content ...");
+      retryHintParts.push("</CREATE>");
+      retryHintParts.push("");
+      retryHintParts.push("Step 2 — tell the system where to insert it (pick from the anchors list above):");
+      retryHintParts.push("<INSERT position=\"before\" anchor=\"pick from anchor list\" file=\"tools/README.md\" from=\"tools/README-new-section.md\" />");
+      retryHintParts.push("");
+      retryHintParts.push("The system will read the temp file and insert its content at the anchor position.");
     } else {
       retryHintParts.push("The unified diff format failed to parse. Use <INSERT> or <PATCH type=\"search\"> instead:");
       retryHintParts.push("");
