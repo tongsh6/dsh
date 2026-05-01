@@ -256,7 +256,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   try {
     changes = parseChanges(content);
   } catch (parseErr) {
-    changes = { creates: [], renames: [], patchText: null, patchFiles: [], hunks: [], deletePaths: [], searchReplaceBlocks: [] };
+    changes = { creates: [], renames: [], patchText: null, patchFiles: [], hunks: [], deletePaths: [], searchReplaceBlocks: [], insertBlocks: [] };
     applyResult = { success: false, createdFiles: [], renamedFiles: [], patchedFiles: [], deletedFiles: [], error: parseErr instanceof Error ? parseErr.message : "parse failed" };
   }
   applyResult ??= applyChanges(cwd, changes, false);

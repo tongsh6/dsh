@@ -32,6 +32,13 @@ export interface RenameBlock {
   to: string;
 }
 
+export interface InsertBlock {
+  filePath: string;
+  anchor: string;
+  position: "before" | "after";
+  content: string;
+}
+
 export interface ParsedChanges {
   creates: CreateBlock[];
   renames: RenameBlock[];
@@ -40,6 +47,7 @@ export interface ParsedChanges {
   hunks: HunkInfo[];
   deletePaths: string[];
   searchReplaceBlocks: SearchReplaceBlock[];
+  insertBlocks: InsertBlock[];
 }
 
 export interface ApplyChangesResult {
@@ -133,6 +141,90 @@ export function extractSearchReplaceBlocks(response: string): SearchReplaceBlock
   }
 
   return blocks;
+}
+
+/**
+ * Extract INSERT blocks from response.
+ * Format: <INSERT position="before|after" anchor="anchor text" file="path/to/file">
+ * content to insert
+ * </INSERT>
+ *
+ * INSERT is designed for DeepSeek's strengths: identifying anchors
+ * without needing to reproduce exact text from the file.
+ */
+export function extractInsertBlocks(response: string): InsertBlock[] {
+  const blocks: InsertBlock[] = [];
+  const blockRegex = /<INSERT\s+position="(before|after)"\s+anchor="([^"]*)"\s+file="([^"]+)"\s*>([\s\S]*?)<\/INSERT>/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = blockRegex.exec(response)) !== null) {
+    const position = (match[1] ?? "before") as "before" | "after";
+    const anchor = match[2] ?? "";
+    const filePath = match[3]?.trim() ?? "";
+    const content = match[4] ?? "";
+
+    if (!filePath || !anchor.trim()) continue;
+
+    blocks.push({ filePath, anchor, position, content });
+  }
+
+  return blocks;
+}
+
+export function applyInserts(
+  cwd: string,
+  blocks: InsertBlock[],
+  dryRun: boolean = false,
+): { success: boolean; files: string[]; error?: string } {
+  const changedFiles: string[] = [];
+
+  for (const block of blocks) {
+    const absPath = path.join(cwd, block.filePath);
+
+    if (path.isAbsolute(block.filePath) || block.filePath.includes("..")) {
+      return { success: false, files: changedFiles, error: `Unsafe path rejected: ${block.filePath}` };
+    }
+
+    let content: string;
+    try {
+      content = fs.readFileSync(absPath, "utf-8");
+    } catch {
+      return { success: false, files: changedFiles, error: `Cannot read ${block.filePath}` };
+    }
+
+    // Find the anchor (case-insensitive, anywhere in file)
+    const lowerContent = content.toLowerCase();
+    const lowerAnchor = block.anchor.toLowerCase();
+    const anchorIdx = lowerContent.indexOf(lowerAnchor);
+
+    if (anchorIdx < 0) {
+      return {
+        success: false,
+        files: changedFiles,
+        error: `INSERT anchor "${block.anchor}" not found in ${block.filePath}`,
+      };
+    }
+
+    // Find the start of the line containing the anchor
+    const lineStart = content.lastIndexOf("\n", anchorIdx) + 1;
+    const lineEnd = content.indexOf("\n", anchorIdx);
+    const insertionPoint = block.position === "before" ? lineStart : (lineEnd >= 0 ? lineEnd + 1 : content.length);
+
+    const newContent = content.slice(0, insertionPoint) +
+      (insertionPoint > 0 && !content.slice(insertionPoint - 1, insertionPoint).match(/\n/) ? "" : "") +
+      block.content +
+      (block.content.endsWith("\n") ? "" : "\n") +
+      (block.position === "before" ? "\n" : "") +
+      content.slice(insertionPoint);
+
+    if (!dryRun) {
+      fs.writeFileSync(absPath, newContent, "utf-8");
+    }
+
+    changedFiles.push(block.filePath);
+  }
+
+  return { success: true, files: changedFiles };
 }
 
 // ---- Path validation ----
@@ -489,6 +581,7 @@ export function parseChanges(response: string): ParsedChanges {
   const patchText = extractPatchBlock(response);
   const deletePaths = extractDeleteBlocks(response);
   const searchReplaceBlocks = extractSearchReplaceBlocks(response);
+  const insertBlocks = extractInsertBlocks(response);
 
   // Validate CREATE paths
   const pathValidation = validateCreatePaths(creates);
@@ -590,9 +683,9 @@ export function parseChanges(response: string): ParsedChanges {
   }
 
   // Validate that at least one operation block is present
-  if (creates.length === 0 && renames.length === 0 && !patchText && deletePaths.length === 0 && searchReplaceBlocks.length === 0) {
+  if (creates.length === 0 && renames.length === 0 && !patchText && deletePaths.length === 0 && searchReplaceBlocks.length === 0 && insertBlocks.length === 0) {
     throw new PatchParseError(
-      "No <CREATE>, <RENAME>, <PATCH>, <DELETE>, or <PATCH type=\"search\"> blocks found in response",
+      "No <CREATE>, <RENAME>, <PATCH>, <DELETE>, <PATCH type=\"search\">, or <INSERT> blocks found in response",
     );
   }
 
@@ -611,6 +704,7 @@ export function parseChanges(response: string): ParsedChanges {
     hunks,
     deletePaths,
     searchReplaceBlocks,
+    insertBlocks,
   };
 }
 
@@ -649,6 +743,15 @@ export function applyChanges(
       return { success: false, createdFiles, renamedFiles, patchedFiles, deletedFiles, error: result.error };
     }
     deletedFiles.push(...result.files);
+  }
+
+  // Apply INSERT blocks (before SEARCH/REPLACE and PATCH)
+  if (changes.insertBlocks.length > 0) {
+    const result = applyInserts(cwd, changes.insertBlocks, dryRun);
+    if (!result.success) {
+      return { success: false, createdFiles, renamedFiles, patchedFiles, deletedFiles, error: result.error };
+    }
+    patchedFiles.push(...result.files);
   }
 
   // Apply Search/Replace blocks (before diff PATCH for predictability)

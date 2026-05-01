@@ -96,8 +96,13 @@ Use the correct operation block for each file:
 ### DELETE — for removing files
 <DELETE path="path/to/deprecated/file.ts" />
 
-### SEARCH/REPLACE — for MODIFYING existing files (exact string match)
-Use this format when you need to replace a specific block of text — especially for large files where line numbers are unreliable:
+### INSERT — for ADDING content to existing files (recommended for large files)
+Use this when you need to insert new sections, functions, or documentation into an existing file. You only need to name a nearby heading or unique phrase as the anchor:
+<INSERT position="before" anchor="## CI 校验" file="tools/README.md">
+new content to insert here
+</INSERT>
+
+### SEARCH/REPLACE — for REPLACING specific text in existing files
 <PATCH type="search" file="path/to/file.ts">
 <SEARCH>exact code to find — copy-paste from the file content in your context</SEARCH>
 <REPLACE>replacement code</REPLACE>
@@ -138,7 +143,8 @@ command2
 11. NEVER delete existing imports, functions, or code blocks — only add or modify what is necessary
 12. CREATE paths MUST be relative to project root — no ../ or absolute paths
 13. CREATE blocks MUST NOT be empty — every new file needs content
-14. When using <PATCH type="search">, wrap the original text in <SEARCH>...</SEARCH> and the replacement in <REPLACE>...</REPLACE>. Copy the SEARCH text EXACTLY from file content — whitespace must match perfectly
+14. When using <PATCH type="search">, wrap the original text in <SEARCH>...</SEARCH> and the replacement in <REPLACE>...</REPLACE>
+15. When using <INSERT>, pick an anchor text that definitely EXISTS in the file (like a section heading). The anchor is case-insensitive — just write the heading name
 
 ## Context Layers
 

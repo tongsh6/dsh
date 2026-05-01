@@ -590,6 +590,7 @@ describe("applyChanges", () => {
         hunks: [],
         deletePaths: [],
         searchReplaceBlocks: [],
+        insertBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -614,6 +615,7 @@ describe("applyChanges", () => {
         hunks: [],
         deletePaths: [],
         searchReplaceBlocks: [],
+        insertBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -637,6 +639,7 @@ describe("applyChanges", () => {
         hunks: [],
         deletePaths: [],
         searchReplaceBlocks: [],
+        insertBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -658,6 +661,7 @@ describe("applyChanges", () => {
         hunks: [],
         deletePaths: [],
         searchReplaceBlocks: [],
+        insertBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -680,6 +684,7 @@ describe("applyChanges", () => {
         hunks: [],
         deletePaths: [],
         searchReplaceBlocks: [],
+        insertBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, true);
@@ -840,6 +845,7 @@ describe("applyChanges with DELETE", () => {
         hunks: [],
         deletePaths: ["remove-me.ts"],
         searchReplaceBlocks: [],
+        insertBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -868,6 +874,7 @@ describe("applyChanges with DELETE", () => {
         hunks: [],
         deletePaths: ["old.ts"],
         searchReplaceBlocks: [],
+        insertBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -890,6 +897,7 @@ describe("applyChanges with DELETE", () => {
         hunks: [],
         deletePaths: ["../escape.sh"],
         searchReplaceBlocks: [],
+        insertBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -1074,6 +1082,7 @@ describe("applyChanges with RENAME", () => {
         hunks: [],
         deletePaths: [],
         searchReplaceBlocks: [],
+        insertBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -1193,6 +1202,7 @@ describe("applyChanges with Search/Replace", () => {
         hunks: [],
         deletePaths: [],
         searchReplaceBlocks: extractSearchReplaceBlocks(SEARCH_REPLACE_RESPONSE),
+        insertBlocks: [],
       };
 
       const result = applyChanges(tmp, changes, false);
@@ -1220,6 +1230,7 @@ describe("applyChanges safety checks", () => {
         hunks: [] as any[],
         deletePaths: [] as string[],
         searchReplaceBlocks: [] as any[],
+        insertBlocks: [] as any[],
       };
       const result = applyChanges(tmp, changes as any, false);
       assert.ok(!result.success);

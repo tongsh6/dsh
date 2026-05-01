@@ -6,7 +6,15 @@ export {
   canTransition,
   taskStateSchema,
 } from "./task-state.js";
-export type { TaskState, TaskStatus, VerifyResult, PatchRecord } from "./task-state.js";
+export type {
+  TaskState,
+  TaskStatus,
+  VerifyResult,
+  PatchRecord,
+  StaticScanFinding,
+  StaticScanRun,
+  StaticRepairResult,
+} from "./task-state.js";
 
 export {
   buildBaseContext,
@@ -45,6 +53,8 @@ export {
   applyCreates,
   applyDeletes,
   applySearchReplace,
+  extractInsertBlocks,
+  applyInserts,
   applyPatch,
   applyChanges,
   PatchParseError,
@@ -54,6 +64,7 @@ export type {
   HunkInfo,
   CreateBlock,
   SearchReplaceBlock,
+  InsertBlock,
   RenameBlock,
   ParsedChanges,
   ApplyChangesResult,
@@ -72,6 +83,14 @@ export type { RepairConfig, RepairRoundResult } from "./repair-loop.js";
 
 export { detectFailures, buildRepairHints } from "./failure-detector.js";
 export type { FailureDetection, DetectParams } from "./failure-detector.js";
+
+export {
+  parseStaticScanFindings,
+  repairStaticScanTopN,
+  resolveStaticScanConfig,
+  runStaticScan,
+} from "./static-scanner.js";
+export type { StaticScanConfig, StaticScanResult } from "./static-scanner.js";
 
 export { writeHandoff } from "./handoff-writer.js";
 
