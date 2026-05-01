@@ -1,0 +1,106 @@
+Loaded 5 fixtures:
+  - pi-bugfix-count-defs: bugfix
+  - pi-docs-check-tools: docs
+  - pi-refactor-read-text: refactor
+  - pi-test-aief-l3: test
+  - pi-test-error-handler: test
+
+Repo: /tmp/pi-proof-forge
+
+DeepSeek API call took 79s (model: deepseek-v4-pro, attempt: 1/2)
+# DSH Evaluation Report
+
+## Overview
+
+| Metric | Value |
+|--------|-------|
+| Task completion rate | 4/5 (80%) |
+| Average score | 83.2 |
+| Repair success rate | 1/1 |
+| Avg repair rounds | 1.0 |
+| Avg manual interventions | 0.0 |
+
+## Per-Task Detail
+
+### pi-bugfix-count-defs (bugfix) — Score: 99/100
+
+| Dimension | Result |
+|-----------|--------|
+| Completed | ✓ |
+| Files modified | tools/check_v2_constraints.py |
+| Expected files | tools/check_v2_constraints.py |
+| Scope violation | ✓ |
+| Tests passed | ✓ |
+| Repair rounds | 0 |
+| Repair success | ✗ |
+| Rule violations | 0 |
+| Handoff quality | 2/3 |
+| Duration | 53.2s |
+
+### pi-docs-check-tools (docs) — Score: 20/100
+
+| Dimension | Result |
+|-----------|--------|
+| Completed | ✗ |
+| Files modified | (none) |
+| Expected files | tools/README.md |
+| Scope violation | ✓ |
+| Tests passed | ✗ |
+| Repair rounds | 0 |
+| Repair success | ✗ |
+| Rule violations | 0 |
+| Handoff quality | 0/3 |
+| Duration | 60.6s |
+| Error | Patch validation failed: No hunk headers found (@@ -l,s +l,s @@) |
+
+### pi-refactor-read-text (refactor) — Score: 99/100
+
+| Dimension | Result |
+|-----------|--------|
+| Completed | ✓ |
+| Files modified | tools/infra/file_io.py, tools/extract_evidence.py |
+| Expected files | tools/extract_evidence.py, tools/extract_evidence_llm.py, tools/infra/file_io.py |
+| Scope violation | ✓ |
+| Tests passed | ✓ |
+| Repair rounds | 0 |
+| Repair success | ✗ |
+| Rule violations | 0 |
+| Handoff quality | 2/3 |
+| Duration | 58.6s |
+
+### pi-test-aief-l3 (test) — Score: 99/100
+
+| Dimension | Result |
+|-----------|--------|
+| Completed | ✓ |
+| Files modified | tests/unit/domain/test_check_aief_l3.py |
+| Expected files | tests/unit/domain/test_check_aief_l3.py |
+| Scope violation | ✓ |
+| Tests passed | ✓ |
+| Repair rounds | 1 |
+| Repair success | ✓ |
+| Rule violations | 0 |
+| Handoff quality | 2/3 |
+| Duration | 158.2s |
+
+### pi-test-error-handler (test) — Score: 99/100
+
+| Dimension | Result |
+|-----------|--------|
+| Completed | ✓ |
+| Files modified | tests/unit/domain/test_error_handler.py |
+| Expected files | tests/unit/domain/test_error_handler.py |
+| Scope violation | ✓ |
+| Tests passed | ✓ |
+| Repair rounds | 0 |
+| Repair success | ✗ |
+| Rule violations | 0 |
+| Handoff quality | 2/3 |
+| Duration | 37.4s |
+
+## Failure Analysis
+
+- **pi-docs-check-tools**: task incomplete; repair exhausted
+
+
+Total time: 368s
