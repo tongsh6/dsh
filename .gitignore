@@ -5,3 +5,4 @@ dist/
 .dsh/handoff/
 *.tsbuildinfo
 .worktrees/
+.DS_Store
