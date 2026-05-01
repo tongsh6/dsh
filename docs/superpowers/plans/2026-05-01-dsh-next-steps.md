@@ -33,8 +33,22 @@
 
 - [ ] **Step 1: 确认 DeepSeek API Key 可用**
 
+`DeepSeekClient.fromEnv()` 读取优先级：
+1. `DEEPSEEK_API_KEY` 环境变量（优先）
+2. `.dsh/config.yml` 中 `deepseek.api_key` 字段（fallback）
+
+建议设置环境变量（一次设置，所有 benchmark repo 共用）：
+
 ```bash
-echo ${DEEPSEEK_API_KEY:+"OK: key 已设置 (${#DEEPSEEK_API_KEY} chars)"} || echo "ERROR: DEEPSEEK_API_KEY 未设置"
+# 方式一：从当前 dsh 的 config.yml 读取并导出为环境变量
+export DEEPSEEK_API_KEY=$(grep -oP 'api_key:\s*["'\'']?\K[^"'\''\n]+' .dsh/config.yml)
+echo ${DEEPSEEK_API_KEY:+"OK: key 已设置 (${#DEEPSEEK_API_KEY} chars)"} || echo "ERROR: 无法读取 API Key"
+```
+
+或直接设置：
+
+```bash
+export DEEPSEEK_API_KEY="sk-your-key"
 ```
 
 - [ ] **Step 2: 确认 pi-proof-forge 仓库可访问**
