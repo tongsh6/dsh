@@ -354,17 +354,76 @@ export function applySearchReplace(
       };
     }
 
-    // Exact match
-    if (!content.includes(block.search)) {
+    // Try exact match first, then lenient matching
+    let newContent: string | null = null;
+
+    // Level 1: exact match
+    if (content.includes(block.search)) {
+      newContent = content.replace(block.search, block.replace);
+    }
+
+    // Level 2: trim-agnostic (ignore leading/trailing whitespace per line)
+    if (newContent === null) {
+      const searchLines = block.search.split("\n");
+      const contentLines = content.split("\n");
+      // Find the best matching position by comparing trimmed lines
+      let bestPos = -1;
+      let bestScore = 0;
+      for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
+        let score = 0;
+        for (let j = 0; j < searchLines.length; j++) {
+          if ((contentLines[i + j] ?? "").trim() === (searchLines[j] ?? "").trim()) {
+            score++;
+          }
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          bestPos = i;
+        }
+      }
+      // Require at least 80% of lines to match
+      if (bestScore >= searchLines.length * 0.8) {
+        const replaceLines = block.replace.split("\n");
+        const resultLines = [
+          ...contentLines.slice(0, bestPos),
+          ...replaceLines,
+          ...contentLines.slice(bestPos + searchLines.length),
+        ];
+        newContent = resultLines.join("\n");
+      }
+    }
+
+    // Level 3: substring of SEARCH (try the first and last non-empty lines as anchors)
+    if (newContent === null) {
+      const searchTrimmed = block.search.trim();
+      // Try to find a substring that exists in content
+      const searchLines = searchTrimmed.split("\n");
+      if (searchLines.length >= 3) {
+        // Use first and last meaningful lines as anchors
+        const firstLine = searchLines[0]?.trim() ?? "";
+        const lastLine = searchLines[searchLines.length - 1]?.trim() ?? "";
+        const firstIdx = content.split("\n").findIndex((l) => l.trim() === firstLine);
+        const lastIdx = content.split("\n").findIndex((l) => l.trim() === lastLine);
+        if (firstIdx >= 0 && lastIdx > firstIdx) {
+          const contentLines = content.split("\n");
+          const replaceLines = block.replace.split("\n");
+          const resultLines = [
+            ...contentLines.slice(0, firstIdx),
+            ...replaceLines,
+            ...contentLines.slice(lastIdx + 1),
+          ];
+          newContent = resultLines.join("\n");
+        }
+      }
+    }
+
+    if (newContent === null) {
       return {
         success: false,
         files: changedFiles,
         error: `Search block not found in ${block.filePath}`,
       };
     }
-
-    // Replace only the FIRST occurrence (safe, predictable)
-    const newContent = content.replace(block.search, block.replace);
 
     if (!dryRun) {
       fs.writeFileSync(absPath, newContent, "utf-8");
