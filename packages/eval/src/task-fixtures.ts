@@ -12,6 +12,7 @@ export interface TaskFixture {
   verificationCommands: string[];
   architectureRules: string[];
   maxRepairRounds?: number;
+  repoPath?: string;
 }
 
 export interface LoadedFixture extends TaskFixture {
@@ -20,8 +21,21 @@ export interface LoadedFixture extends TaskFixture {
 
 export function loadFixture(filePath: string): LoadedFixture {
   const raw = fs.readFileSync(filePath, "utf-8");
-  const parsed = yaml.load(raw) as TaskFixture;
-  return { ...parsed, filePath };
+  const parsed = yaml.load(raw) as Record<string, unknown>;
+  const fixture: LoadedFixture = {
+    id: parsed.id as string,
+    description: parsed.description as string,
+    category: parsed.category as TaskFixture["category"],
+    taskPrompt: parsed.taskPrompt as string,
+    expectedFiles: (parsed.expectedFiles as string[]) ?? [],
+    expectPass: (parsed.expectPass as boolean) ?? true,
+    verificationCommands: (parsed.verificationCommands as string[]) ?? [],
+    architectureRules: (parsed.architectureRules as string[]) ?? [],
+    maxRepairRounds: parsed.maxRepairRounds as number | undefined,
+    repoPath: parsed.repoPath as string | undefined,
+    filePath,
+  };
+  return fixture;
 }
 
 export function loadAllFixtures(dir: string): LoadedFixture[] {
