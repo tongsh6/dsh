@@ -266,6 +266,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   for (let retry = 0; !dryRun && !applyResult.success && retry < MAX_APPLY_RETRIES; retry++) {
     const parseOrApplyError = applyResult.error ?? "patch apply failed";
     const isParseError = parseOrApplyError.includes("validation failed") || parseOrApplyError.includes("No hunk headers") || parseOrApplyError.includes("No <CREATE>");
+    const isSearchMismatch = parseOrApplyError.includes("Search block not found");
 
     const detections = detectFailures({
       response: content,
@@ -284,6 +285,20 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
     ];
     if (isParseError) {
       retryHintParts.push("");
+    if (isSearchMismatch) {
+      retryHintParts.push("SEARCH TEXT MISMATCH — the <SEARCH> block did not match any text in the file.");
+      retryHintParts.push("");
+      retryHintParts.push("You MUST copy the EXACT text from the file content in your context into the <SEARCH> block.");
+      retryHintParts.push("- Every space, tab, newline, and character must be identical");
+      retryHintParts.push("- Copy a LARGER surrounding block — more context = more unique match");
+      retryHintParts.push("- Pick text that appears ONLY ONCE in the file");
+      retryHintParts.push("- Do NOT retype the text — copy-paste it character-for-character from the context");
+      retryHintParts.push("");
+      retryHintParts.push("Format: <PATCH type=\"search\" file=\"tools/README.md\">");
+      retryHintParts.push("<SEARCH>exact text from file — copy from context above</SEARCH>");
+      retryHintParts.push("<REPLACE>replacement text</REPLACE>");
+      retryHintParts.push("</PATCH>");
+    } else {
       retryHintParts.push("The unified diff format failed to parse. Use <PATCH type=\"search\" file=\"path\"> with XML sub-tags instead:");
       retryHintParts.push("<PATCH type=\"search\" file=\"path/to/file\">");
       retryHintParts.push("<SEARCH>exact code copied from the file content</SEARCH>");
@@ -291,6 +306,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
       retryHintParts.push("</PATCH>");
       retryHintParts.push("");
       retryHintParts.push("Copy the EXACT text from the file content into <SEARCH> — whitespace, indentation, everything must match.");
+    }
     }
     if (hints) {
       retryHintParts.push("");
