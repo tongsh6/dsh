@@ -4,3 +4,4 @@ dist/
 .dsh/config.yml
 .dsh/handoff/
 *.tsbuildinfo
+.worktrees/
