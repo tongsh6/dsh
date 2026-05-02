@@ -94,6 +94,20 @@ export {
 export type { StaticScanConfig, StaticScanResult } from "./static-scanner.js";
 
 export {
+  selectTopFindings,
+  scoreFindings,
+  resolveTopNConfig,
+  buildReason,
+  formatScoredFindings,
+} from "./static-topn.js";
+export type {
+  TopNWeights,
+  TopNConfig,
+  DimensionScore,
+  ScoredFinding,
+} from "./static-topn.js";
+
+export {
   eslintParser,
   tscParser,
   sarifParser,

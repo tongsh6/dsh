@@ -11,7 +11,7 @@ describe("resolveStaticScanConfig", () => {
 
     assert.equal(config.enabled, true);
     assert.equal(config.command, "pnpm scan:static");
-    assert.equal(config.topN, 3);
+    assert.equal(config.topNConfig.topN, 3);
   });
 
   it("falls back to verify lint command", () => {
@@ -20,7 +20,7 @@ describe("resolveStaticScanConfig", () => {
     });
 
     assert.equal(config.command, "pnpm lint");
-    assert.equal(config.topN, 5);
+    assert.equal(config.topNConfig.topN, 5);
   });
 });
 

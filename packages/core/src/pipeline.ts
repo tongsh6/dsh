@@ -132,7 +132,7 @@ async function runPostImplementationStaticScan(params: {
     scanConfig.command,
     scanRound,
     changedFiles,
-    scanConfig.topN,
+    scanConfig.topNConfig,
   );
   state.static_scan_runs.push(scan.run);
   writeTaskState(cwd, state);
@@ -148,7 +148,7 @@ async function runPostImplementationStaticScan(params: {
     scanRun: scan.run,
     selectedFindings: scan.run.selected_top_n,
     command: scanConfig.command,
-    topN: scanConfig.topN,
+    topNConfig: scanConfig.topNConfig,
   });
 
   state.static_repair_results.push(repair.repair);

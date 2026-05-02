@@ -13,6 +13,8 @@ import { assembleContext } from "./context-builder.js";
 import { buildMessages } from "./prompt-builder.js";
 import { applyChanges, parseChanges } from "./patch-parser.js";
 import { parseFindings } from "./static-finding-parser.js";
+import { selectTopFindings, resolveTopNConfig } from "./static-topn.js";
+import type { TopNConfig } from "./static-topn.js";
 import type {
   StaticRepairResult,
   StaticScanFinding,
@@ -23,7 +25,7 @@ import type {
 export interface StaticScanConfig {
   enabled: boolean;
   command: string | null;
-  topN: number;
+  topNConfig: TopNConfig;
 }
 
 export interface StaticScanResult {
@@ -37,7 +39,6 @@ interface RunCommandResult {
   durationMs: number;
 }
 
-const DEFAULT_TOP_N = 5;
 const MAX_REPAIR_CONTEXT_FILES = 10;
 
 export function resolveStaticScanConfig(config: Record<string, unknown>): StaticScanConfig {
@@ -49,15 +50,13 @@ export function resolveStaticScanConfig(config: Record<string, unknown>): Static
   const fallbackCommand = typeof verifyConfig["lint"] === "string"
     ? verifyConfig["lint"].trim()
     : "";
-  const topN = typeof staticConfig["top_n"] === "number" && staticConfig["top_n"] > 0
-    ? Math.floor(staticConfig["top_n"])
-    : DEFAULT_TOP_N;
   const enabled = staticConfig["enabled"] !== false;
+  const topNConfig = resolveTopNConfig(config);
 
   return {
     enabled,
     command: explicitCommand || fallbackCommand || null,
-    topN,
+    topNConfig,
   };
 }
 
@@ -66,12 +65,13 @@ export function runStaticScan(
   command: string,
   round: number,
   changedFiles: string[] = [],
-  topN: number = DEFAULT_TOP_N,
+  topNConfig: TopNConfig,
 ): StaticScanResult {
   const result = runCommand(command, cwd);
   const outputPath = writeScanOutput(cwd, round, result.output);
   const findings = parseStaticScanFindings(result.output, cwd, round, result.exitCode !== 0);
-  const selected = selectTopFindings(findings, changedFiles, topN);
+  const scored = selectTopFindings(findings, changedFiles, topNConfig);
+  const selectedFindings = scored.map((s) => s.finding);
   const run: StaticScanRun = {
     round,
     command,
@@ -81,8 +81,8 @@ export function runStaticScan(
     output_path: outputPath,
     output_excerpt: result.output.slice(0, 4000),
     total_findings: findings.length,
-    selected_top_n: selected,
-    top_n_reasoning: buildTopNReasoning(selected, changedFiles, topN),
+    selected_top_n: selectedFindings,
+    top_n_reasoning: scored.map((s) => s.reason),
     created_at: new Date().toISOString(),
   };
 
@@ -96,13 +96,13 @@ export async function repairStaticScanTopN(params: {
   scanRun: StaticScanRun;
   selectedFindings: StaticScanFinding[];
   command: string;
-  topN: number;
+  topNConfig: TopNConfig;
 }): Promise<{
   repair: StaticRepairResult;
   patchRecord?: TaskState["patches"][number];
   postScan?: StaticScanResult;
 }> {
-  const { cwd, client, state, scanRun, selectedFindings, command, topN } = params;
+  const { cwd, client, state, scanRun, selectedFindings, command, topNConfig } = params;
   const round = (state.static_repair_results?.length ?? 0) + 1;
 
   if (selectedFindings.length === 0) {
@@ -124,8 +124,8 @@ export async function repairStaticScanTopN(params: {
 
   const context = buildStaticRepairContext(cwd, state, selectedFindings);
   const strategy = [
-    `Fix only the selected Top ${Math.min(topN, selectedFindings.length)} static scan findings.`,
-    "Selection method: error severity first, files changed by the AI patch first, then scanner order.",
+    `Fix only the selected Top ${Math.min(topNConfig.topN, selectedFindings.length)} static scan findings.`,
+    "Selection method: multi-dimensional scoring (severity + changed file + security + build blocking + rule confidence).",
     "Do not refactor unrelated code or fix unselected findings unless required by the selected findings.",
   ].join(" ");
 
@@ -193,7 +193,7 @@ export async function repairStaticScanTopN(params: {
       command,
       scanRun.round + 1,
       filesChanged,
-      topN,
+      topNConfig,
     );
   }
 
@@ -254,39 +254,6 @@ function writeScanOutput(cwd: string, round: number, output: string): string {
   const relativePath = path.join(".dsh", "static-scan", `scan-round-${round}.txt`);
   fs.writeFileSync(path.join(cwd, relativePath), output, "utf-8");
   return relativePath;
-}
-
-function selectTopFindings(
-  findings: StaticScanFinding[],
-  changedFiles: string[],
-  topN: number,
-): StaticScanFinding[] {
-  const changed = new Set(changedFiles);
-  return findings
-    .map((finding, index) => ({
-      finding,
-      score: severityScore(finding.severity) + (changed.has(finding.file) ? 100 : 0) - index / 1000,
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topN)
-    .map((item) => item.finding);
-}
-
-function buildTopNReasoning(
-  selected: StaticScanFinding[],
-  changedFiles: string[],
-  topN: number,
-): string[] {
-  if (selected.length === 0) {
-    return [`No findings were selected from the configured Top N limit (${topN}).`];
-  }
-
-  const changed = new Set(changedFiles);
-  return selected.map((finding, index) => {
-    const location = formatLocation(finding);
-    const changedReason = changed.has(finding.file) ? "changed file" : "scanner order";
-    return `${index + 1}. ${finding.id} selected because it is ${finding.severity} severity in ${changedReason}: ${location}`;
-  });
 }
 
 function buildStaticRepairContext(
