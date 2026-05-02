@@ -285,7 +285,11 @@ spec/           ← 设计文档：描述"要做什么"和"为什么这样做"
 | `parser-fixture-tests` | 为所有 parser 添加 fixture 测试 | done | p1 | ai |
 | `create-claude-md` | 创建 CLAUDE.md 并修复 config.yml | done | p1 | ai |
 | `spec-v0.3-upgrade` | 设计文档体系重整：SPEC v0.2 → v0.3 | done | p1 | ai |
-| `baseline-benchmark` | 跑通基线对比 Benchmark | ready | p2 | ai |
+| `baseline-benchmark` | 跑通基线对比 Benchmark | done | p2 | ai |
+| `fixture-protocol-metadata` | 补齐 Fixture 协议操作覆盖元数据 | done | p0 | ai |
+| `benchmark-ci-workflow` | 新建 Benchmark CI Workflow | done | p1 | ai |
+| `phase2-exit-criteria-refinement` | 细化 BLUEPRINT Phase 2 退出条件 | done | p1 | ai |
+| `task-lifecycle-fix` | Task 生命周期修复 | done | p2 | ai |
 
 ## 7. 修订历史
 

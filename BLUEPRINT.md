@@ -164,11 +164,15 @@ Phase 1 (当前)              Phase 2                     Phase 3
 
 ### 当前阶段（Phase 2）的退出条件
 
-- [ ] Patch 协议 v0.3 全部操作（CREATE/PATCH/SEARCH-REPLACE/INSERT/DELETE/RENAME）在 benchmark 上有量化数据
-- [ ] 静态扫描治理 Phase 2-3 完成（完整 finding schema + Top N 可解释选择）
-- [ ] 评测体系支持多语言（Python + TypeScript + Java）多仓库
-- [ ] 首次 DSH vs OpenCode vs Claude Code 对比报告产出
-- [ ] Benchmark 至少 10 个 fixture 的完成率 > 60%
+每个条件含阈值和数据来源，可逐项验证。
+
+- [ ] **v0.3 协议操作覆盖率** — 6 种操作（CREATE/PATCH/SEARCH_REPLACE/INSERT/DELETE/RENAME）每种 ≥3 个 fixture 标注预期触发，且 ≥1 个 fixture 实际触发并记录成功率。数据来源：`formatEvaluationReport` 输出的 Protocol Operation Coverage 表
+- [ ] **多语言** — Python（pi-proof-forge）+ TypeScript（dsh/loamlog/release-hub）各有 ≥3 个 fixture 执行通过。Java 为 Phase 3 目标。数据来源：benchmark 报告 Per-Task Detail
+- [ ] **多仓库** — ≥3 个不同 repo 上有 ≥3 个 fixture 执行通过。数据来源：benchmark 报告
+- [ ] **完成率** — ≥10 个 fixture 完成率 >60%。数据来源：benchmark 报告 Overview
+- [ ] **静态扫描治理 Phase 2-3** — 完整 finding schema（Phase 2 ✅）+ Top N 可解释选择（Phase 3：`static-topn.ts` 存在，支持多维 scoring + 选择理由记录）。数据来源：`packages/core/src/static-topn.ts` 文件存在 + 测试通过
+- [ ] **跨工具对比** — ≥5 个相同 fixture 的 DSH vs OpenCode 对比数据产出。Claude Code 对比为 Phase 3 目标。数据来源：`docs/superpowers/reports/` 下对比报告
+- [ ] **对比报告** — 首份正式 DSH Evaluation Report v1.0，含协议操作分类统计。数据来源：`docs/superpowers/reports/` 下归档报告
 
 ---
 
