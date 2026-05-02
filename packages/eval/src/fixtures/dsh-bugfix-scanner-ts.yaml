@@ -26,3 +26,5 @@ architectureRules:
   - 保持对现有项目类型（Python/Go）的检测逻辑不变
   - 新增检测方法放在现有逻辑之后，作为 fallback
 maxRepairRounds: 2
+expectedProtocolOperations:
+  - PATCH

@@ -22,6 +22,8 @@ export interface TaskResult {
   handoffQuality: number; // 0-3
   durationMs: number;
   error?: string;
+  expectedProtocolOps: string[];
+  actualProtocolOps: string[];
 }
 
 // ---- Existing Functions ----
@@ -42,6 +44,8 @@ export function createEmptyResult(fixture: LoadedFixture): TaskResult {
     manualInterventions: 0,
     handoffQuality: 0,
     durationMs: 0,
+    expectedProtocolOps: fixture.expectedProtocolOperations ?? [],
+    actualProtocolOps: [],
   };
 }
 
@@ -227,6 +231,9 @@ export async function runTask(
     // Record files changed
     result.filesChanged = state.patches.at(-1)?.files_changed ?? [];
 
+    // Detect actual protocol ops from the stored patch text (best-effort)
+    result.actualProtocolOps = detectProtocolOpsFromText(state.patches.at(-1)?.patch ?? "");
+
     // 5. Verify
     if (fixture.verificationCommands.length > 0) {
       try {
@@ -303,6 +310,22 @@ export async function runAll(
   return results;
 }
 
+// ---- Detect protocol ops from patch text ----
+
+function detectProtocolOpsFromText(patchText: string): string[] {
+  const ops: string[] = [];
+  if (/<CREATE\s/i.test(patchText)) ops.push("CREATE");
+  if (/<PATCH\s/i.test(patchText) && !/type="search"/i.test(patchText)) ops.push("PATCH");
+  if (/<PATCH\s+type="search"/i.test(patchText)) ops.push("SEARCH_REPLACE");
+  if (/<INSERT\s/i.test(patchText)) ops.push("INSERT");
+  if (/<DELETE\s/i.test(patchText)) ops.push("DELETE");
+  if (/<RENAME\s/i.test(patchText)) ops.push("RENAME");
+  return ops;
+}
+
+/** 6 种协议操作 */
+const ALL_PROTOCOL_OPS = ["CREATE", "PATCH", "SEARCH_REPLACE", "INSERT", "DELETE", "RENAME"];
+
 // ---- Report ----
 
 export function formatEvaluationReport(results: TaskResult[]): string {
@@ -335,6 +358,22 @@ export function formatEvaluationReport(results: TaskResult[]): string {
   lines.push(`| Repair success rate | ${repairSucceeded}/${repairAttempted || "N/A"} |`);
   lines.push(`| Avg repair rounds | ${avgRepairRounds.toFixed(1)} |`);
   lines.push(`| Avg manual interventions | ${avgInterventions.toFixed(1)} |`);
+  lines.push("");
+
+  // Protocol Operation Coverage
+  lines.push("## Protocol Operation Coverage");
+  lines.push("");
+  lines.push("| Operation | Expected (fixtures) | Actual (triggered) | Success Rate |");
+  lines.push("|-----------|---------------------|---------------------|--------------|");
+  for (const op of ALL_PROTOCOL_OPS) {
+    const expected = results.filter((r) => r.expectedProtocolOps.includes(op)).length;
+    const triggered = results.filter((r) => r.actualProtocolOps.includes(op)).length;
+    const triggeredCompleted = results.filter(
+      (r) => r.actualProtocolOps.includes(op) && r.completed,
+    ).length;
+    const rate = triggered > 0 ? `${((triggeredCompleted / triggered) * 100).toFixed(0)}%` : "N/A";
+    lines.push(`| ${op} | ${expected} | ${triggered} | ${rate} |`);
+  }
   lines.push("");
 
   // Per-Task Detail

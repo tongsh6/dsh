@@ -29,3 +29,5 @@ architectureRules:
   - 不修改 scanner.ts 的源代码
   - 测试命名：test detectVerifyCommands - TypeScript/Python/Go/Unknown
 maxRepairRounds: 2
+expectedProtocolOperations:
+  - PATCH

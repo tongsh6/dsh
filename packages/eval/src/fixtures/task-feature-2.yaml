@@ -15,3 +15,5 @@ architectureRules:
   - 不修改 User 模型
   - 使用项目已有的数据库查询方式
 maxRepairRounds: 3
+expectedProtocolOperations:
+  - PATCH

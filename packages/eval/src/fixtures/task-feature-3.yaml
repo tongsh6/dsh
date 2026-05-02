@@ -14,3 +14,5 @@ architectureRules:
   - 不引入新的日志库
   - 中间件不能阻塞请求处理
 maxRepairRounds: 3
+expectedProtocolOperations:
+  - CREATE PATCH

@@ -16,3 +16,5 @@ architectureRules:
   - 不修改组件实现
   - 快照文件需要提交
 maxRepairRounds: 2
+expectedProtocolOperations:
+  - CREATE

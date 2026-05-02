@@ -41,3 +41,6 @@ architectureRules:
   - 使用构造器注入，不使用字段注入
 maxRepairRounds: 2
 repoPath: /tmp/dsh-candidate-release-hub
+expectedProtocolOperations:
+  - CREATE
+  - PATCH

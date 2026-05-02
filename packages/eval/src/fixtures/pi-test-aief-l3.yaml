@@ -28,3 +28,5 @@ architectureRules:
   - 不引入 pytest 特有装饰器
   - 测试函数命名：test_check_exists_* / test_check_contains_* / test_check_min_files_*
 maxRepairRounds: 3
+expectedProtocolOperations:
+  - CREATE

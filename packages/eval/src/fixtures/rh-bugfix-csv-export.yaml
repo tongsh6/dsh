@@ -29,3 +29,5 @@ architectureRules:
   - Mock RunPort 使用 Mockito
 maxRepairRounds: 2
 repoPath: /tmp/dsh-candidate-release-hub
+expectedProtocolOperations:
+  - PATCH

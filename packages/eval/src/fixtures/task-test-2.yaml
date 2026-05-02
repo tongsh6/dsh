@@ -13,3 +13,5 @@ architectureRules:
   - 测试之间数据不互相影响
   - 不修改 UserRepository 的实现
 maxRepairRounds: 3
+expectedProtocolOperations:
+  - CREATE

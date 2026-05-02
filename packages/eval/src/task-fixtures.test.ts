@@ -29,6 +29,8 @@ describe("loadFixture", () => {
         "architectureRules:",
         "  - No console.log in production code",
         "maxRepairRounds: 2",
+        "expectedProtocolOperations:",
+        "  - PATCH",
       ].join("\n"),
       "utf-8",
     );
@@ -69,6 +71,8 @@ describe("loadFixture", () => {
         "expectPass: false",
         "verificationCommands: []",
         "architectureRules: []",
+        "expectedProtocolOperations:",
+        "  - PATCH",
       ].join("\n"),
       "utf-8",
     );
@@ -87,12 +91,12 @@ describe("loadAllFixtures", () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-eval-fixtures-"));
     fs.writeFileSync(
       path.join(tmp, "task-01.yaml"),
-      "id: task-01\ndescription: First task\ncategory: bugfix\ntaskPrompt: Fix bug\nexpectedFiles: []\nexpectPass: true\nverificationCommands: []\narchitectureRules: []\n",
+      "id: task-01\ndescription: First task\ncategory: bugfix\ntaskPrompt: Fix bug\nexpectedFiles: []\nexpectPass: true\nverificationCommands: []\narchitectureRules: []\nexpectedProtocolOperations: [PATCH]\n",
       "utf-8",
     );
     fs.writeFileSync(
       path.join(tmp, "task-02.yaml"),
-      "id: task-02\ndescription: Second task\ncategory: feature\ntaskPrompt: Add feature\nexpectedFiles: []\nexpectPass: true\nverificationCommands: []\narchitectureRules: []\n",
+      "id: task-02\ndescription: Second task\ncategory: feature\ntaskPrompt: Add feature\nexpectedFiles: []\nexpectPass: true\nverificationCommands: []\narchitectureRules: []\nexpectedProtocolOperations: [CREATE]\n",
       "utf-8",
     );
     fs.writeFileSync(

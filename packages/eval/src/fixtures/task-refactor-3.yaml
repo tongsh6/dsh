@@ -15,3 +15,5 @@ architectureRules:
   - DTO 可以添加校验装饰器
   - 不能改变 API 的序列化输出
 maxRepairRounds: 3
+expectedProtocolOperations:
+  - PATCH

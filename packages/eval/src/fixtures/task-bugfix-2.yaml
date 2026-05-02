@@ -13,3 +13,5 @@ architectureRules:
   - 使用统一的错误类型
   - 不修改 UserProfile 类型定义
 maxRepairRounds: 3
+expectedProtocolOperations:
+  - PATCH

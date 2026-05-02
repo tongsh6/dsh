@@ -28,3 +28,5 @@ architectureRules:
   - 新增章节放在 "CI 校验" 之前
   - 不修改其他工具的文档
 maxRepairRounds: 2
+expectedProtocolOperations:
+  - PATCH

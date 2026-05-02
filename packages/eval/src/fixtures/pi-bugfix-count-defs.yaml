@@ -21,3 +21,6 @@ architectureRules:
   - 不用 AST 解析，保持实现简单
   - count_definitions 的调用方式和返回值类型不变
 maxRepairRounds: 2
+expectedProtocolOperations:
+  - PATCH
+  - SEARCH_REPLACE

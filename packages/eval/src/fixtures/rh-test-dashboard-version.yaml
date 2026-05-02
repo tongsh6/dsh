@@ -42,3 +42,5 @@ architectureRules:
   - 不修改源代码
 maxRepairRounds: 2
 repoPath: /tmp/dsh-candidate-release-hub
+expectedProtocolOperations:
+  - CREATE

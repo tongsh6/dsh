@@ -13,3 +13,5 @@ architectureRules:
   - 测试使用 mock，不调用真实支付网关
   - 使用项目已有的测试框架
 maxRepairRounds: 3
+expectedProtocolOperations:
+  - PATCH

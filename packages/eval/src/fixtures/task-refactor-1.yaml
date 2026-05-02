@@ -15,3 +15,5 @@ architectureRules:
   - Service 不能访问 req/res 对象
   - 现有测试必须全部通过
 maxRepairRounds: 3
+expectedProtocolOperations:
+  - CREATE PATCH

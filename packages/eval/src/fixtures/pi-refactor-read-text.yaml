@@ -23,3 +23,6 @@ architectureRules:
   - 不引入新的第三方依赖
   - file_io.py 只放 read_text，保持最小化
 maxRepairRounds: 2
+expectedProtocolOperations:
+  - CREATE
+  - PATCH

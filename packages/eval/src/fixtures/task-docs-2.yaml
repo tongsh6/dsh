@@ -13,3 +13,5 @@ architectureRules:
   - 不添加与现有规则冲突的内容
   - 保持 AIEF 文件结构不变
 maxRepairRounds: 2
+expectedProtocolOperations:
+  - PATCH

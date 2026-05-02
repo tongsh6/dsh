@@ -8,3 +8,5 @@ strategy:
   - 要求 DeepSeek 重新读取当前文件内容后再生成 patch
   - 限制 patch 只改必要行，不重写整个文件
   - system prompt 强调基于提供的文件行号
+expectedProtocolOperations:
+  - PATCH

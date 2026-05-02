@@ -60,6 +60,21 @@ export interface ApplyChangesResult {
   error?: string;
 }
 
+/**
+ * 从 ParsedChanges 中检测实际使用的协议操作类型。
+ * 用于 benchmark 结果中记录模型实际选择的协议操作。
+ */
+export function detectProtocolOps(changes: ParsedChanges): string[] {
+  const ops: string[] = [];
+  if (changes.creates.length > 0) ops.push("CREATE");
+  if (changes.patchText) ops.push("PATCH");
+  if (changes.searchReplaceBlocks.length > 0) ops.push("SEARCH_REPLACE");
+  if (changes.insertBlocks.length > 0) ops.push("INSERT");
+  if (changes.deletePaths.length > 0) ops.push("DELETE");
+  if (changes.renames.length > 0) ops.push("RENAME");
+  return ops;
+}
+
 export class PatchParseError extends Error {
   constructor(message: string) {
     super(message);

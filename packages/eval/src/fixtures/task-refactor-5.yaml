@@ -16,3 +16,5 @@ architectureRules:
   - INotificationService 保持向后兼容
   - 实现类代码不重复
 maxRepairRounds: 3
+expectedProtocolOperations:
+  - CREATE PATCH

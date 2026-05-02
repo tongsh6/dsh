@@ -14,3 +14,5 @@ architectureRules:
   - 使用 zod 做 schema 校验（项目已安装）
   - 不修改用户创建逻辑
 maxRepairRounds: 3
+expectedProtocolOperations:
+  - CREATE PATCH

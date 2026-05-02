@@ -57,6 +57,7 @@ export {
   applyInserts,
   applyPatch,
   applyChanges,
+  detectProtocolOps,
   PatchParseError,
 } from "./patch-parser.js";
 export type {

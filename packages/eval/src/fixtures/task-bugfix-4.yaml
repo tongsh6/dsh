@@ -13,3 +13,5 @@ architectureRules:
   - 保留向后兼容性
   - 不要引入 moment.js 等新依赖
 maxRepairRounds: 3
+expectedProtocolOperations:
+  - PATCH

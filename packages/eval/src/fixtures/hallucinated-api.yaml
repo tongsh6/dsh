@@ -9,3 +9,6 @@ strategy:
   - Task Context 包含相关文件全文，让模型基于真实代码生成
   - system prompt 明确禁止引用未在上下文中出现的 API
   - verify 命令会捕获 import/编译错误
+expectedProtocolOperations:
+  - PATCH
+  - CREATE

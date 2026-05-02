@@ -13,3 +13,5 @@ architectureRules:
   - 不修改 WebSocket 消息协议
   - 清理逻辑必须在 connection-manager 内部
 maxRepairRounds: 3
+expectedProtocolOperations:
+  - PATCH

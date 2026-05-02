@@ -12,3 +12,5 @@ architectureRules:
   - 文档格式保持与现有风格一致
   - 端点描述必须与代码中的路由匹配
 maxRepairRounds: 2
+expectedProtocolOperations:
+  - PATCH

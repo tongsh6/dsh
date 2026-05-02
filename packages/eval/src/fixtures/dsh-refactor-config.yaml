@@ -28,3 +28,6 @@ architectureRules:
   - 保持向后兼容，现有测试必须通过
   - config-loader.ts 只放 config 读取逻辑，不混入 rule 加载
 maxRepairRounds: 2
+expectedProtocolOperations:
+  - CREATE
+  - PATCH

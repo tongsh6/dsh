@@ -9,3 +9,5 @@ strategy:
   - 强制要求 VERIFY 块非空
   - repair 时注入提示"请列出至少 2 个潜在风险"
   - system prompt 中明确禁止"无风险"表述
+expectedProtocolOperations:
+  - PATCH

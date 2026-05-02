@@ -24,3 +24,5 @@ architectureRules:
   - 不要引入 pytest 特有装饰器
   - import PolicyError 和 FabricationGuardError 从 tools.errors.exceptions
 maxRepairRounds: 2
+expectedProtocolOperations:
+  - PATCH

@@ -9,3 +9,5 @@ strategy:
   - plan 阶段明确 FILES 列表
   - patch 解析时校验修改文件是否在 FILES 列表中
   - repair 时提示"只修改 FILES 中列出的文件"
+expectedProtocolOperations:
+  - PATCH

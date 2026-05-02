@@ -15,3 +15,5 @@ architectureRules:
   - 使用内存存储不要引入 Redis（项目未使用）
   - 不要在中间件中硬编码限制值，使用配置
 maxRepairRounds: 3
+expectedProtocolOperations:
+  - CREATE PATCH

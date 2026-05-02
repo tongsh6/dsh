@@ -15,3 +15,5 @@ architectureRules:
   - 不修改配置的读取接口
   - 类型转换必须安全
 maxRepairRounds: 3
+expectedProtocolOperations:
+  - CREATE PATCH

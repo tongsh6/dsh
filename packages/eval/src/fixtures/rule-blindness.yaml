@@ -9,3 +9,5 @@ strategy:
   - Base Context 始终包含规则文件内容
   - system prompt 明确要求先确认理解所有规则
   - repair 时回灌被违反的具体规则条款
+expectedProtocolOperations:
+  - PATCH
