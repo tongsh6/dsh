@@ -480,10 +480,10 @@ export function applySearchReplace(
       const searchLines = block.search.split("\n").filter((l) => l.trim().length > 0);
       // Extract potential keywords (words with >= 5 chars or containing dots/slashes)
       const keywords = searchLines.flatMap((l) =>
-        l.match(/[a-zA-Z0-9_\/\.\-]{5,}/g) ?? []
+        l.match(/[a-zA-Z0-9_/.-]{5,}/g) ?? []
       );
       // Prefer file-like patterns
-      const filePattern = block.search.match(/([a-zA-Z0-9_\/\.\-]+\.(?:py|ts|js|md|yml|yaml|json))/);
+      const filePattern = block.search.match(/([a-zA-Z0-9_/.-]+\.(?:py|ts|js|md|yml|yaml|json))/);
       const anchorCandidates = filePattern ? [filePattern[1]!] : keywords;
 
       if (anchorCandidates.length > 0) {

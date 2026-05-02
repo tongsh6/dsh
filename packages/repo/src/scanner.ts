@@ -31,11 +31,23 @@ export function detectTechStack(cwd: string): TechStack {
   if (files.has("package.json")) {
     const pkg = readJsonFile(path.join(cwd, "package.json"));
     const hasTypeScript = files.has("tsconfig.json") ||
-      (pkg?.devDependencies && "typescript" in (pkg.devDependencies ?? {}));
+      files.has("tsconfig.base.json") ||
+      (pkg?.devDependencies && "typescript" in (pkg.devDependencies ?? {})) ||
+      (pkg?.devDependencies && "typescript-eslint" in (pkg.devDependencies ?? {}));
     const pkgManager = detectPackageManager(cwd, files);
 
+    // For pnpm workspaces, TypeScript may only be declared in sub-packages.
+    // Fall back to extension counts when package.json alone is ambiguous.
+    let language = hasTypeScript ? "typescript" : "javascript";
+    if (!hasTypeScript) {
+      const extLang = detectLanguageByFiles(cwd);
+      if (extLang && (extLang.language === "typescript" || extLang.language === "javascript")) {
+        language = extLang.language;
+      }
+    }
+
     return {
-      language: hasTypeScript ? "typescript" : "javascript",
+      language,
       packageManager: pkgManager,
       framework: detectFramework(pkg),
       details: {
