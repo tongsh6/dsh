@@ -1,5 +1,6 @@
-import { DeepSeekClient } from "@dsh/provider";
+import type { DeepSeekClient } from "@dsh/provider";
 import { runPatch } from "@dsh/core";
+import { createClient } from "../utils/config.js";
 
 interface PatchOptions {
   auto?: boolean;
@@ -77,7 +78,7 @@ export async function patchCommand(opts: PatchOptions): Promise<void> {
 
   let client: DeepSeekClient;
   try {
-    client = DeepSeekClient.fromEnv();
+    client = createClient(cwd);
   } catch (e) {
     console.log(`错误: ${e instanceof Error ? e.message : String(e)}`);
     process.exit(1);

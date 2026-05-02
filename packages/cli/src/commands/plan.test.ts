@@ -69,20 +69,12 @@ describe("planCommand", () => {
   });
 
   function setupMockClient(response: any = MOCK_RESPONSE) {
-    mock.method(DeepSeekClient, "fromEnv", () => {
-      const client = new DeepSeekClient({ apiKey: "test-key" });
-      mock.method(client, "chat", async () => response);
-      return client;
-    });
+    process.env["DEEPSEEK_API_KEY"] = "test-key";
+    mock.method(DeepSeekClient.prototype, "chat", async () => response);
   }
 
-  it("handles fromEnv error gracefully", async () => {
+  it("handles missing API key gracefully", async () => {
     delete process.env["DEEPSEEK_API_KEY"];
-
-    // Mock fromEnv to throw (no API key available)
-    mock.method(DeepSeekClient, "fromEnv", () => {
-      throw new Error("DEEPSEEK_API_KEY environment variable is not set");
-    });
 
     const { planCommand } = await import("./plan.js");
 

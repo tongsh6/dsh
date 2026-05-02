@@ -67,14 +67,22 @@ describe("initCommand", () => {
     assert.ok(logs.some((l) => l.includes("已初始化")));
   });
 
-  it("overwrites with --force", async () => {
+  it("merges with --force, preserving manually-set fields", async () => {
     fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
-    fs.writeFileSync(path.join(tmp, ".dsh", "config.yml"), "old: true", "utf-8");
+    // Write a manually-set api_key that should survive --force
+    fs.writeFileSync(
+      path.join(tmp, ".dsh", "config.yml"),
+      "deepseek:\n  api_key: sk-manual-key\n",
+      "utf-8",
+    );
 
     await initCommand({ force: true });
 
     const configRaw = fs.readFileSync(path.join(tmp, ".dsh", "config.yml"), "utf-8");
-    assert.ok(!configRaw.includes("old: true"));
+    // Init-detected fields are present
     assert.ok(configRaw.includes("language: typescript"));
+    assert.ok(configRaw.includes("default_model: deepseek-v4-pro"));
+    // Manually-set api_key is preserved (not overwritten to empty)
+    assert.ok(configRaw.includes("sk-manual-key"));
   });
 });

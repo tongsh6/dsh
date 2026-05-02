@@ -1,5 +1,6 @@
-import { DeepSeekClient } from "@dsh/provider";
+import type { DeepSeekClient } from "@dsh/provider";
 import { runPlan } from "@dsh/core";
+import { createClient } from "../utils/config.js";
 
 interface PlanOptions {
   type?: string;
@@ -11,7 +12,7 @@ export async function planCommand(description: string, opts: PlanOptions): Promi
 
   let client: DeepSeekClient;
   try {
-    client = DeepSeekClient.fromEnv();
+    client = createClient(cwd);
   } catch (e) {
     console.log(`错误: ${e instanceof Error ? e.message : String(e)}`);
     process.exit(1);

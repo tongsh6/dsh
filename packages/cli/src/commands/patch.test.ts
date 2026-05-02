@@ -71,11 +71,8 @@ describe("patchCommand", () => {
   });
 
   function setupMockClient(response: any = MOCK_PATCH_RESPONSE) {
-    mock.method(DeepSeekClient, "fromEnv", () => {
-      const client = new DeepSeekClient({ apiKey: "test-key" });
-      mock.method(client, "chat", async () => response);
-      return client;
-    });
+    process.env["DEEPSEEK_API_KEY"] = "test-key";
+    mock.method(DeepSeekClient.prototype, "chat", async () => response);
   }
 
   function writeConfig() {
@@ -98,16 +95,13 @@ describe("patchCommand", () => {
     }), "utf-8");
   }
 
-  it("handles fromEnv error gracefully", async () => {
+  it("handles missing API key gracefully", async () => {
     delete process.env["DEEPSEEK_API_KEY"];
 
-    // Mock fromEnv to throw (no API key available)
-    mock.method(DeepSeekClient, "fromEnv", () => {
-      throw new Error("DEEPSEEK_API_KEY environment variable is not set");
-    });
-
     writeState("planned");
-    writeConfig();
+    // writeConfig with empty api_key → createClient will fail
+    fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, ".dsh", "config.yml"), "deepseek:\n  api_key: ''\n", "utf-8");
 
     const { patchCommand } = await import("./patch.js");
 

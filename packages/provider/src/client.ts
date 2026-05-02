@@ -1,6 +1,3 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-
 // ---- Types ----
 
 export interface DeepSeekMessage {
@@ -104,19 +101,7 @@ export class DeepSeekClient {
   }
 
   static fromEnv(): DeepSeekClient {
-    let apiKey = process.env["DEEPSEEK_API_KEY"];
-
-    // Fallback: read from .dsh/config.yml
-    if (!apiKey) {
-      try {
-        const configPath = path.join(process.cwd(), ".dsh", "config.yml");
-        const config = fs.readFileSync(configPath, "utf-8");
-        const match = config.match(/^\s*api_key:\s*["']?([^"'\n]+)["']?\s*$/m);
-        if (match && match[1]) apiKey = match[1];
-      } catch {
-        // config file not found or unreadable, fall through
-      }
-    }
+    const apiKey = process.env["DEEPSEEK_API_KEY"];
 
     if (!apiKey) {
       throw new DeepSeekError(

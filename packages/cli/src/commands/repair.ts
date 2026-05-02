@@ -1,6 +1,7 @@
-import { DeepSeekClient } from "@dsh/provider";
+import type { DeepSeekClient } from "@dsh/provider";
 import { runRepair } from "@dsh/core";
 import type { RepairRoundResult } from "@dsh/core";
+import { createClient } from "../utils/config.js";
 
 interface RepairOptions {
   rounds: number;
@@ -29,7 +30,7 @@ export async function repairCommand(opts: RepairOptions): Promise<void> {
 
   let client: DeepSeekClient;
   try {
-    client = DeepSeekClient.fromEnv();
+    client = createClient(cwd);
   } catch (e) {
     console.log(`错误: ${e instanceof Error ? e.message : String(e)}`);
     process.exit(1);

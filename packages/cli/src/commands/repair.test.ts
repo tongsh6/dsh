@@ -63,11 +63,8 @@ describe("repairCommand", () => {
   });
 
   function setupMockClient(response: any = MOCK_REPAIR_RESPONSE) {
-    mock.method(DeepSeekClient, "fromEnv", () => {
-      const client = new DeepSeekClient({ apiKey: "test-key" });
-      mock.method(client, "chat", async () => response);
-      return client;
-    });
+    process.env["DEEPSEEK_API_KEY"] = "test-key";
+    mock.method(DeepSeekClient.prototype, "chat", async () => response);
   }
 
   it("rejects when status is not verification_failed", async () => {

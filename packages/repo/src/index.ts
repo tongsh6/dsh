@@ -29,4 +29,10 @@ export {
 } from "./git.js";
 export type { GitInfo } from "./git.js";
 
-export { loadDshConfig } from "./config-loader.js";
+export {
+  loadDshConfig,
+  writeDshConfig,
+  readApiKey,
+  mergeConfig,
+} from "./config-loader.js";
+export type { DshConfig } from "./config-loader.js";

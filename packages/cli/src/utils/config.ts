@@ -1,12 +1,14 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as yaml from "js-yaml";
+import { loadDshConfig, readApiKey } from "@dsh/repo";
+import { DeepSeekClient } from "@dsh/provider";
 
-export function readConfig(cwd: string): Record<string, unknown> {
-  try {
-    const raw = fs.readFileSync(path.join(cwd, ".dsh", "config.yml"), "utf-8");
-    return (yaml.load(raw) as Record<string, unknown>) ?? {};
-  } catch {
-    return {};
+export const readConfig = loadDshConfig;
+
+export function createClient(cwd: string): DeepSeekClient {
+  const apiKey = process.env["DEEPSEEK_API_KEY"] ?? readApiKey(cwd) ?? "";
+  if (!apiKey) {
+    throw new Error(
+      "DEEPSEEK_API_KEY not set. Set it as environment variable or in .dsh/config.yml deepseek.api_key",
+    );
   }
+  return new DeepSeekClient({ apiKey });
 }

@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as yaml from "js-yaml";
+import { loadDshConfig } from "@dsh/repo";
 import type { DeepSeekClient } from "@dsh/provider";
 import { classify } from "@dsh/provider";
 import type { ContextLayers } from "./context-builder.js";
@@ -85,21 +85,8 @@ export interface FullPipelineParams extends PipelineBase {
 
 // ---- Internal helpers ----
 
-function readLocalConfigStrict(cwd: string): Record<string, unknown> {
-  const raw = fs.readFileSync(path.join(cwd, ".dsh", "config.yml"), "utf-8");
-  return yaml.load(raw) as Record<string, unknown>;
-}
-
-function readLocalConfig(cwd: string): Record<string, unknown> {
-  try {
-    return readLocalConfigStrict(cwd);
-  } catch {
-    return {};
-  }
-}
-
 async function buildLayers(cwd: string, description: string, taskType: string): Promise<ContextLayers> {
-  const config = readLocalConfig(cwd);
+  const config = loadDshConfig(cwd);
   const rules = loadRuleContents(cwd);
   const stack = detectTechStack(cwd);
   const repoContext = generateRepoContext(cwd, stack);
@@ -120,7 +107,7 @@ async function runPostImplementationStaticScan(params: {
 }): Promise<TaskState> {
   const { cwd, client, changedFiles } = params;
   const { state } = params;
-  const scanConfig = resolveStaticScanConfig(readLocalConfig(cwd));
+  const scanConfig = resolveStaticScanConfig(loadDshConfig(cwd));
 
   if (!scanConfig.enabled || !scanConfig.command) {
     return state;
@@ -465,7 +452,7 @@ export async function runVerify(params: VerifyParams): Promise<TaskState> {
     throw new Error(`当前状态为 ${state.status}，需要 patched 或 repairing`);
   }
 
-  const config = readLocalConfigStrict(cwd);
+  const config = loadDshConfig(cwd);
   const verifyConfig = config.verify as Record<string, string> | undefined;
   const commands: string[] = [];
 
@@ -507,7 +494,7 @@ export async function runRepair(params: RepairParams): Promise<TaskState> {
 
   const layers = await buildLayers(cwd, state.task.description, state.task.type);
 
-  const config = readLocalConfigStrict(cwd);
+  const config = loadDshConfig(cwd);
   const verifyConfig = config.verify as Record<string, string> | undefined;
   if (verifyConfig && state.plan) {
     const commands = [verifyConfig.test, verifyConfig.lint, verifyConfig.typecheck]

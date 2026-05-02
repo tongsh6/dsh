@@ -149,17 +149,6 @@ export function formatComparisonReport(report: ComparisonReport): string {
   return lines.join("\n");
 }
 
-function readExistingApiKey(configPath: string): string | null {
-  try {
-    const raw = fs.readFileSync(configPath, "utf-8");
-    const match = raw.match(/^\s*api_key:\s*["']?([^"'\n]+)["']?\s*$/m);
-    if (match && match[1]?.trim()) return match[1].trim();
-  } catch {
-    // file doesn't exist or unreadable
-  }
-  return null;
-}
-
 // ---- Git helpers (internal) ----
 
 function gitQuiet(cwd: string, args: string): void {
@@ -170,11 +159,8 @@ function gitQuiet(cwd: string, args: string): void {
       timeout: 10_000,
     });
   } catch (e: unknown) {
-    const err = e as NodeJS.ErrnoException;
-    // Only suppress branch-delete ENOENT (branch didn't exist)
-    if (args.startsWith("branch -D") && err?.code === "ENOENT") {
-      return;
-    }
+    if (args.startsWith("branch -D")) return;
+    const err = e as { message?: string };
     throw new Error(
       `git ${args} failed in ${cwd}: ${err?.message ?? String(e)}`,
       { cause: e },
@@ -182,16 +168,30 @@ function gitQuiet(cwd: string, args: string): void {
   }
 }
 
+function getBaseBranch(cwd: string): string {
+  for (const candidate of ["main", "master"]) {
+    try {
+      execSync(`git rev-parse --verify ${candidate}`, {
+        cwd, stdio: "ignore", timeout: 5000,
+      });
+      return candidate;
+    } catch { /* try next */ }
+  }
+  return "main";
+}
+
 function prepareBranch(cwd: string, taskId: string): void {
+  const base = getBaseBranch(cwd);
   const branchName = `dsh-bench-${taskId}`;
-  gitQuiet(cwd, "checkout main");
+  gitQuiet(cwd, `checkout ${base}`);
   gitQuiet(cwd, `branch -D ${branchName}`);
   gitQuiet(cwd, `checkout -b ${branchName}`);
 }
 
 function resetToMain(cwd: string): void {
+  const base = getBaseBranch(cwd);
   gitQuiet(cwd, "reset --hard");
-  gitQuiet(cwd, "checkout main");
+  gitQuiet(cwd, `checkout ${base}`);
 }
 
 // ---- Benchmark execution ----
@@ -213,33 +213,26 @@ export async function runTask(
 
     // 2. Setup dsh config
     const { runPlan, runPatch, runVerify, runRepair, runHandoff } = await import("@dsh/core");
-    const yaml = await import("js-yaml");
 
     const dshDir = path.join(repoPath, ".dsh");
     fs.mkdirSync(dshDir, { recursive: true });
 
-    const configPath = path.join(dshDir, "config.yml");
-    // Preserve existing api_key from config if present (don't overwrite permanent configs)
-    const existingKey = readExistingApiKey(configPath);
-    const apiKey = existingKey ?? process.env["DEEPSEEK_API_KEY"] ?? "";
-
-    const config = {
+    // writeDshConfig merges with existing — api_key and other fields preserved
+    const { writeDshConfig: writeConfig } = await import("@dsh/repo");
+    writeConfig(repoPath, {
       project: { name: path.basename(repoPath), language: "python", package_manager: "pip" },
       verify: {
         test: fixture.verificationCommands[0] ?? "",
         lint: "",
         typecheck: "",
       },
-      rules: { files: [] },
       deepseek: {
         default_model: "deepseek-v4-pro",
         flash_model: "deepseek-v4-flash",
         max_repair_rounds: fixture.maxRepairRounds ?? 3,
         thinking_default: true,
-        api_key: apiKey,
       },
-    };
-    fs.writeFileSync(configPath, yaml.dump(config, { lineWidth: -1, noRefs: true }), "utf-8");
+    });
 
     // 3. Plan
     let state = await runPlan({

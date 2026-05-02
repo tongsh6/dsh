@@ -1,4 +1,5 @@
 import { DeepSeekClient } from "./packages/provider/dist/client.js";
+import { readApiKey } from "./packages/repo/dist/config-loader.js";
 import { loadAllFixtures } from "./packages/eval/dist/task-fixtures.js";
 import { runTask, formatEvaluationReport } from "./packages/eval/dist/benchmark-runner.js";
 import type { TaskResult } from "./packages/eval/dist/benchmark-runner.js";
@@ -38,7 +39,9 @@ if (!isCi) {
 
 let client: DeepSeekClient;
 try {
-  client = DeepSeekClient.fromEnv();
+  const apiKey = process.env["DEEPSEEK_API_KEY"] ?? readApiKey(DSH_REPO) ?? "";
+  if (!apiKey) throw new Error("DEEPSEEK_API_KEY not set");
+  client = new DeepSeekClient({ apiKey });
 } catch (e) {
   const msg = e instanceof Error ? e.message : String(e);
   if (isCi) {
