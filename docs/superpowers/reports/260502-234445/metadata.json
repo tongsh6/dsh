@@ -1,0 +1,50 @@
+{
+  "run_id": "260502-234445",
+  "started_at": "2026-05-02T15:44:45.566Z",
+  "completed_at": "2026-05-02T16:24:41.170Z",
+  "elapsed_seconds": 2396,
+  "dsh_commit": "11beb77",
+  "fixture_count": 8,
+  "fixtures": [
+    {
+      "id": "dsh-bugfix-scanner-ts",
+      "category": "bugfix",
+      "repo": "dsh"
+    },
+    {
+      "id": "dsh-refactor-config",
+      "category": "refactor",
+      "repo": "dsh"
+    },
+    {
+      "id": "dsh-test-scanner",
+      "category": "test",
+      "repo": "dsh"
+    },
+    {
+      "id": "pi-bugfix-count-defs",
+      "category": "bugfix",
+      "repo": "pi-proof-forge"
+    },
+    {
+      "id": "pi-docs-check-tools",
+      "category": "docs",
+      "repo": "pi-proof-forge"
+    },
+    {
+      "id": "pi-refactor-read-text",
+      "category": "refactor",
+      "repo": "pi-proof-forge"
+    },
+    {
+      "id": "pi-test-aief-l3",
+      "category": "test",
+      "repo": "pi-proof-forge"
+    },
+    {
+      "id": "pi-test-error-handler",
+      "category": "test",
+      "repo": "pi-proof-forge"
+    }
+  ]
+}
