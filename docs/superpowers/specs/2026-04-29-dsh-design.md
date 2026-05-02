@@ -232,6 +232,8 @@ const ROUTES: Record<string, { model: string; thinking: boolean }> = {
 
 DeepSeek 在 Aider benchmark 上的最佳表现：diff 格式 80.5%，whole 格式 78.9%。作为 Editor 模型配合 Architect 可达 85% SOTA。
 
+**DSH 自有实证（2026-05-02）：** 8 个 fixture 的 benchmark 中，模型触发 **SEARCH_REPLACE 5 次 vs PATCH（unified diff）0 次**。DeepSeek 在 DSH 的 XML 协议下几乎不使用 unified diff，强烈偏好 Search/Replace 格式。这直接验证了 v0.3 引入 `<PATCH type="search">` 的正确性——如果只支持 unified diff，模型可能无法有效表达修改意图。
+
 #### 7.3.2 协议 v0.3：完整操作集
 
 协议当前支持的完整操作：
