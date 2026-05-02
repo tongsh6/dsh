@@ -227,6 +227,109 @@ export const sarifParser: StaticFindingParser = {
   },
 };
 
+// ── Semgrep JSON Parser ──
+
+interface SemgrepOutput {
+  results?: SemgrepResult[];
+  version?: string;
+}
+
+interface SemgrepResult {
+  check_id?: string;
+  path?: string;
+  start?: { line?: number; col?: number };
+  end?: { line?: number; col?: number };
+  extra?: {
+    message?: string;
+    severity?: string;
+    metadata?: Record<string, unknown>;
+    lines?: string;
+    fingerprint?: string;
+  };
+}
+
+function isSemgrepOutput(output: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(output);
+    if (typeof parsed !== "object" || parsed === null) return false;
+    const obj = parsed as Record<string, unknown>;
+    if (!Array.isArray(obj.results)) return false;
+    // SARIF has `runs`, Semgrep has `results` + `errors` + `paths` top-level keys.
+    // For non-empty results, verify `check_id` to distinguish from SARIF `ruleId`.
+    const results = obj.results as unknown[];
+    if (results.length > 0) {
+      const first = results[0] as Record<string, unknown> | undefined;
+      return typeof first?.check_id === "string";
+    }
+    // Empty results: require at least one Semgrep-specific top-level key
+    // (`errors` array or `paths` object) to avoid matching arbitrary JSON
+    // payloads that happen to have an empty `results` array.
+    return Array.isArray(obj.errors) || (typeof obj.paths === "object" && obj.paths !== null);
+  } catch {
+    return false;
+  }
+}
+
+function semgrepSeverity(value: string | undefined): StaticScanFinding["severity"] {
+  // Semgrep uses uppercase severity strings; toSeverity normalizes via lowercase.
+  // Both paths converge to the same dsh severity enum.
+  return toSeverity(value);
+}
+
+function semgrepCategory(
+  checkId: string | undefined,
+  metadata: Record<string, unknown> | undefined,
+): StaticScanFinding["category"] {
+  if (metadata?.category) {
+    const cat = String(metadata.category).toLowerCase();
+    if (cat === "security") return "security";
+    if (cat === "bug" || cat === "correctness") return "bug";
+    if (cat === "style" || cat === "best-practice") return "style";
+    if (cat === "performance") return "bug";
+    if (cat === "maintainability") return "style";
+  }
+  if (checkId) {
+    const lower = checkId.toLowerCase();
+    if (lower.includes("security") || lower.includes("injection") || lower.includes("xss")) {
+      return "security";
+    }
+  }
+  return "unknown";
+}
+
+export const semgrepParser: StaticFindingParser = {
+  name: "semgrep-json",
+
+  canParse(output: string): boolean {
+    return isSemgrepOutput(output);
+  },
+
+  parse(output: string, cwd: string, round: number): StaticScanFinding[] {
+    const parsed: SemgrepOutput = JSON.parse(output);
+    const seeds: FindingSeed[] = [];
+
+    for (const result of parsed.results ?? []) {
+      const checkId = result.check_id ?? null;
+      const metadata = result.extra?.metadata;
+      const file = result.path
+        ? (normalizeFile(result.path, cwd) ?? result.path)
+        : "<unknown>";
+      seeds.push({
+        file,
+        line: result.start?.line ?? null,
+        column: result.start?.col ?? null,
+        severity: semgrepSeverity(result.extra?.severity),
+        category: semgrepCategory(checkId ?? undefined, metadata as Record<string, unknown> | undefined),
+        message: result.extra?.message ?? checkId ?? "<no message>",
+        rule: checkId,
+        raw: result,
+      });
+    }
+
+    return makeFindings("semgrep", round, seeds);
+  },
+};
+
 // ── Fallback Text Parser ──
 
 export const fallbackParser: StaticFindingParser = {
@@ -260,6 +363,7 @@ const PARSERS: StaticFindingParser[] = [
   eslintParser,
   tscParser,
   sarifParser,
+  semgrepParser,
   fallbackParser,
 ];
 

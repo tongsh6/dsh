@@ -4,6 +4,7 @@ import {
   eslintParser,
   tscParser,
   sarifParser,
+  semgrepParser,
   fallbackParser,
   resolveParser,
   parseFindings,
@@ -289,6 +290,195 @@ describe("sarifParser", () => {
   });
 });
 
+// ── Semgrep JSON ──
+
+describe("semgrepParser", () => {
+  it("detects Semgrep JSON output", () => {
+    const output = JSON.stringify({
+      results: [
+        { check_id: "test-rule", path: "src/foo.ts", start: { line: 1, col: 1 }, extra: { severity: "ERROR", message: "test" } },
+      ],
+    });
+    assert.ok(semgrepParser.canParse(output));
+  });
+
+  it("detects Semgrep JSON with empty results", () => {
+    // Semgrep empty output includes `errors` and `paths` alongside `results`
+    const output = JSON.stringify({ results: [], errors: [], paths: {} });
+    assert.ok(semgrepParser.canParse(output));
+  });
+
+  it("rejects JSON with empty results but no Semgrep-specific keys", () => {
+    // Arbitrary JSON with results:[] should not be misidentified
+    const output = JSON.stringify({ results: [] });
+    assert.ok(!semgrepParser.canParse(output));
+  });
+
+  it("rejects non-JSON and SARIF output", () => {
+    assert.ok(!semgrepParser.canParse("not json"));
+    assert.ok(!semgrepParser.canParse("  10:5  error  Missing await  rule/name"));
+    // SARIF has `runs` not `results`, but also has a version field.
+    // The key check: results must have `check_id`, SARIF results have `ruleId`.
+    const sarif = JSON.stringify({
+      version: "2.1.0",
+      runs: [{ results: [{ ruleId: "js/test", message: { text: "test" } }] }],
+    });
+    assert.ok(!semgrepParser.canParse(sarif));
+  });
+
+  it("rejects JSON without check_id in results", () => {
+    const output = JSON.stringify({
+      results: [{ path: "src/foo.ts", extra: { message: "no check_id here" } }],
+    });
+    assert.ok(!semgrepParser.canParse(output));
+  });
+
+  it("parses Semgrep JSON output", () => {
+    const output = JSON.stringify({
+      results: [
+        {
+          check_id: "yaml.github-actions.security.run-shell-injection.run-shell-injection",
+          path: ".github/workflows/deploy.yml",
+          start: { line: 18, col: 9, offset: 300 },
+          end: { line: 18, col: 82, offset: 373 },
+          extra: {
+            message: "Using variable interpolation with github context data in a run step",
+            severity: "ERROR",
+            metadata: { category: "security", cwe: ["CWE-78"] },
+            lines: "      - run: echo \"${{ inputs.box_ticked }}\"",
+          },
+        },
+        {
+          check_id: "python.lang.best-practice.unused-import.unused-import",
+          path: "src/main.py",
+          start: { line: 3, col: 1 },
+          end: { line: 3, col: 25 },
+          extra: { message: "Unused import 'os'", severity: "WARNING" },
+        },
+        {
+          check_id: "javascript.lang.style.console-log.console-log",
+          path: "src/app.ts",
+          start: { line: 10, col: 5 },
+          end: { line: 10, col: 25 },
+          extra: { message: "console.log found", severity: "INFO" },
+        },
+      ],
+    });
+
+    const findings = semgrepParser.parse(output, "/repo", 1);
+
+    assert.equal(findings.length, 3);
+
+    assert.equal(findings[0]!.scanner, "semgrep");
+    assert.equal(findings[0]!.file, ".github/workflows/deploy.yml");
+    assert.equal(findings[0]!.line, 18);
+    assert.equal(findings[0]!.column, 9);
+    assert.equal(findings[0]!.severity, "error");
+    assert.equal(findings[0]!.rule, "yaml.github-actions.security.run-shell-injection.run-shell-injection");
+    assert.equal(findings[0]!.category, "security");
+    assert.ok(findings[0]!.message.includes("variable interpolation"));
+    assert.ok(findings[0]!.raw, "raw data preserved");
+
+    assert.equal(findings[1]!.severity, "warning");
+    assert.equal(findings[2]!.severity, "info");
+  });
+
+  it("handles missing optional fields gracefully", () => {
+    const output = JSON.stringify({
+      results: [
+        {
+          check_id: "minimal-rule",
+          extra: { message: "A minimal finding with no location" },
+        },
+      ],
+    });
+
+    const findings = semgrepParser.parse(output, "/repo", 1);
+
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0]!.file, "<unknown>");
+    assert.equal(findings[0]!.line, null);
+    assert.equal(findings[0]!.column, null);
+    assert.equal(findings[0]!.severity, "error"); // default
+    assert.equal(findings[0]!.rule, "minimal-rule");
+  });
+
+  it("returns empty for Semgrep output with no findings", () => {
+    const output = JSON.stringify({ results: [], errors: [], paths: {} });
+    const findings = semgrepParser.parse(output, "/repo", 1);
+    assert.equal(findings.length, 0);
+  });
+
+  it("maps Semgrep severity levels correctly", () => {
+    const tests: [string, string][] = [
+      ["CRITICAL", "critical"],
+      ["HIGH", "high"],
+      ["ERROR", "error"],
+      ["MEDIUM", "medium"],
+      ["WARNING", "warning"],
+      ["LOW", "low"],
+      ["INFO", "info"],
+      ["NOTE", "info"],
+    ];
+
+    for (const [semgrepLevel, expected] of tests) {
+      const output = JSON.stringify({
+        results: [
+          {
+            check_id: "test-rule",
+            path: "file.ts",
+            start: { line: 1, col: 1 },
+            extra: { severity: semgrepLevel, message: "test" },
+          },
+        ],
+      });
+
+      const findings = semgrepParser.parse(output, "/repo", 1);
+      assert.equal(
+        findings[0]!.severity,
+        expected,
+        `Semgrep "${semgrepLevel}" should map to "${expected}"`,
+      );
+    }
+  });
+
+  it("infers category from check_id keywords", () => {
+    const output = JSON.stringify({
+      results: [
+        {
+          check_id: "java.lang.security.audit.xss.xss-injection",
+          path: "file.java",
+          start: { line: 1, col: 1 },
+          extra: { severity: "ERROR", message: "XSS vulnerability" },
+        },
+      ],
+    });
+
+    const findings = semgrepParser.parse(output, "/repo", 1);
+    assert.equal(findings[0]!.category, "security");
+  });
+
+  it("infers category from metadata.category", () => {
+    const output = JSON.stringify({
+      results: [
+        {
+          check_id: "python.some-rule",
+          path: "file.py",
+          start: { line: 1, col: 1 },
+          extra: {
+            severity: "ERROR",
+            message: "Test",
+            metadata: { category: "best-practice" },
+          },
+        },
+      ],
+    });
+
+    const findings = semgrepParser.parse(output, "/repo", 1);
+    assert.equal(findings[0]!.category, "style");
+  });
+});
+
 // ── Fallback ──
 
 describe("fallbackParser", () => {
@@ -341,6 +531,14 @@ describe("resolveParser", () => {
   it("picks SARIF parser for valid SARIF JSON", () => {
     const parser = resolveParser(JSON.stringify({ version: "2.1.0", runs: [] }));
     assert.equal(parser.name, "sarif");
+  });
+
+  it("picks Semgrep parser for Semgrep JSON output", () => {
+    const output = JSON.stringify({
+      results: [{ check_id: "test-rule", path: "file.ts", start: { line: 1, col: 1 }, extra: { severity: "ERROR", message: "test" } }],
+    });
+    const parser = resolveParser(output);
+    assert.equal(parser.name, "semgrep-json");
   });
 
   it("falls back for unrecognized output", () => {
@@ -397,6 +595,31 @@ describe("parseFindings", () => {
     assert.equal(findings[0]!.scanner, "codeql");
     assert.equal(findings[0]!.category, "security");
     assert.equal(findings[0]!.rule, "js/xss");
+  });
+
+  it("parses Semgrep end-to-end", () => {
+    const output = JSON.stringify({
+      results: [
+        {
+          check_id: "python.lang.best-practice.unused-import.unused-import",
+          path: "src/util.py",
+          start: { line: 42, col: 3 },
+          end: { line: 42, col: 20 },
+          extra: {
+            message: "Unused import detected",
+            severity: "WARNING",
+            metadata: { category: "best-practice" },
+          },
+        },
+      ],
+    });
+
+    const findings = parseFindings(output, "/repo", 1);
+
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0]!.scanner, "semgrep");
+    assert.equal(findings[0]!.category, "style");
+    assert.equal(findings[0]!.rule, "python.lang.best-practice.unused-import.unused-import");
   });
 
   it("falls back to generic for unrecognized output", () => {
