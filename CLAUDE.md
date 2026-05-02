@@ -6,6 +6,16 @@ A DeepSeek-native coding agent runtime optimized for long-context engineering ta
 
 **⚠️ 项目宪法（必读）:** `CONSTITUTION.md` — 设计文档先行、验证闭环、最小变更、可审计、实证驱动
 
+## 项目定位（AI 必读——避免误判）
+
+**DSH 的最终愿景是做一个完整的 DeepSeek 原生 Coding Agent**（与 DeepSeek-TUI 同一赛道），当前的 CLI + pipeline 是第一阶段 MVP。
+
+**关键理解规则：**
+1. SPEC §2 标记为"第一阶段不做"的内容是 **MVP 范围裁剪，不是永久架构约束**。不要把它们当成 DSH 的永久定位。
+2. SPEC §1 的"是/不是"列表中，"是"对应长期愿景，"不是"对应永久边界。**不要把"第一阶段"的限定词忽略，也不要把临时裁剪当作永久边界。**
+3. DSH 当前的执行闭环（Plan→Patch→Verify→Repair→Handoff）是 **MVP 内核，不是最终形态**。后续阶段会逐步扩展交互层（TUI）、工具层（MCP）、多模型支持等。
+4. 与其他 Coding Agent 项目（如 DeepSeek-TUI）的对比应在**同一产品类别**内进行——都是要达到同一个终点，差异在路径和优先级，不在层级。
+
 ## Tech Stack
 
 - **Language:** TypeScript (ESM, strict mode)
