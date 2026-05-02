@@ -58,9 +58,11 @@ export {
   applyPatch,
   applyChanges,
   detectProtocolOps,
+  detectProtocolOpsFromText,
   PatchParseError,
 } from "./patch-parser.js";
 export type {
+  ProtocolOp,
   ParsedPatch,
   HunkInfo,
   CreateBlock,

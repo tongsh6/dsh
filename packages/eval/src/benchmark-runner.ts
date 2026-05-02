@@ -2,8 +2,11 @@ import { execSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import type { DeepSeekClient } from "@dsh/provider";
+import { detectProtocolOpsFromText } from "@dsh/core";
+import type { ProtocolOp } from "@dsh/core";
+import { runPlan, runPatch, runVerify, runRepair, runHandoff } from "@dsh/core";
+import { writeDshConfig, getBaseBranch } from "@dsh/repo";
 import { PROTOCOL_OP_SCHEMA } from "./task-fixtures.js";
-import type { ProtocolOp } from "./task-fixtures.js";
 import type { LoadedFixture } from "./task-fixtures.js";
 
 // ---- Existing Types ----
@@ -159,25 +162,17 @@ function gitQuiet(cwd: string, args: string): void {
       timeout: 10_000,
     });
   } catch (e: unknown) {
-    if (args.startsWith("branch -D")) return;
+    // Only suppress "branch -D" when the branch simply doesn't exist
+    if (args.startsWith("branch -D")) {
+      const msg = (e as { stderr?: string }).stderr ?? "";
+      if (msg.includes("not found") || msg.includes("did not match") || msg === "") return;
+    }
     const err = e as { message?: string };
     throw new Error(
       `git ${args} failed in ${cwd}: ${err?.message ?? String(e)}`,
       { cause: e },
     );
   }
-}
-
-function getBaseBranch(cwd: string): string {
-  for (const candidate of ["main", "master"]) {
-    try {
-      execSync(`git rev-parse --verify ${candidate}`, {
-        cwd, stdio: "ignore", timeout: 5000,
-      });
-      return candidate;
-    } catch { /* try next */ }
-  }
-  return "main";
 }
 
 function prepareBranch(cwd: string, taskId: string): void {
@@ -212,14 +207,11 @@ export async function runTask(
     prepareBranch(repoPath, fixture.id);
 
     // 2. Setup dsh config
-    const { runPlan, runPatch, runVerify, runRepair, runHandoff } = await import("@dsh/core");
-
     const dshDir = path.join(repoPath, ".dsh");
     fs.mkdirSync(dshDir, { recursive: true });
 
     // writeDshConfig merges with existing — api_key and other fields preserved
-    const { writeDshConfig: writeConfig } = await import("@dsh/repo");
-    writeConfig(repoPath, {
+    writeDshConfig(repoPath, {
       project: { name: path.basename(repoPath), language: "python", package_manager: "pip" },
       verify: {
         test: fixture.verificationCommands[0] ?? "",
@@ -330,31 +322,6 @@ export async function runAll(
 
 // ---- Detect protocol ops from patch text ----
 
-export function detectProtocolOpsFromText(patchText: string): ProtocolOp[] {
-  const ops: ProtocolOp[] = [];
-  const found = new Set<ProtocolOp>();
-
-  // Match each protocol tag individually to avoid cross-tag interference
-  for (const match of patchText.matchAll(/<(\w+)(\s[^>]*)?>/gi)) {
-    const tag = match[1]!.toUpperCase();
-    const attrs = match[2] ?? "";
-
-    if (tag === "CREATE") found.add("CREATE");
-    if (tag === "INSERT") found.add("INSERT");
-    if (tag === "DELETE") found.add("DELETE");
-    if (tag === "RENAME") found.add("RENAME");
-    if (tag === "PATCH") {
-      if (/type\s*=\s*"search"/i.test(attrs)) {
-        found.add("SEARCH_REPLACE");
-      } else {
-        found.add("PATCH");
-      }
-    }
-  }
-
-  for (const op of found) ops.push(op);
-  return ops;
-}
 
 const ALL_PROTOCOL_OPS: readonly ProtocolOp[] = ["CREATE", "PATCH", "SEARCH_REPLACE", "INSERT", "DELETE", "RENAME"];
 

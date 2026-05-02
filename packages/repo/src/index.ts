@@ -25,6 +25,7 @@ export {
   getChangedFiles,
   getCurrentBranch,
   getLastCommitHash,
+  getBaseBranch,
   getGitInfo,
 } from "./git.js";
 export type { GitInfo } from "./git.js";

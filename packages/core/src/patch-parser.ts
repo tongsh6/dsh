@@ -2,6 +2,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { applyPatch as diffApplyPatch } from "diff";
 
+/** v0.3 协议操作类型（SPEC v0.3 §7.3.2） */
+export type ProtocolOp = "CREATE" | "PATCH" | "SEARCH_REPLACE" | "INSERT" | "DELETE" | "RENAME";
+
 export interface ParsedPatch {
   files: string[];
   patchText: string;
@@ -64,8 +67,8 @@ export interface ApplyChangesResult {
  * 从 ParsedChanges 中检测实际使用的协议操作类型。
  * 用于 benchmark 结果中记录模型实际选择的协议操作。
  */
-export function detectProtocolOps(changes: ParsedChanges): string[] {
-  const ops: string[] = [];
+export function detectProtocolOps(changes: ParsedChanges): ProtocolOp[] {
+  const ops: ProtocolOp[] = [];
   if (changes.creates.length > 0) ops.push("CREATE");
   if (changes.patchText) ops.push("PATCH");
   if (changes.searchReplaceBlocks.length > 0) ops.push("SEARCH_REPLACE");
@@ -73,6 +76,33 @@ export function detectProtocolOps(changes: ParsedChanges): string[] {
   if (changes.deletePaths.length > 0) ops.push("DELETE");
   if (changes.renames.length > 0) ops.push("RENAME");
   return ops;
+}
+
+/**
+ * 从原始 patch 文本中检测协议操作类型。
+ * 逐个 XML 标签匹配，避免跨标签 type="search" 误判。
+ */
+export function detectProtocolOpsFromText(patchText: string): ProtocolOp[] {
+  const found = new Set<ProtocolOp>();
+
+  for (const match of patchText.matchAll(/<(\w+)(\s[^>]*)?>/gi)) {
+    const tag = match[1]!.toUpperCase();
+    const attrs = match[2] ?? "";
+
+    if (tag === "CREATE") found.add("CREATE");
+    if (tag === "INSERT") found.add("INSERT");
+    if (tag === "DELETE") found.add("DELETE");
+    if (tag === "RENAME") found.add("RENAME");
+    if (tag === "PATCH") {
+      if (/type\s*=\s*"search"/i.test(attrs)) {
+        found.add("SEARCH_REPLACE");
+      } else {
+        found.add("PATCH");
+      }
+    }
+  }
+
+  return [...found];
 }
 
 export class PatchParseError extends Error {

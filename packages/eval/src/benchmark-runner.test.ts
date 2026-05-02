@@ -6,9 +6,9 @@ import {
   compareResults,
   formatComparisonReport,
   formatEvaluationReport,
-  detectProtocolOpsFromText,
 } from "./benchmark-runner.js";
 import type { TaskResult } from "./benchmark-runner.js";
+import { detectProtocolOpsFromText } from "@dsh/core";
 
 /** Create a minimal TaskResult for tests with default values. */
 function makeResult(overrides: Partial<TaskResult> = {}): TaskResult {

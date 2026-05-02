@@ -2,9 +2,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as yaml from "js-yaml";
 import { z } from "zod";
+import type { ProtocolOp } from "@dsh/core";
 
-/** v0.3 协议操作类型（SPEC v0.3 §7.3.2） */
-export type ProtocolOp = "CREATE" | "PATCH" | "SEARCH_REPLACE" | "INSERT" | "DELETE" | "RENAME";
+export type { ProtocolOp };
 
 export const PROTOCOL_OP_SCHEMA = z.enum([
   "CREATE",

@@ -75,6 +75,19 @@ export function getLastCommitHash(cwd: string): string | null {
   }
 }
 
+/** Detect the default branch name — main or master. Returns "main" if neither exists. */
+export function getBaseBranch(cwd: string): string {
+  for (const candidate of ["main", "master"]) {
+    try {
+      execSync(`git rev-parse --verify ${candidate}`, {
+        cwd, stdio: "ignore", timeout: 5000,
+      });
+      return candidate;
+    } catch { /* try next */ }
+  }
+  return "main";
+}
+
 export function getGitInfo(cwd: string): GitInfo {
   return {
     branch: getCurrentBranch(cwd),
