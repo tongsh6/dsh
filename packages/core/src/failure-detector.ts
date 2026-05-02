@@ -1,3 +1,6 @@
+import { execSync } from "node:child_process";
+import * as path from "node:path";
+
 export interface FailureDetection {
   mode: string;
   description: string;
@@ -12,6 +15,21 @@ export interface DetectParams {
   actualChangedFiles: string[];
   verifyOutput: string | null;
   patchApplyError: string | null;
+}
+
+export interface SignatureChange {
+  file: string;
+  name: string;
+  type: "added" | "removed" | "modified";
+  beforeSignature: string | null;
+  afterSignature: string | null;
+}
+
+export interface CallSite {
+  file: string;
+  line: number;
+  content: string;
+  matchType: "direct_call" | "import_reference" | "attribute_access";
 }
 
 // ---- Individual detectors ----
@@ -186,6 +204,11 @@ function detectHallucinatedApi(params: DetectParams): FailureDetection | null {
     /is not a function/i,
     /cannot read propert/i,
     /undefined is not an object/i,
+    // Python TypeError patterns — often indicate signature mismatch or wrong argument types
+    /takes\s+\d+\s+positional\s+argument.*but\s+\d+\s+(?:was|were)\s+given/i,
+    /got\s+an\s+unexpected\s+keyword\s+argument/i,
+    /missing\s+\d+\s+required\s+positional\s+argument/i,
+    /takes\s+exactly\s+\d+\s+argument/i,
   ];
 
   const hasApiError = apiErrorPatterns.some((p) => p.test(output));
@@ -234,6 +257,246 @@ function detectSearchReplaceMismatch(params: DetectParams): FailureDetection | n
   return null;
 }
 
+function detectSignatureMismatch(params: DetectParams): FailureDetection | null {
+  if (!params.verifyOutput) return null;
+
+  const output = params.verifyOutput;
+
+  const pythonSigMismatch =
+    /takes\s+\d+\s+positional\s+argument.*but\s+\d+\s+(?:was|were)\s+given/i.test(output) ||
+    /got\s+an\s+unexpected\s+keyword\s+argument/i.test(output) ||
+    /missing\s+\d+\s+required\s+positional\s+argument/i.test(output) ||
+    /takes\s+exactly\s+\d+\s+argument/i.test(output);
+
+  const tsSigMismatch =
+    /is not a function/i.test(output) &&
+    !/cannot read property.*is not a function/i.test(output.toLowerCase());
+
+  if (pythonSigMismatch || tsSigMismatch) {
+    const funcNameMatch =
+      output.match(/typeerror:\s*(\w+)\s*\(\)\s+takes/i) ??
+      output.match(/'(\w+)'\s+is\s+not\s+a\s+function/i) ??
+      output.match(/takes\s+\d+\s+positional\s+argument.*在\s+['"]?(\w+)['"]?/i);
+
+    const funcName = funcNameMatch?.[1] ?? "the function";
+
+    return {
+      mode: "signature-mismatch",
+      description: `函数 \`${funcName}\` 的签名变更导致调用方不匹配`,
+      confidence: "high",
+      evidence: `验证输出包含签名不匹配错误: ${output.slice(0, 250)}`,
+      repairHint: [
+        `SIGNATURE MISMATCH: You changed the signature of \`${funcName}\` but callers were NOT updated.`,
+        "",
+        "To fix this:",
+        `1. Find ALL places where \`${funcName}\` is called (check the Repo Context and test files)`,
+        "2. Update each call site to match the new signature, OR",
+        "3. Revert to the ORIGINAL signature if the change was unnecessary",
+        "",
+        "The original task likely said: preserve the function's calling convention.",
+        "",
+        "Verification error: " + output.slice(0, 300),
+      ].join("\n"),
+    };
+  }
+
+  return null;
+}
+
+// ---- Signature Change Detection & Caller Analysis ----
+
+function getGitDiff(cwd: string, files: string[]): string | null {
+  try {
+    const args = files.map((f) => `"${f}"`).join(" ");
+    return execSync(`git diff -- ${args}`, {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 5000,
+    }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+const FN_DEF_PATTERNS: Record<string, RegExp> = {
+  ".py": /^[+-]\s*def\s+(\w+)\s*\(([^)]*)\)/,
+  ".ts": /^[+-]\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)/,
+  ".tsx": /^[+-]\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)/,
+  ".js": /^[+-]\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)/,
+  ".jsx": /^[+-]\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)/,
+};
+
+const FN_ARROW_PATTERNS: Record<string, RegExp> = {
+  ".ts": /^[+-]\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(([^)]*)\)/,
+  ".tsx": /^[+-]\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(([^)]*)\)/,
+  ".js": /^[+-]\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(([^)]*)\)/,
+  ".jsx": /^[+-]\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(([^)]*)\)/,
+};
+
+export function detectSignatureChanges(
+  cwd: string,
+  changedFiles: string[],
+): SignatureChange[] {
+  const diff = getGitDiff(cwd, changedFiles);
+  if (!diff) return [];
+
+  const extByFile = new Map<string, string>();
+  for (const f of changedFiles) {
+    const ext = path.extname(f).toLowerCase();
+    extByFile.set(f, ext);
+    extByFile.set(path.basename(f), ext);
+  }
+
+  const removedDefs = new Map<string, { name: string; signature: string }>();
+  const addedDefs = new Map<string, { name: string; signature: string }>();
+
+  let currentFile: string | null = null;
+  for (const line of diff.split(/\r?\n/)) {
+    const fileMatch = line.match(/^diff --git a\/(.+?) b\/$/);
+    if (fileMatch) {
+      currentFile = fileMatch[1] ?? null;
+      continue;
+    }
+
+    if (!currentFile) continue;
+
+    const ext = extByFile.get(currentFile) ?? extByFile.get(path.basename(currentFile)) ?? path.extname(currentFile).toLowerCase();
+    const defPattern = FN_DEF_PATTERNS[ext];
+    const arrowPattern = FN_ARROW_PATTERNS[ext];
+
+    const prefix = line.charAt(0);
+    const m = defPattern?.exec(line) ?? arrowPattern?.exec(line);
+    if (!m) continue;
+
+    const name = m[1]!;
+    const signature = m[2]?.trim() ?? "";
+    const key = `${currentFile}::${name}`;
+
+    if (prefix === "-") {
+      removedDefs.set(key, { name, signature });
+    } else if (prefix === "+") {
+      addedDefs.set(key, { name, signature });
+    }
+  }
+
+  const changes: SignatureChange[] = [];
+  for (const [key, removed] of removedDefs) {
+    const added = addedDefs.get(key);
+    if (added && removed.signature !== added.signature) {
+      changes.push({
+        file: key.split("::")[0]!,
+        name: removed.name,
+        type: "modified",
+        beforeSignature: removed.signature,
+        afterSignature: added.signature,
+      });
+    } else if (!added) {
+      changes.push({
+        file: key.split("::")[0]!,
+        name: removed.name,
+        type: "removed",
+        beforeSignature: removed.signature,
+        afterSignature: null,
+      });
+    }
+  }
+
+  return changes;
+}
+
+export function findCallSites(
+  cwd: string,
+  functionNames: string[],
+  excludeFiles: string[],
+  maxResults: number = 20,
+): CallSite[] {
+  const results: CallSite[] = [];
+  const excludeSet = new Set(excludeFiles.map((f) => path.basename(f)));
+
+  for (const name of functionNames) {
+    if (results.length >= maxResults) break;
+
+    try {
+      let output: string;
+      try {
+        output = execSync(
+          `rg -n --no-heading "${name}" --type-add 'code:*.{ts,tsx,js,jsx,py}' --type code . 2>/dev/null`,
+          { cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], timeout: 5000 },
+        ).trim();
+      } catch {
+        output = execSync(
+          `grep -rn "${name}" . --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.py" 2>/dev/null`,
+          { cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], timeout: 5000 },
+        ).trim();
+      }
+
+      for (const line of output.split(/\r?\n/)) {
+        if (results.length >= maxResults) break;
+
+        const m = line.match(/^\.?\/?(.+?):(\d+):(.*)$/);
+        if (!m) continue;
+
+        const file = m[1]!;
+        const lineNum = Number(m[2]);
+        const content = m[3]?.trim() ?? "";
+
+        if (excludeSet.has(path.basename(file))) continue;
+        if (file.includes("node_modules/") || file.includes(".dsh/") || file.includes("dist/")) continue;
+
+        const trimmed = content.trimStart();
+        if (trimmed.startsWith("#") || trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) continue;
+        if (trimmed.startsWith("def ") || trimmed.startsWith("function ") || trimmed.startsWith("export function")) continue;
+
+        let matchType: CallSite["matchType"] = "direct_call";
+        if (content.includes("import ") && content.includes(name)) {
+          matchType = "import_reference";
+        } else if (content.includes("." + name)) {
+          matchType = "attribute_access";
+        }
+
+        results.push({ file, line: lineNum, content: content.slice(0, 200), matchType });
+      }
+    } catch {
+      // no matches
+    }
+  }
+
+  return results.slice(0, maxResults);
+}
+
+export function formatCallSiteContext(
+  changes: SignatureChange[],
+  callSites: CallSite[],
+): string | null {
+  if (changes.length === 0) return null;
+
+  const parts: string[] = [];
+  parts.push("## Signature Changes Detected");
+  parts.push("");
+
+  for (const change of changes) {
+    const icon = change.type === "modified" ? "[MODIFIED]" : change.type === "added" ? "[ADDED]" : "[REMOVED]";
+    parts.push(`- ${icon} **${change.name}** (${change.type}) in \`${change.file}\``);
+    if (change.beforeSignature) parts.push(`  Before: \`${change.name}(${change.beforeSignature})\``);
+    if (change.afterSignature) parts.push(`  After: \`${change.name}(${change.afterSignature})\``);
+  }
+
+  if (callSites.length > 0) {
+    parts.push("");
+    parts.push(`### Call Sites (${callSites.length} found)`);
+    parts.push("These files call the changed functions and may need updating:");
+    parts.push("```");
+    for (const cs of callSites) {
+      parts.push(`${cs.file}:${cs.line} ${cs.content.slice(0, 100)}`);
+    }
+    parts.push("```");
+    parts.push("Update all call sites to match the new signature, or revert the signature change.");
+  }
+
+  return parts.join("\n");
+}
+
 // ---- Main ----
 
 const DETECTORS = [
@@ -243,6 +506,7 @@ const DETECTORS = [
   detectRuleBlindness,
   detectHallucinatedApi,
   detectSearchReplaceMismatch,
+  detectSignatureMismatch,
 ];
 
 export function detectFailures(params: DetectParams): FailureDetection[] {

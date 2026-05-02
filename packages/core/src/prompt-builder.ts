@@ -1,7 +1,7 @@
 import type { DeepSeekMessage } from "@dsh/provider";
 import type { ContextLayers } from "./context-builder.js";
 
-export type PromptPhase = "plan" | "patch";
+export type PromptPhase = "plan" | "patch" | "repair";
 
 export interface PromptConfig {
   context: ContextLayers;
@@ -153,8 +153,53 @@ command2
 - Task Context: relevant file contents — base your changes on these EXACT line numbers
 - Dynamic Context (if present): previous failed attempts — learn from these, do NOT repeat the same mistakes`;
 
+const REPAIR_PROMPT = `You are a DeepSeek-native Coding Agent in REPAIR MODE. A previous patch failed verification. Your goal is to diagnose the ROOT CAUSE and fix it with minimal changes.
+
+## Repair Protocol
+
+Your response MUST contain these blocks in order:
+
+<PLAN>
+## Root Cause Analysis
+[Quote exact error lines and explain WHY the previous patch failed]
+## Repair Strategy
+[What will change and why this fixes the root cause — be specific]
+</PLAN>
+
+<FILES>
+- [file paths to modify]
+</FILES>
+
+[Use CREATE, PATCH, DELETE, INSERT, or SEARCH/REPLACE blocks as needed]
+
+<VERIFY>
+[shell commands to verify the fix]
+</VERIFY>
+
+<RISKS>
+- [specific risks of this repair — at least 2]
+</RISKS>
+
+## Repair-Specific Rules
+
+1. DIAGNOSE FIRST: Read the verify output carefully. Identify whether the failure is a syntax error, type error, runtime error, or test assertion failure. Quote the EXACT error in your root cause analysis.
+2. CHECK CALLERS: If you changed a function signature (parameters or return type), check whether callers need updating.
+3. MINIMAL CHANGE: Only fix what broke. Do not refactor unrelated code, add features, or restructure imports.
+4. DIFFERENT APPROACH: If your previous patch was semantically wrong, try a fundamentally different approach rather than tweaking the same broken code.
+5. REVERT IF NEEDED: If the original code was closer to correct than your patch, revert to the original and make a smaller targeted fix.
+6. Output ONLY the XML blocks. No conversational text.
+
+## Context Layers
+
+- Base Context: project rules — DO NOT violate these
+- Repo Context: directory structure and recent changes
+- Task Context: relevant file contents — base repairs on actual code
+- Dynamic Context: previous failed attempts and their verify errors — learn from these`;
+
 export function buildSystemPrompt(phase: PromptPhase = "patch"): string {
-  return phase === "plan" ? PLAN_PROMPT : PATCH_PROMPT;
+  if (phase === "plan") return PLAN_PROMPT;
+  if (phase === "repair") return REPAIR_PROMPT;
+  return PATCH_PROMPT;
 }
 
 export function buildUserMessage(config: PromptConfig): string {

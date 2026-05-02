@@ -1,7 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { detectFailures, buildRepairHints } from "./failure-detector.js";
-import type { DetectParams } from "./failure-detector.js";
+import {
+  detectFailures,
+  buildRepairHints,
+  detectSignatureChanges,
+  findCallSites,
+  formatCallSiteContext,
+} from "./failure-detector.js";
+import type { DetectParams, SignatureChange, CallSite } from "./failure-detector.js";
 
 describe("detectFailures", () => {
   describe("overconfidence", () => {
@@ -289,6 +295,66 @@ describe("detectFailures", () => {
     assert.ok(!hasSearchMismatch);
   });
 
+  describe("signature-mismatch", () => {
+    it("detects Python TypeError takes X positional arguments", () => {
+      const detections = detectFailures({
+        response: "",
+        planFiles: ["tools/check_v2_constraints.py"],
+        actualChangedFiles: ["tools/check_v2_constraints.py"],
+        verifyOutput: "TypeError: count_definitions() takes 2 positional arguments but 3 were given",
+        patchApplyError: null,
+      });
+      const sig = detections.find((d) => d.mode === "signature-mismatch");
+      assert.ok(sig, "should detect signature mismatch");
+      assert.equal(sig!.confidence, "high");
+      assert.ok(sig!.repairHint.includes("count_definitions"));
+    });
+
+    it("detects Python unexpected keyword argument", () => {
+      const detections = detectFailures({
+        response: "",
+        planFiles: ["src/utils.py"],
+        actualChangedFiles: ["src/utils.py"],
+        verifyOutput: "TypeError: process() got an unexpected keyword argument 'encoding'",
+        patchApplyError: null,
+      });
+      assert.ok(detections.some((d) => d.mode === "signature-mismatch"));
+    });
+
+    it("detects Python missing required positional argument", () => {
+      const detections = detectFailures({
+        response: "",
+        planFiles: ["src/api.py"],
+        actualChangedFiles: ["src/api.py"],
+        verifyOutput: "TypeError: fetch_data() missing 2 required positional arguments: 'token' and 'limit'",
+        patchApplyError: null,
+      });
+      assert.ok(detections.some((d) => d.mode === "signature-mismatch"));
+    });
+
+    it("detects JavaScript is not a function", () => {
+      const detections = detectFailures({
+        response: "",
+        planFiles: ["src/handler.ts"],
+        actualChangedFiles: ["src/handler.ts"],
+        verifyOutput: "TypeError: validateInput is not a function",
+        patchApplyError: null,
+      });
+      assert.ok(detections.some((d) => d.mode === "signature-mismatch"));
+    });
+
+    it("does not flag normal test assertion failures", () => {
+      const detections = detectFailures({
+        response: "",
+        planFiles: ["src/foo.py"],
+        actualChangedFiles: ["src/foo.py"],
+        verifyOutput: "AssertionError: assert 0 == 1\nFAILED tests/test_foo.py::test_bar - assert 0 == 1",
+        patchApplyError: null,
+      });
+      assert.ok(!detections.some((d) => d.mode === "signature-mismatch"));
+    });
+  });
+
   describe("multiple failure modes", () => {
     it("detects multiple modes simultaneously", () => {
       const params: DetectParams = {
@@ -363,5 +429,61 @@ describe("buildRepairHints", () => {
       },
     ]);
     assert.ok(hints?.includes("Use correct line numbers."));
+  });
+});
+
+// ── Signature Change Detection & Caller Analysis ──
+
+describe("detectSignatureChanges", () => {
+  it("returns empty for non-existent files", () => {
+    const changes = detectSignatureChanges(process.cwd(), ["NONEXISTENT_FILE_12345.py"]);
+    assert.equal(changes.length, 0);
+  });
+});
+
+describe("findCallSites", () => {
+  it("finds callers of a function in other files", () => {
+    const sites = findCallSites(process.cwd(), ["detectSignatureChanges"], ["failure-detector.ts"], 10);
+    const repairLoopRefs = sites.filter((s) => s.file.includes("repair-loop"));
+    assert.ok(repairLoopRefs.length > 0, "should find caller in repair-loop.ts");
+  });
+
+  it("returns empty when function not found in any file", () => {
+    // Use a unique name that cannot exist as substring in any file
+    // Exclude this test file since the function name appears in the source code of the test
+    const sites = findCallSites(
+      process.cwd(),
+      ["zzz_nonexistent_fn_xyzzy_999"],
+      ["failure-detector.test.ts"],
+      5,
+    );
+    assert.equal(sites.length, 0);
+  });
+});
+
+describe("formatCallSiteContext", () => {
+  it("formats signature changes with call sites into markdown", () => {
+    const changes: SignatureChange[] = [{
+      file: "tools/util.py",
+      name: "count_definitions",
+      type: "modified",
+      beforeSignature: "files: list[Path], signature: str",
+      afterSignature: "text: str, signature: str",
+    }];
+
+    const callSites: CallSite[] = [
+      { file: "tools/main.py", line: 42, content: "count_definitions(files, 'def foo')", matchType: "direct_call" },
+      { file: "tests/test_util.py", line: 15, content: "count_definitions(test_files, 'def bar')", matchType: "direct_call" },
+    ];
+
+    const result = formatCallSiteContext(changes, callSites);
+    assert.ok(result?.includes("count_definitions"));
+    assert.ok(result?.includes("files: list[Path], signature: str"));
+    assert.ok(result?.includes("tools/main.py:42"));
+    assert.ok(result?.includes("tests/test_util.py:15"));
+  });
+
+  it("returns null when no signature changes", () => {
+    assert.equal(formatCallSiteContext([], []), null);
   });
 });

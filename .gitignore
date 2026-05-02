@@ -1,8 +1,6 @@
 node_modules/
 dist/
-.dsh/task-state.json
-.dsh/config.yml
-.dsh/handoff/
+.dsh/
 *.tsbuildinfo
 .worktrees/
 .DS_Store

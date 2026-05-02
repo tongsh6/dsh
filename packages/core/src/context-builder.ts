@@ -132,7 +132,7 @@ export function buildDynamicContext(
         parts.push(`- ${r.status === "passed" ? "PASS" : "FAIL"} ${r.command}`);
         if (r.status === "failed") {
           parts.push("```");
-          parts.push(r.output.slice(-2000)); // truncate long output
+          parts.push(smartTruncateVerifyOutput(r.output, 3000));
           parts.push("```");
         }
       }
@@ -158,4 +158,38 @@ export function assembleContext(input: ContextInput): ContextLayers {
   const estimatedTokens = Math.ceil(totalChars / TOKEN_ESTIMATE_CHARS_PER_TOKEN);
 
   return { base, repo, task, dynamic, estimatedTokens };
+}
+
+function smartTruncateVerifyOutput(output: string, maxChars: number = 3000): string {
+  if (output.length <= maxChars) return output;
+
+  const lines = output.split("\n");
+  const headCount = Math.min(20, lines.length);
+  const headLines = lines.slice(0, headCount);
+  const remainingChars = maxChars - headLines.join("\n").length - 100;
+
+  if (remainingChars <= 0) return headLines.join("\n") + "\n...[truncated]";
+
+  const errorPatterns: RegExp[] = [
+    /error/i, /fail/i, /Error/, /FAIL/, /TypeError/, /ReferenceError/,
+    /assert/i, /AssertionError/, /expected/i, /received/i, /traceback/i,
+    /File\s+"/, /line\s+\d+/i, /TS\d+/, /at\s+\S+\.\S+/,
+  ];
+
+  const tailLines: string[] = [];
+  let tailChars = 0;
+  for (let i = headCount; i < lines.length; i++) {
+    const line = lines[i]!;
+    const isErrorLine = errorPatterns.some((p) => p.test(line));
+    if (isErrorLine && tailChars + line.length + 1 < remainingChars) {
+      tailLines.push(line);
+      tailChars += line.length + 1;
+    }
+  }
+
+  const result = headLines.join("\n");
+  if (tailLines.length > 0) {
+    return result + "\n...[error lines]\n" + tailLines.join("\n");
+  }
+  return result + "\n...[" + (lines.length - headCount) + " lines truncated]";
 }
