@@ -22,6 +22,7 @@ export async function initCommand(opts: InitOptions): Promise<void> {
   const verify = detectVerifyCommands(cwd, stack);
   const rules = loadRuleContents(cwd);
 
+  const existingApiKey = loadExistingApiKey(configPath);
   const config: Record<string, unknown> = {
     project: {
       name: path.basename(cwd),
@@ -47,7 +48,7 @@ export async function initCommand(opts: InitOptions): Promise<void> {
       flash_model: "deepseek-v4-flash",
       max_repair_rounds: 3,
       thinking_default: true,
-      api_key: "",
+      api_key: existingApiKey ?? "",
     },
   };
 
@@ -89,4 +90,21 @@ export async function initCommand(opts: InitOptions): Promise<void> {
   console.log(`✓ 配置已写入 ${configPath}`);
   console.log("");
   console.log("下一步: dsh plan \"你的任务描述\"");
+}
+
+function loadExistingApiKey(configPath: string): string | null {
+  try {
+    const raw = fs.readFileSync(configPath, "utf-8");
+    const parsed = yaml.load(raw) as Record<string, unknown> | undefined;
+    const ds = parsed && typeof parsed["deepseek"] === "object" && parsed["deepseek"] !== null
+      ? parsed["deepseek"] as Record<string, unknown>
+      : null;
+    const key = ds?.["api_key"];
+    if (typeof key === "string" && key.trim().length > 0) {
+      return key.trim();
+    }
+  } catch {
+    // no existing config or unreadable — ok to start fresh
+  }
+  return null;
 }

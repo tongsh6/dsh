@@ -220,7 +220,7 @@ export async function runTask(
         flash_model: "deepseek-v4-flash",
         max_repair_rounds: fixture.maxRepairRounds ?? 3,
         thinking_default: true,
-        api_key: "",
+        api_key: process.env["DEEPSEEK_API_KEY"] ?? "",
       },
     };
     fs.writeFileSync(
