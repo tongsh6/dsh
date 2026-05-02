@@ -417,22 +417,31 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   }
 
   if (!dryRun) {
+    const changedFiles = applyResult.success
+      ? [...applyResult.createdFiles, ...applyResult.renamedFiles, ...applyResult.patchedFiles, ...applyResult.deletedFiles]
+      : [];
+
+    // Record patch with XML tags preserved so protocol ops can be detected
+    const patchText = [
+      ...changes.creates.map((c) => `<CREATE path="${c.path}">\n${c.content}\n</CREATE>`),
+      ...changes.renames.map((r) => `<RENAME from="${r.from}" to="${r.to}" />`),
+      ...changes.deletePaths.map((p) => `<DELETE path="${p}" />`),
+      ...changes.searchReplaceBlocks.map((s) => `<PATCH type="search" file="${s.filePath}">\n<<<<<<< SEARCH\n${s.search}\n=======\n${s.replace}\n>>>>>>> REPLACE\n</PATCH>`),
+      changes.patchText ? `<PATCH>\n${changes.patchText}\n</PATCH>` : "",
+    ].filter(Boolean).join("\n\n") || "<empty>";
+
+    state.patches.push({
+      round: (state.repair_rounds ?? 0) + 1,
+      patch: patchText,
+      apply_status: applyResult.success ? "ok" : "failed",
+      files_changed: changedFiles,
+    });
+
     if (!applyResult.success) {
+      writeTaskState(cwd, state);
       throw new Error(`变更应用失败 — ${applyResult.error}`);
     }
 
-    const changedFiles = [...applyResult.createdFiles, ...applyResult.renamedFiles, ...applyResult.patchedFiles, ...applyResult.deletedFiles];
-    state.patches.push({
-      round: (state.repair_rounds ?? 0) + 1,
-      patch: [
-        ...changes.creates.map((c) => `<CREATE path="${c.path}">\n${c.content}\n</CREATE>`),
-        ...changes.renames.map((r) => `<RENAME from="${r.from}" to="${r.to}" />`),
-        ...changes.deletePaths.map((p) => `<DELETE path="${p}" />`),
-        changes.patchText ?? "",
-      ].filter(Boolean).join("\n\n") || "<empty>",
-      apply_status: "ok",
-      files_changed: changedFiles,
-    });
     state = transition(state, "patched");
     writeTaskState(cwd, state);
     state = await runPostImplementationStaticScan({ cwd, client, state, changedFiles });

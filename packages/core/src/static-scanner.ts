@@ -163,7 +163,8 @@ export async function repairStaticScanTopN(params: {
       ...changes.creates.map((c) => `<CREATE path="${c.path}">\n${c.content}\n</CREATE>`),
       ...changes.renames.map((r) => `<RENAME from="${r.from}" to="${r.to}" />`),
       ...changes.deletePaths.map((p) => `<DELETE path="${p}" />`),
-      changes.patchText ?? "",
+      ...changes.searchReplaceBlocks.map((s) => `<PATCH type="search" file="${s.filePath}">\n<<<<<<< SEARCH\n${s.search}\n=======\n${s.replace}\n>>>>>>> REPLACE\n</PATCH>`),
+      changes.patchText ? `<PATCH>\n${changes.patchText}\n</PATCH>` : "",
     ].filter(Boolean).join("\n\n") || "<empty>";
 
     const applyResult = applyChanges(cwd, changes, false);
