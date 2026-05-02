@@ -95,7 +95,7 @@ describe("formatComparisonReport", () => {
     const a = makeResult({ fixtureId: "t1", completed: true, testsPassed: true, handoffQuality: 3 });
     const report = compareResults("dsh", [a], "baseline", [makeResult({ fixtureId: "t1", completed: false })]);
     const md = formatComparisonReport(report);
-    assert.ok(md.includes("# Comparison Report"));
+    assert.ok(md.includes("# 对比报告"));
     assert.ok(md.includes("dsh"));
   });
 });
@@ -124,18 +124,18 @@ describe("formatEvaluationReport", () => {
 
     const report = formatEvaluationReport(results);
 
-    assert.ok(report.includes("# DSH Evaluation Report"));
-    assert.ok(report.includes("## Overview"));
+    assert.ok(report.includes("# DSH 评测报告"));
+    assert.ok(report.includes("## 概览"));
     assert.ok(report.includes("pi-001"));
     assert.ok(report.includes("pi-002"));
-    assert.ok(report.includes("## Protocol Operation Coverage"));
-    assert.ok(report.includes("## Failure Analysis"));
-    assert.ok(report.includes("scope creep"));
+    assert.ok(report.includes("## 协议操作覆盖"));
+    assert.ok(report.includes("## 失败分析"));
+    assert.ok(report.includes("范围越界"));
   });
 
   it("handles empty results", () => {
     const report = formatEvaluationReport([]);
-    assert.ok(report.includes("## Overview"));
+    assert.ok(report.includes("## 概览"));
     assert.ok(report.includes("0/0"));
   });
 });

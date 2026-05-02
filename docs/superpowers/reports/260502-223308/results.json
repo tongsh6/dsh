@@ -1,0 +1,209 @@
+[
+  {
+    "fixtureId": "dsh-bugfix-scanner-ts",
+    "category": "bugfix",
+    "completed": true,
+    "filesChanged": [
+      "packages/repo/src/scanner.ts",
+      "packages/repo/src/scanner.test.ts"
+    ],
+    "filesExpected": [
+      "packages/repo/src/scanner.ts",
+      "packages/repo/src/scanner.test.ts"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 884524,
+    "expectedProtocolOps": [
+      "PATCH"
+    ],
+    "actualProtocolOps": [],
+    "error": "repair failed: Request timed out"
+  },
+  {
+    "fixtureId": "dsh-refactor-config",
+    "category": "refactor",
+    "completed": true,
+    "filesChanged": [
+      "packages/repo/src/config-loader.ts",
+      "packages/cli/src/utils/config.ts",
+      "packages/core/src/pipeline.ts"
+    ],
+    "filesExpected": [
+      "packages/repo/src/config-loader.ts",
+      "packages/cli/src/utils/config.ts",
+      "packages/core/src/pipeline.ts"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": true,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 343033,
+    "expectedProtocolOps": [
+      "CREATE",
+      "PATCH"
+    ],
+    "actualProtocolOps": []
+  },
+  {
+    "fixtureId": "dsh-test-scanner",
+    "category": "test",
+    "completed": true,
+    "filesChanged": [
+      "packages/repo/src/scanner.test.ts",
+      "packages/repo/src/scanner.test.ts"
+    ],
+    "filesExpected": [
+      "packages/repo/src/scanner.test.ts"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 2,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 660602,
+    "expectedProtocolOps": [
+      "PATCH"
+    ],
+    "actualProtocolOps": []
+  },
+  {
+    "fixtureId": "pi-bugfix-count-defs",
+    "category": "bugfix",
+    "completed": true,
+    "filesChanged": [
+      "tools/check_v2_constraints.py",
+      "tools/check_v2_constraints.py"
+    ],
+    "filesExpected": [
+      "tools/check_v2_constraints.py"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 2,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 264319,
+    "expectedProtocolOps": [
+      "PATCH",
+      "SEARCH_REPLACE"
+    ],
+    "actualProtocolOps": []
+  },
+  {
+    "fixtureId": "pi-docs-check-tools",
+    "category": "docs",
+    "completed": true,
+    "filesChanged": [
+      "tools/README.md"
+    ],
+    "filesExpected": [
+      "tools/README.md"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": true,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 93424,
+    "expectedProtocolOps": [
+      "PATCH"
+    ],
+    "actualProtocolOps": []
+  },
+  {
+    "fixtureId": "pi-refactor-read-text",
+    "category": "refactor",
+    "completed": true,
+    "filesChanged": [
+      "tools/extract_evidence.py",
+      "tools/extract_evidence.py",
+      "tools/extract_evidence_llm.py"
+    ],
+    "filesExpected": [
+      "tools/extract_evidence.py",
+      "tools/extract_evidence_llm.py",
+      "tools/infra/file_io.py"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": true,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 182737,
+    "expectedProtocolOps": [
+      "CREATE",
+      "PATCH"
+    ],
+    "actualProtocolOps": []
+  },
+  {
+    "fixtureId": "pi-test-aief-l3",
+    "category": "test",
+    "completed": false,
+    "filesChanged": [],
+    "filesExpected": [
+      "tests/unit/domain/test_check_aief_l3.py"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 0,
+    "durationMs": 315764,
+    "expectedProtocolOps": [
+      "CREATE"
+    ],
+    "actualProtocolOps": [],
+    "error": "变更应用失败 — CREATE rejected: tests/unit/domain/test_check_aief_l3.py already exists. Use <PATCH> or <PATCH type=\"search\"> to modify existing files."
+  },
+  {
+    "fixtureId": "pi-test-error-handler",
+    "category": "test",
+    "completed": true,
+    "filesChanged": [
+      "tests/unit/domain/test_error_handler.py"
+    ],
+    "filesExpected": [
+      "tests/unit/domain/test_error_handler.py"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": true,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 79925,
+    "expectedProtocolOps": [
+      "PATCH"
+    ],
+    "actualProtocolOps": []
+  }
+]

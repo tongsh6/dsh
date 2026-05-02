@@ -128,18 +128,18 @@ export function compareResults(
 
 export function formatComparisonReport(report: ComparisonReport): string {
   const lines: string[] = [];
-  lines.push("# Comparison Report");
+  lines.push("# 对比报告");
   lines.push("");
-  lines.push(`| Metric | ${report.toolA.name} | ${report.toolB.name} |`);
+  lines.push(`| 指标 | ${report.toolA.name} | ${report.toolB.name} |`);
   lines.push("|--------|---------------------|---------------------|");
-  lines.push(`| Wins | ${report.comparison.aWins} | ${report.comparison.bWins} |`);
-  lines.push(`| Ties | ${report.comparison.ties} | |`);
-  lines.push(`| Avg Score | ${report.comparison.aAvgScore.toFixed(1)} | ${report.comparison.bAvgScore.toFixed(1)} |`);
+  lines.push(`| 胜出 | ${report.comparison.aWins} | ${report.comparison.bWins} |`);
+  lines.push(`| 平局 | ${report.comparison.ties} | |`);
+  lines.push(`| 均分 | ${report.comparison.aAvgScore.toFixed(1)} | ${report.comparison.bAvgScore.toFixed(1)} |`);
   lines.push("");
 
-  lines.push("## Per-Task Results");
+  lines.push("## 逐任务结果");
   lines.push("");
-  lines.push("| Task | dsh Score | Baseline Score | Winner |");
+  lines.push("| 任务 | dsh 分数 | 基线分数 | 胜者 |");
   lines.push("|------|-----------|----------------|--------|");
 
   for (let i = 0; i < report.toolA.results.length; i++) {
@@ -330,10 +330,10 @@ const ALL_PROTOCOL_OPS: readonly ProtocolOp[] = ["CREATE", "PATCH", "SEARCH_REPL
 export function formatEvaluationReport(results: TaskResult[]): string {
   const lines: string[] = [];
 
-  lines.push("# DSH Evaluation Report");
+  lines.push("# DSH 评测报告");
   lines.push("");
 
-  // Overview
+  // 概览
   const completed = results.filter((r) => r.completed).length;
   const total = results.length;
   const avgScore = total > 0
@@ -348,21 +348,21 @@ export function formatEvaluationReport(results: TaskResult[]): string {
     ? results.reduce((s, r) => s + r.manualInterventions, 0) / total
     : 0;
 
-  lines.push("## Overview");
+  lines.push("## 概览");
   lines.push("");
-  lines.push("| Metric | Value |");
+  lines.push("| 指标 | 数值 |");
   lines.push("|--------|-------|");
-  lines.push(`| Task completion rate | ${completed}/${total} (${total > 0 ? ((completed / total) * 100).toFixed(0) : 0}%) |`);
-  lines.push(`| Average score | ${avgScore.toFixed(1)} |`);
-  lines.push(`| Repair success rate | ${repairSucceeded}/${repairAttempted || "N/A"} |`);
-  lines.push(`| Avg repair rounds | ${avgRepairRounds.toFixed(1)} |`);
-  lines.push(`| Avg manual interventions | ${avgInterventions.toFixed(1)} |`);
+  lines.push(`| 任务完成率 | ${completed}/${total} (${total > 0 ? ((completed / total) * 100).toFixed(0) : 0}%) |`);
+  lines.push(`| 均分 | ${avgScore.toFixed(1)} |`);
+  lines.push(`| 修复成功率 | ${repairSucceeded}/${repairAttempted || "N/A"} |`);
+  lines.push(`| 平均修复轮数 | ${avgRepairRounds.toFixed(1)} |`);
+  lines.push(`| 平均人工介入 | ${avgInterventions.toFixed(1)} |`);
   lines.push("");
 
-  // Protocol Operation Coverage
-  lines.push("## Protocol Operation Coverage");
+  // 协议操作覆盖
+  lines.push("## 协议操作覆盖");
   lines.push("");
-  lines.push("| Operation | Expected (fixtures) | Actual (triggered) | Success Rate |");
+  lines.push("| 操作 | 预期（fixture 标注） | 实际触发 | 成功率 |");
   lines.push("|-----------|---------------------|---------------------|--------------|");
   for (const op of ALL_PROTOCOL_OPS) {
     const expected = results.filter((r) => r.expectedProtocolOps.includes(op)).length;
@@ -375,44 +375,44 @@ export function formatEvaluationReport(results: TaskResult[]): string {
   }
   lines.push("");
 
-  // Per-Task Detail
-  lines.push("## Per-Task Detail");
+  // 逐任务详情
+  lines.push("## 逐任务详情");
   lines.push("");
 
   for (const r of results) {
     const score = scoreResult(r);
-    lines.push(`### ${r.fixtureId} (${r.category}) — Score: ${score}/100`);
+    lines.push(`### ${r.fixtureId} (${r.category}) — 分数: ${score}/100`);
     lines.push("");
-    lines.push("| Dimension | Result |");
+    lines.push("| 维度 | 结果 |");
     lines.push("|-----------|--------|");
-    lines.push(`| Completed | ${r.completed ? "✓" : "✗"} |`);
-    lines.push(`| Files modified | ${r.filesChanged.join(", ") || "(none)"} |`);
-    lines.push(`| Expected files | ${r.filesExpected.join(", ")} |`);
-    lines.push(`| Scope violation | ${r.scopeViolation ? "✗ (extra: " + r.extraFiles.join(", ") + ")" : "✓"} |`);
-    lines.push(`| Tests passed | ${r.testsPassed ? "✓" : "✗"} |`);
-    lines.push(`| Repair rounds | ${r.repairRounds} |`);
-    lines.push(`| Repair success | ${r.repairSuccess ? "✓" : "✗"} |`);
-    lines.push(`| Rule violations | ${r.ruleViolations.length > 0 ? r.ruleViolations.join(", ") : "0"} |`);
-    lines.push(`| Handoff quality | ${r.handoffQuality}/3 |`);
-    lines.push(`| Duration | ${(r.durationMs / 1000).toFixed(1)}s |`);
+    lines.push(`| 完成 | ${r.completed ? "✓" : "✗"} |`);
+    lines.push(`| 修改文件 | ${r.filesChanged.join(", ") || "(无)"} |`);
+    lines.push(`| 预期文件 | ${r.filesExpected.join(", ")} |`);
+    lines.push(`| 范围越界 | ${r.scopeViolation ? "✗ (额外: " + r.extraFiles.join(", ") + ")" : "✓"} |`);
+    lines.push(`| 测试通过 | ${r.testsPassed ? "✓" : "✗"} |`);
+    lines.push(`| 修复轮数 | ${r.repairRounds} |`);
+    lines.push(`| 修复成功 | ${r.repairSuccess ? "✓" : "✗"} |`);
+    lines.push(`| 规则违规 | ${r.ruleViolations.length > 0 ? r.ruleViolations.join(", ") : "0"} |`);
+    lines.push(`| 交接质量 | ${r.handoffQuality}/3 |`);
+    lines.push(`| 耗时 | ${(r.durationMs / 1000).toFixed(1)}s |`);
     if (r.error) {
-      lines.push(`| Error | ${r.error} |`);
+      lines.push(`| 错误 | ${r.error} |`);
     }
     lines.push("");
   }
 
-  // Failure Analysis
+  // 失败分析
   const failures = results.filter((r) => !r.completed || !r.testsPassed);
   if (failures.length > 0) {
-    lines.push("## Failure Analysis");
+    lines.push("## 失败分析");
     lines.push("");
     for (const f of failures) {
       const reasons: string[] = [];
-      if (!f.completed) reasons.push("task incomplete");
-      if (f.scopeViolation) reasons.push("scope creep");
-      if (!f.testsPassed && !f.repairSuccess) reasons.push("repair exhausted");
-      if (f.ruleViolations.length > 0) reasons.push("rule violations: " + f.ruleViolations.join(", "));
-      lines.push(`- **${f.fixtureId}**: ${reasons.join("; ") || "unknown"}`);
+      if (!f.completed) reasons.push("任务未完成");
+      if (f.scopeViolation) reasons.push("范围越界");
+      if (!f.testsPassed && !f.repairSuccess) reasons.push("修复耗尽");
+      if (f.ruleViolations.length > 0) reasons.push("规则违规: " + f.ruleViolations.join(", "));
+      lines.push(`- **${f.fixtureId}**: ${reasons.join("; ") || "未知"}`);
     }
     lines.push("");
   }
