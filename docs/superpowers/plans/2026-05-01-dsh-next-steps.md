@@ -1,12 +1,12 @@
 # DSH Next Steps Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **状态更新 (2026-05-02):** Phase 3（Search/Replace 回退策略）已全部实现完成。Phase 2（扩展 fixture）中 3 个 dsh-* fixture 已创建。任务跟踪方式已升级为 `docs/superpowers/TASK-SPEC.md` 定义的独立 task 文件体系。
 
 **Goal:** 将 dsh 从"框架已搭建"推进到"有实证数据支撑 + 可对比基线 + v0.3 协议升级"
 
-**新增治理计划:** AI 后静态扫描与 Top N 修复不是一次性小功能，完整目标和分阶段推进见 `docs/superpowers/specs/2026-05-01-static-scan-governance.md` 与 `docs/superpowers/plans/2026-05-01-static-scan-governance-plan.md`。当前代码只完成该治理计划的 Phase 1 基础闭环，后续必须继续推进 Phase 2+。
+**新增治理计划:** AI 后静态扫描与 Top N 修复不是一次性小功能，完整目标和分阶段推进见 `docs/superpowers/specs/2026-05-01-static-scan-governance.md` 与 `docs/superpowers/plans/2026-05-01-static-scan-governance-plan.md`。当前 Phase 1 基础闭环已完成，Phase 2（finding parser + Semgrep + SARIF）已完成。
 
-**Architecture:** 三个独立工作流：(1) 跑通真实 benchmark 收集实证数据，(2) 扩展可执行 fixture 到多语言多 repo，(3) 在 patch-parser 中实现 Search/Replace 回退策略。三个流可并行推进，但建议先完成 #1 拿到数据后再做 #3 的细节设计。
+**Architecture:** 三个独立工作流：(1) 跑通真实 benchmark 收集实证数据，(2) 扩展可执行 fixture 到多语言多 repo，(3) ~~在 patch-parser 中实现 Search/Replace 回退策略~~ ✅ 已完成。三个流可并行推进。
 
 **Tech Stack:** TypeScript ESM, Node.js >= 18, pnpm, DeepSeek API, Git
 
@@ -446,7 +446,7 @@ git commit -m "feat(eval): support multi-repo benchmark execution"
 
 ---
 
-## Phase 3: Search/Replace 回退策略（v0.3 协议）
+## Phase 3: Search/Replace 回退策略（v0.3 协议）✅ 已完成
 
 ### Task 6: 在 patch-parser 中实现 Search/Replace 块解析
 

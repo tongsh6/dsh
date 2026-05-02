@@ -1,6 +1,14 @@
-# DeepSeek-native Coding Harness SPEC v0.2
+# DeepSeek-native Coding Harness SPEC v0.3
 
-> 状态: draft | 日期: 2026-04-29 | 作者: loong
+> 状态: active | 日期: 2026-05-02 | 作者: loong
+>
+> **v0.3 变更:**
+> - **§7.3.3 SEARCH/REPLACE 协议** — 新增 `<PATCH type="search">` 操作，带 XML 子标签格式（`<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE`）。DeepSeek 模型在某些场景下 SEARCH/REPLACE 成功率优于 unified diff。
+> - **§7.3.4 三级宽松匹配** — SEARCH 块应用失败时自动降级：精确匹配 → 空白弹性匹配 → 锚点关键词匹配。DeepSeek 专属优化，解决模型在 diff 中行号偏移的问题。
+> - **§7.3.5 INSERT 操作** — 新增 `<INSERT anchor="..." position="before|after">` 操作，支持锚点文本定位 + `from-file` 属性引用外部文件内容。解决大文件修改中 CREATE 开销过高的问题。
+> - **§7.3.6 大文件处理策略** — 自动检测超过阈值的文件，向模型注入两阶段 CREATE+INSERT 提示，避免模型因 token 限制截断长文件。
+> - **§7.3.7 RENAME 操作** — 新增 `<RENAME from="..." to="..." />` 文件重命名支持。
+> - **§19 当前实现状态** — 新增 spec 描述与实际代码的对照表，标记各能力的实现状态。
 >
 > **v0.2 变更 (§7.3):** 文件操作协议从单一 `<PATCH>` unified diff 扩展为 `<CREATE>` / `<PATCH>` / `<DELETE>` 三个语义化操作块。依据：业界所有主流工具（Claude Code/Cline/Aider）均用 Whole File 新建文件，unified diff 的 `/dev/null` hack 在 LLM 中成功率为 0%（参见 dsh benchmark 数据）。
 
@@ -224,9 +232,9 @@ const ROUTES: Record<string, { model: string; thinking: boolean }> = {
 
 DeepSeek 在 Aider benchmark 上的最佳表现：diff 格式 80.5%，whole 格式 78.9%。作为 Editor 模型配合 Architect 可达 85% SOTA。
 
-#### 7.3.2 协议 v0.2：操作语义化
+#### 7.3.2 协议 v0.3：完整操作集
 
-协议从单一的 `<PATCH>` 块扩展为三个独立的操作块，每个块只做一件事：
+协议当前支持的完整操作：
 
 ```xml
 <PLAN>
@@ -248,7 +256,7 @@ DeepSeek 在 Aider benchmark 上的最佳表现：diff 格式 80.5%，whole 格�
 文件完整内容，无前缀、无 diff header
 </CREATE>
 
-<!-- 修改已有文件：unified diff（或 Search/Replace，见 7.3.4） -->
+<!-- 修改已有文件（主方式）：unified diff -->
 <PATCH>
 --- a/file1
 +++ b/file1
@@ -256,8 +264,25 @@ DeepSeek 在 Aider benchmark 上的最佳表现：diff 格式 80.5%，whole 格�
 ...
 </PATCH>
 
-<!-- 删除文件（v0.3） -->
+<!-- 修改已有文件（回退方式）：Search/Replace -->
+<PATCH type="search" file="path/to/file">
+<<<<<<< SEARCH
+exact code to find in the file
+=======
+replacement code
+>>>>>>> REPLACE
+</PATCH>
+
+<!-- 在已有文件中插入内容：锚点定位 -->
+<INSERT anchor="def existing_function():" position="before" from-file="file">
+新的代码块或内容
+</INSERT>
+
+<!-- 删除文件 -->
 <DELETE path="tools/deprecated.py" />
+
+<!-- 重命名文件 -->
+<RENAME from="old/name.ts" to="new/name.ts" />
 
 <VERIFY>
 command1
@@ -268,49 +293,111 @@ command1
 </RISKS>
 ```
 
-**语义对比：**
+**语义对比（v0.2 → v0.3）：**
 
-| 操作 | v0.1（现状） | v0.2 |
-|------|-------------|------|
-| 新建文件 | `<PATCH>` 中 `/dev/null` hack | `<CREATE path="...">` |
-| 修改文件 | `<PATCH>` unified diff | `<PATCH>` unified diff |
-| 删除文件 | 不支持 | `<DELETE path="..." />`（v0.3） |
-| 重命名 | 不支持 | `<RENAME from="..." to="..." />`（v0.3） |
+| 操作 | v0.2 | v0.3 |
+|------|------|------|
+| 新建文件 | `<CREATE path="...">` | `<CREATE path="...">`（不变） |
+| 修改文件 | `<PATCH>` unified diff only | `<PATCH>` unified diff（主）+ `<PATCH type="search">`（回退） |
+| 插入内容 | 不支持 | `<INSERT anchor="..." position="...">`（v0.3 新增） |
+| 删除文件 | `<DELETE path="..." />` | `<DELETE path="..." />`（不变） |
+| 重命名 | 不支持 | `<RENAME from="..." to="..." />`（v0.3 新增） |
 
-#### 7.3.3 解析规则（v0.2）
+#### 7.3.3 SEARCH/REPLACE 协议
+
+当 unified diff 不适用时（行号偏移、复杂上下文），模型可以使用 Search/Replace 回退：
+
+```xml
+<PATCH type="search" file="src/utils.ts">
+<<<<<<< SEARCH
+function validate(input: string) {
+  if (!input) {
+    return false;
+  }
+  return true;
+}
+=======
+function validate(input: string): boolean {
+  if (!input || input.trim().length === 0) {
+    return false;
+  }
+  return true;
+}
+>>>>>>> REPLACE
+</PATCH>
+```
+
+**与 unified diff 的模型选择策略：**
+- DeepSeek 在 unified diff 上成功率 80.5%，在 Search/Replace 上 78.9%
+- 因此 **unified diff 保持为主格式，Search/Replace 作为回退**
+- 这与 Claude 模型相反（Claude 更擅长 Search/Replace）
+- repair-loop 会在 diff apply 失败时主动提示模型尝试 Search/Replace
+
+#### 7.3.4 SEARCH/REPLACE 三级宽松匹配
+
+当 SEARCH 块在目标文件中找不到精确匹配时，系统自动降级尝试：
+
+```
+Level 1: 精确字符串匹配（includes）
+    ↓ 失败
+Level 2: 空白弹性匹配（空白字符归一化后匹配）
+    ↓ 失败
+Level 3: 锚点关键词匹配（从 SEARCH 块中提取关键词在文件中定位）
+```
+
+每级匹配结果都会记录，用于在 retry hint 中给模型提供准确反馈（"SEARCH 块精确未匹配，但空白弹性匹配已找到位置"等）。这是 DeepSeek 专属优化——模型生成的 SEARCH 块常在缩进/换行上有微小偏差。
+
+#### 7.3.5 INSERT 操作
+
+针对大文件的局部插入场景，避免 WHOLE FILE CREATE 的 token 开销：
+
+```xml
+<INSERT anchor="export function setupRoutes() {" position="before">
+app.use('/api/v2', v2Router);
+</INSERT>
+```
+
+- `anchor`: 文件中必须唯一存在的文本片段，用于定位插入点
+- `position`: `"before"` 或 `"after"`，相对于锚点的插入位置
+- `from-file`: 可选属性，指定外部文件路径，将其内容作为插入源
+- 锚点匹配失败时，系统提取文件中的 headings/keywords 作为候选锚点提示模型
+
+**大文件两阶段策略：** 对于超过阈值的文件，系统自动检测并注入提示：
+1. 第一阶段：用 `<CREATE>` 输出完整文件内容（如果模型能输出）
+2. 如模型因长度截断 → 提示使用 `<INSERT from-file="...">` 引用外部文件
+
+#### 7.3.6 解析规则（v0.3）
 
 ```typescript
 // 处理优先级
 1. <CREATE> 块 → 直接写文件（完整内容，trim 首尾空白）
-2. <PATCH> 块 → 现有 diff apply 逻辑（含 /dev/null 兼容）
-3. <DELETE> 块 → 删除目标文件（v0.3）
+2. <RENAME> 块 → 重命名文件，检测目标与 CREATE/DELETE 冲突
+3. <DELETE> 块 → 删除目标文件
+4. <PATCH> 块 → unified diff apply（含 /dev/null 兼容）
+5. <PATCH type="search"> 块 → Search/Replace，三级宽松匹配
+6. <INSERT> 块 → 锚点定位 + 插入内容
 
 // 冲突检测
-4. <CREATE> 和 <PATCH> 指向同一文件 → 拒绝，要求模型重试
-5. <CREATE path="..."> 路径包含 ../ 或绝对路径 → 拒绝
+7. <CREATE> 和 <PATCH> / <PATCH type="search"> / <DELETE> 指向同一文件 → 拒绝
+8. <RENAME> from 与 <DELETE> 指向同一文件 → 拒绝
+9. <RENAME> to 与 <CREATE> 指向同一文件 → 拒绝
+10. 所有路径包含 ../ 或绝对路径 → 拒绝
 
 // 格式校验
-6. <CREATE> 块为空 → 警告
-7. <PATCH> 解析失败 → 回灌格式错误，重试（最多 2 次）
-8. <VERIFY> 块为空 → 警告
-9. <PATCH> 中 /dev/null 仍支持，但不推荐 → 建议模型迁移到 <CREATE>
+11. <CREATE> 块为空 → 警告
+12. <PATCH> 解析失败 → 回灌格式错误，重试（最多 2 次）
+13. <VERIFY> 块为空 → 警告
+14. <PATCH> 中 /dev/null 仍支持，但不推荐 → 建议模型迁移到 <CREATE>
 ```
 
-#### 7.3.4 回退策略（v0.3+ 规划）
+#### 7.3.7 RENAME 操作
 
-目标是对标业界 4 层回退标准：
-
-```
-Level 1: 精确 unified diff 匹配（当前方案）
-    ↓ 失败
-Level 2: Search/Replace 匹配（<PATCH type="search">）
-    ↓ 失败
-Level 3: 模糊匹配（空白弹性 + 锚点匹配）
-    ↓ 失败
-Level 4: Whole File 覆写（nuclear option）
+```xml
+<RENAME from="packages/cli/src/commands/obsolete.ts" to="packages/cli/src/commands/replacement.ts" />
 ```
 
-DeepSeek 兼容性说明：DeepSeek 在 unified diff 格式上表现优于 Search/Replace（80.5% vs 78.9%），因此 **unified diff 保持为主格式，Search/Replace 作为回退而非替代**。这与 Claude 模型相反（Claude 更擅长 SEARCH/REPLACE）。
+- 源文件必须存在，目标路径不能已存在（除非与 CREATE 目标一致）
+- 自动创建目标路径所需的目录结构
 
 ### 7.4 失败模式库
 
@@ -720,3 +807,69 @@ dsh 是独立的执行层，通过文件系统与上下游对接:
 - 不做 VS Code 扩展 — 纯终端
 - 不做 watch mode — 用户主动调用命令
 - 不做 `.env` 自动加载 — 依赖 shell 环境变量
+
+## 19. 当前实现状态（2026-05-02）
+
+Spec 描述与实际代码的对照。标记说明：✅ 已完成 | 🔧 实现中 | 📋 计划中 | ❌ 未开始
+
+### 19.1 核心模块
+
+| 模块 | Spec 描述 | 实际状态 | 备注 |
+|------|-----------|---------|------|
+| `cli` — 6 个命令 | §8 | ✅ | `init/plan/patch/verify/repair/handoff` 全部可用 |
+| `core/pipeline` | §3 | ✅ | Programmatic API：`runPlan/runPatch/runVerify/runRepair/runHandoff/runFullPipeline` |
+| `core/task-state` | §9, §10 | ✅ | 完整状态机 + Zod schema + JSON 文件读写 |
+| `core/context-builder` | §7.2 | ✅ | 四层上下文组装（Base/Repo/Task/Dynamic） |
+| `core/prompt-builder` | §12 | ✅ | System prompt + 协议模板 + token 估算 |
+| `core/patch-parser` | §7.3 | ✅ | CREATE/PATCH(ufiff+search)/INSERT/DELETE/RENAME + 三级宽松匹配 |
+| `core/verifier` | §8.4 | ✅ | Shell 命令执行 + 结果捕获 |
+| `core/repair-loop` | §8.5 | ✅ | 最多 N 轮 + 失败模式检测 + 智能 retry hints |
+| `core/handoff-writer` | §8.6 | ✅ | Markdown + JSON 格式，含静态扫描摘要 |
+| `core/failure-detector` | §7.4 | ✅ | 6 种失败模式：overconfidence/patch-drift/rule-blindness/scope-creep/hallucinated-api/search-replace-mismatch |
+| `provider/client` | §14 | ✅ | DeepSeek 原生 API HTTP client + chat/chatStream |
+| `provider/router` | §7.1 | ✅ | thinking/non-thinking 硬编码路由表 |
+| `repo/scanner` | §8.1 | ✅ | 技术栈识别（TS/JS/Python/Go/Rust）+ 验证命令推断 + pnpm workspace 支持 |
+| `repo/file-ranker` | §8.2 | ✅ | 关键词匹配 + 文件排序 |
+| `repo/rule-loader` | §8.1 | ✅ | .cursorrules/CLAUDE.md/AGENTS.md/AIEF 规则加载 |
+| `repo/git` | §7.2 | ✅ | git log/changed files/branch info |
+| `repo/config-loader` | §11 | ✅ | `.dsh/config.yml` 读取 |
+
+### 19.2 静态扫描治理
+
+| 能力 | Plan Phase | 实际状态 | 备注 |
+|------|-----------|---------|------|
+| Post-patch 自动扫描 + Top N 修复 | Phase 1 | ✅ | `dsh patch`/`dsh repair` 后自动触发 |
+| Finding parser 接口 | Phase 2 | ✅ | `StaticFindingParser { name, canParse, parse }` |
+| ESLint stylish parser | Phase 2 | ✅ | |
+| TypeScript diagnostics parser | Phase 2 | ✅ | |
+| SARIF v2.1.0 parser（CodeQL + Gitleaks） | Phase 2 | ✅ | 自动检测工具名称 |
+| Semgrep JSON parser | Phase 2 | ✅ | `semgrep --json` 输出标准化 |
+| 完整 finding schema（severity + category 全级别） | Phase 2 | ✅ | `critical/high/error/medium/warning/low/info` × `bug/type/style/security/secret/dependency/unknown` |
+| Text fallback parser | Phase 2 | ✅ | 非结构化输出的兜底处理 |
+| Top N 选择策略完整化 | Phase 3 | 📋 | 当前为简化版（severity + changed file + scanner order），完整版见 static-scan-governance spec |
+| Baseline 与新增问题区分 | Phase 4 | 📋 | 尚未实现 pre-scan/post-scan diff |
+| 独立 `dsh scan` 命令 | Phase 5 | 📋 | 尚未实现，当前扫描仅作为 pipeline 步骤 |
+| CI 产物上传 | Phase 6 | 📋 | 尚未实现 |
+| 治理报告升级 | Phase 7 | 📋 | 尚未实现 |
+
+### 19.3 评测体系
+
+| 能力 | 状态 | 备注 |
+|------|------|------|
+| Benchmark runner（runTask/runAll） | ✅ | 多 repo 支持，git branch 隔离 |
+| 10 维评分 | ✅ | |
+| pi-* fixtures（Python） | ✅ | 5 个 |
+| dsh-* fixtures（TypeScript self-hosting） | ✅ | 3 个（已创建，待执行） |
+| task-* fixtures（通用） | ✅ | 20 个 |
+| 基线对比（dsh vs OpenCode vs Claude Code） | 📋 | 首次 benchmark 已跑 4/5 pi-*，但未做跨工具对比 |
+| 报告归档 | ✅ | `docs/superpowers/reports/<run-id>/` |
+
+### 19.4 文档与项目治理
+
+| 项目 | 状态 | 备注 |
+|------|------|------|
+| CLAUDE.md | ✅ | 2026-05-02 创建 |
+| TASK-SPEC.md | ✅ | 2026-05-02 创建，定义任务格式与生命周期 |
+| CI workflows（scan/codeql/gitleaks） | ✅ | |
+| dsh 自身 config.yml 自洽性 | ✅ | 已修正为 typescript/pnpm |
+| README.md | ❌ | 未创建 |

@@ -177,23 +177,35 @@ handoff 必须包含：
 
 ## 10. 当前实现状态
 
-当前已完成的是 Phase 1 基础闭环：
+> 最后更新: 2026-05-02
 
+### 已完成（Phase 1 + Phase 2）
+
+**Phase 1 — 基础闭环：**
 - `dsh patch` 后自动扫描。
 - `dsh repair` 后自动扫描。
 - 支持配置 `static_scan.enabled/command/top_n`。
-- 支持 ESLint stylish 和 TypeScript diagnostics 的基础解析。
 - 记录 `static_scan_runs` 和 `static_repair_results`。
 - 原始输出写入 `.dsh/static-scan/`。
 - handoff 展示扫描和 Top N 修复摘要。
 
-当前仍未完成：
+**Phase 2 — Finding 标准化：**
+- Finding parser 接口：`StaticFindingParser { name, canParse, parse }`。
+- Parser 注册表：自动检测扫描器类型 → 选择对应 parser。
+- 完整 finding schema：`critical/high/error/medium/warning/low/info` severity + `bug/type/style/security/secret/dependency/unknown` category。
+- ESLint stylish parser。
+- TypeScript diagnostics parser。
+- SARIF v2.1.0 parser（CodeQL + Gitleaks 自动识别）。
+- Semgrep JSON parser（`semgrep --json` 输出标准化）。
+- Text fallback parser（非结构化输出兜底）。
 
-- SARIF 解析。
-- Semgrep/Gitleaks/CodeQL 原生适配。
-- 历史 baseline 与新增问题区分。
-- 完整 severity/category schema。
-- 独立 `dsh scan` 命令。
+### 仍未完成（Phase 3-8）
+
+- Top N 选择策略完整化（当前为简化版：severity + changed file + scanner order）。
+- 历史 baseline 与新增问题区分（pre-scan/post-scan diff）。
+- 独立 `dsh scan` 命令（当前扫描仅作为 pipeline 后置步骤）。
 - CI 中上传/保留治理产物。
+- 治理报告升级（score breakdown、baseline diff）。
 - 外部 AI 工具通过 git hook/wrapper 触发。
+- 稳定性回归评测 fixture。
 
