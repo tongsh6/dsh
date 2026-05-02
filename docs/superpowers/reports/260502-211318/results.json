@@ -1,0 +1,199 @@
+[
+  {
+    "fixtureId": "dsh-bugfix-scanner-ts",
+    "category": "bugfix",
+    "completed": false,
+    "filesChanged": [],
+    "filesExpected": [
+      "packages/repo/src/scanner.ts",
+      "packages/repo/src/scanner.test.ts"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 0,
+    "durationMs": 84,
+    "expectedProtocolOps": [
+      "PATCH"
+    ],
+    "actualProtocolOps": [],
+    "error": "git branch -D dsh-bench-dsh-bugfix-scanner-ts failed in /Users/loong/workspace/code/github/ai/dsh: Command failed: git branch -D dsh-bench-dsh-bugfix-scanner-ts"
+  },
+  {
+    "fixtureId": "dsh-refactor-config",
+    "category": "refactor",
+    "completed": false,
+    "filesChanged": [],
+    "filesExpected": [
+      "packages/repo/src/config-loader.ts",
+      "packages/cli/src/utils/config.ts",
+      "packages/core/src/pipeline.ts"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 0,
+    "durationMs": 78,
+    "expectedProtocolOps": [
+      "CREATE",
+      "PATCH"
+    ],
+    "actualProtocolOps": [],
+    "error": "git branch -D dsh-bench-dsh-refactor-config failed in /Users/loong/workspace/code/github/ai/dsh: Command failed: git branch -D dsh-bench-dsh-refactor-config"
+  },
+  {
+    "fixtureId": "dsh-test-scanner",
+    "category": "test",
+    "completed": false,
+    "filesChanged": [],
+    "filesExpected": [
+      "packages/repo/src/scanner.test.ts"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 0,
+    "durationMs": 77,
+    "expectedProtocolOps": [
+      "PATCH"
+    ],
+    "actualProtocolOps": [],
+    "error": "git branch -D dsh-bench-dsh-test-scanner failed in /Users/loong/workspace/code/github/ai/dsh: Command failed: git branch -D dsh-bench-dsh-test-scanner"
+  },
+  {
+    "fixtureId": "pi-bugfix-count-defs",
+    "category": "bugfix",
+    "completed": false,
+    "filesChanged": [],
+    "filesExpected": [
+      "tools/check_v2_constraints.py"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 0,
+    "durationMs": 69,
+    "expectedProtocolOps": [
+      "PATCH",
+      "SEARCH_REPLACE"
+    ],
+    "actualProtocolOps": [],
+    "error": "git branch -D dsh-bench-pi-bugfix-count-defs failed in /tmp/pi-proof-forge: Command failed: git branch -D dsh-bench-pi-bugfix-count-defs"
+  },
+  {
+    "fixtureId": "pi-docs-check-tools",
+    "category": "docs",
+    "completed": true,
+    "filesChanged": [
+      "tools/README.md"
+    ],
+    "filesExpected": [
+      "tools/README.md"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": true,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 75621,
+    "expectedProtocolOps": [
+      "PATCH"
+    ],
+    "actualProtocolOps": []
+  },
+  {
+    "fixtureId": "pi-refactor-read-text",
+    "category": "refactor",
+    "completed": true,
+    "filesChanged": [
+      "tools/extract_evidence.py",
+      "tools/extract_evidence.py",
+      "tools/extract_evidence_llm.py",
+      "tools/extract_evidence_llm.py"
+    ],
+    "filesExpected": [
+      "tools/extract_evidence.py",
+      "tools/extract_evidence_llm.py",
+      "tools/infra/file_io.py"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": true,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 75765,
+    "expectedProtocolOps": [
+      "CREATE",
+      "PATCH"
+    ],
+    "actualProtocolOps": []
+  },
+  {
+    "fixtureId": "pi-test-aief-l3",
+    "category": "test",
+    "completed": false,
+    "filesChanged": [],
+    "filesExpected": [
+      "tests/unit/domain/test_check_aief_l3.py"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 0,
+    "durationMs": 1154157,
+    "expectedProtocolOps": [
+      "CREATE"
+    ],
+    "actualProtocolOps": [],
+    "error": "Network error: fetch failed"
+  },
+  {
+    "fixtureId": "pi-test-error-handler",
+    "category": "test",
+    "completed": false,
+    "filesChanged": [],
+    "filesExpected": [
+      "tests/unit/domain/test_error_handler.py"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 0,
+    "durationMs": 8425,
+    "expectedProtocolOps": [
+      "PATCH"
+    ],
+    "actualProtocolOps": [],
+    "error": "Network error: fetch failed"
+  }
+]

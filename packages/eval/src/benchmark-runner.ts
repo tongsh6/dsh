@@ -149,6 +149,17 @@ export function formatComparisonReport(report: ComparisonReport): string {
   return lines.join("\n");
 }
 
+function readExistingApiKey(configPath: string): string | null {
+  try {
+    const raw = fs.readFileSync(configPath, "utf-8");
+    const match = raw.match(/^\s*api_key:\s*["']?([^"'\n]+)["']?\s*$/m);
+    if (match && match[1]?.trim()) return match[1].trim();
+  } catch {
+    // file doesn't exist or unreadable
+  }
+  return null;
+}
+
 // ---- Git helpers (internal) ----
 
 function gitQuiet(cwd: string, args: string): void {
@@ -207,6 +218,11 @@ export async function runTask(
     const dshDir = path.join(repoPath, ".dsh");
     fs.mkdirSync(dshDir, { recursive: true });
 
+    const configPath = path.join(dshDir, "config.yml");
+    // Preserve existing api_key from config if present (don't overwrite permanent configs)
+    const existingKey = readExistingApiKey(configPath);
+    const apiKey = existingKey ?? process.env["DEEPSEEK_API_KEY"] ?? "";
+
     const config = {
       project: { name: path.basename(repoPath), language: "python", package_manager: "pip" },
       verify: {
@@ -220,14 +236,10 @@ export async function runTask(
         flash_model: "deepseek-v4-flash",
         max_repair_rounds: fixture.maxRepairRounds ?? 3,
         thinking_default: true,
-        api_key: process.env["DEEPSEEK_API_KEY"] ?? "",
+        api_key: apiKey,
       },
     };
-    fs.writeFileSync(
-      path.join(dshDir, "config.yml"),
-      yaml.dump(config, { lineWidth: -1, noRefs: true }),
-      "utf-8",
-    );
+    fs.writeFileSync(configPath, yaml.dump(config, { lineWidth: -1, noRefs: true }), "utf-8");
 
     // 3. Plan
     let state = await runPlan({
