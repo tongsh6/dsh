@@ -1,0 +1,28 @@
+id: loam-test-distill-engine
+description: 为 packages/distill/src/engine.ts 补充单元测试
+category: test
+taskPrompt: |
+  packages/distill/src/engine.ts 是蒸馏引擎的核心调度模块，负责协调整个蒸馏流程（Provider → Distiller → Sink）。
+  目前该文件没有测试覆盖。
+
+  请为 engine.ts 创建单元测试文件 packages/distill/src/engine.test.ts，重点测试：
+  1. Engine 初始化（配置加载、Provider 注册）
+  2. 蒸馏流程调度（单 Distiller、多 Distiller 串行）
+  3. 错误处理（Provider 不可用时的回退行为）
+  4. Sink 输出（确认结果正确路由到指定 Sink）
+
+  使用 mock 替代真实的 LLM Provider 和 Sink，避免测试依赖外部服务。
+  保持与项目现有测试一致的风格（node:test + assert + tsx）。
+
+  相关文件：packages/distill/src/engine.test.ts（新建）
+expectedFiles:
+  - packages/distill/src/engine.test.ts
+expectPass: true
+verificationCommands:
+  - "pnpm --filter @loamlog/distill test"
+architectureRules:
+  - 不修改 engine.ts 的源代码
+  - 使用 node:test + node:assert/strict
+  - Mock LLM Provider 和 Sink，不发起真实网络请求
+maxRepairRounds: 2
+repoPath: /tmp/dsh-candidate-loamlog

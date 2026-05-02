@@ -1,0 +1,44 @@
+id: rh-test-dashboard-version
+description: 为 DashboardAppService 和 VersionUpdateAppService 补充单元测试
+category: test
+taskPrompt: |
+  以下两个应用服务目前完全没有单元测试覆盖：
+
+  1. DashboardAppService.getStats()：
+     - 包含发布窗口状态过滤逻辑（统计 DRAFT/PUBLISHED 状态的窗口数量）
+     - 包含最近 7 天运行记录统计逻辑（countRecentRuns 基于 createdAt 时间过滤）
+     - 这些过滤条件未经验证
+
+  2. VersionUpdateAppService.updateVersion()：
+     - 包含根据 BuildTool 类型查找合适的 VersionUpdaterPort 实现的分发逻辑
+     - 包含找不到实现时的降级处理（返回 failure result）
+     - 该逻辑未经验证
+
+  请编写单元测试：
+  - DashboardAppServiceTest：
+    - 测试正常统计逻辑（mock ports 返回非空列表）
+    - 测试状态过滤：确认只有 DRAFT 和 PUBLISHED 状态的窗口被计入
+    - 测试空数据场景
+  - VersionUpdateAppServiceTest：
+    - 测试存在匹配的 VersionUpdaterPort 时正确调用
+    - 测试不存在匹配的实现时返回 failure result（success=false）
+    - 测试有多个实现时选择第一个匹配的实现
+
+  使用 JUnit 5 + Mockito + AssertJ（与项目现有测试风格一致）。
+
+  相关文件：
+  - backend/releasehub-application/src/test/java/io/releasehub/application/dashboard/DashboardAppServiceTest.java（新建）
+  - backend/releasehub-application/src/test/java/io/releasehub/application/version/VersionUpdateAppServiceTest.java（新建）
+expectedFiles:
+  - backend/releasehub-application/src/test/java/io/releasehub/application/dashboard/DashboardAppServiceTest.java
+  - backend/releasehub-application/src/test/java/io/releasehub/application/version/VersionUpdateAppServiceTest.java
+expectPass: true
+verificationCommands:
+  - "cd /tmp/dsh-candidate-release-hub/backend && mvn test -pl releasehub-application -Dtest=\"DashboardAppServiceTest,VersionUpdateAppServiceTest\" -q"
+architectureRules:
+  - 使用 JUnit 5 + Mockito (@ExtendWith(MockitoExtension.class)) + AssertJ
+  - 使用 @Mock 注解 mock 依赖，构造器注入 SUT
+  - 遵循现有命名模式：@Nested + @DisplayName
+  - 不修改源代码
+maxRepairRounds: 2
+repoPath: /tmp/dsh-candidate-release-hub

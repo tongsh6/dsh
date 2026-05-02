@@ -1,0 +1,36 @@
+id: loam-bugfix-cli-error-handling
+description: 修复 CLI 命令中缺失的错误处理和用户反馈
+category: bugfix
+taskPrompt: |
+  在 packages/cli/src/ 目录下的 CLI 命令文件中，多个命令在执行失败时没有提供清晰的错误信息和退出码：
+
+  1. capture.ts：当输入的 session 文件不存在或格式错误时，直接抛出异常堆栈而不是显示友好的错误消息
+  2. distill.ts：当 LLM Provider 调用失败时，没有区分不同类型的错误（网络错误 vs API 错误 vs 配额错误），用户看到的是原始 HTTP 错误
+  3. daemon.ts：后台进程启动失败时静默退出，exit code 仍为 0
+
+  请修复这些问题：
+  1. capture.ts：在读取 session 文件前检查文件是否存在，格式错误时给出具体的格式问题提示
+  2. distill.ts：捕获 Provider 调用的不同类型的错误，给出分类的错误消息（网络问题/API 认证失败/配额耗尽/未知错误）
+  3. daemon.ts：启动失败时设置非零 exit code，并输出错误原因到 stderr
+
+  所有错误消息应使用中文（与 CLI 其他部分保持一致）。
+
+  相关文件：
+  - packages/cli/src/capture.ts
+  - packages/cli/src/distill.ts
+  - packages/cli/src/daemon.ts
+expectedFiles:
+  - packages/cli/src/capture.ts
+  - packages/cli/src/distill.ts
+  - packages/cli/src/daemon.ts
+expectPass: true
+verificationCommands:
+  - "pnpm run typecheck"
+  - "pnpm run test"
+architectureRules:
+  - 不改变命令的正常功能逻辑
+  - 错误消息使用中文
+  - 保持现有测试通过
+  - 不需要为错误处理增加新的依赖
+maxRepairRounds: 2
+repoPath: /tmp/dsh-candidate-loamlog

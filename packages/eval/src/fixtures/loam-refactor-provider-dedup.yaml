@@ -1,0 +1,46 @@
+id: loam-refactor-provider-dedup
+description: 消除 LLM Provider 中的重复代码
+category: refactor
+taskPrompt: |
+  packages/distill/src/providers/ 目录下有 5 个 LLM Provider 实现：
+  - openai.ts
+  - anthropic.ts
+  - deepseek.ts
+  - ollama.ts
+  - openai-compatible.ts
+
+  这些 Provider 在 HTTP 请求构建、错误处理、响应解析等方面存在大量重复代码。
+  shared.ts 已经提取了部分公共逻辑，但仍有多个 Provider 各自实现了相似的：
+  1. API key 读取和环境变量解析
+  2. HTTP header 构建（Authorization, Content-Type 等）
+  3. 流式响应处理（SSE 解析）
+  4. 错误重试逻辑
+
+  请将以下公共逻辑提取到 shared.ts：
+  - buildAuthHeaders(apiKey: string): Record<string, string>
+  - parseSSEStream(stream: ReadableStream): AsyncIterable<string>
+  - withRetry<T>(fn: () => Promise<T>, maxRetries: number): Promise<T>
+
+  然后更新至少 3 个 Provider（openai.ts, deepseek.ts, anthropic.ts）改为使用 shared.ts 中的公共函数。
+
+  相关文件：
+  - packages/distill/src/providers/shared.ts
+  - packages/distill/src/providers/openai.ts
+  - packages/distill/src/providers/deepseek.ts
+  - packages/distill/src/providers/anthropic.ts
+expectedFiles:
+  - packages/distill/src/providers/shared.ts
+  - packages/distill/src/providers/openai.ts
+  - packages/distill/src/providers/deepseek.ts
+  - packages/distill/src/providers/anthropic.ts
+expectPass: true
+verificationCommands:
+  - "pnpm run typecheck"
+  - "pnpm --filter @loamlog/distill test"
+architectureRules:
+  - 不改变 Provider 的对外接口（保持向后兼容）
+  - 提取到 shared.ts 的函数必须充分测试
+  - 已有的 Provider 测试必须继续通过
+  - 只提取真正重复的逻辑，不做过度抽象
+maxRepairRounds: 2
+repoPath: /tmp/dsh-candidate-loamlog

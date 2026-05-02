@@ -1,0 +1,27 @@
+id: loam-test-distill-state
+description: 为 packages/distill/src/state.ts 补充单元测试
+category: test
+taskPrompt: |
+  packages/distill/src/state.ts 是蒸馏引擎的全局状态管理模块，目前完全没有测试覆盖。
+  该模块导出了 DistillStateManager 单例，用于管理多轮蒸馏会话的状态、配置和中间结果。
+
+  请为该文件补充全面的单元测试：
+  1. 测试状态初始化（默认值是否正确）
+  2. 测试状态更新（各个字段的 setter 方法）
+  3. 测试状态重置（reset 后是否恢复默认值）
+  4. 测试并发状态访问的安全性
+
+  相关文件：packages/distill/src/state.ts, packages/distill/src/state.test.ts（新建）
+
+  保持与现有测试一致的风格（node:test + assert + tsx）。
+expectedFiles:
+  - packages/distill/src/state.test.ts
+expectPass: true
+verificationCommands:
+  - "pnpm --filter @loamlog/distill test"
+architectureRules:
+  - 不修改 state.ts 的源代码（纯测试任务）
+  - 使用 node:test + node:assert/strict（与项目现有测试一致）
+  - 测试命名：describe + it，描述清晰
+maxRepairRounds: 2
+repoPath: /tmp/dsh-candidate-loamlog

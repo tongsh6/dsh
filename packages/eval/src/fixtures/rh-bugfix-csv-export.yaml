@@ -1,0 +1,31 @@
+id: rh-bugfix-csv-export
+description: 修复 ExportAppService CSV 导出中的格式问题和空值安全
+category: bugfix
+taskPrompt: |
+  ExportAppService.exportCsv() 方法存在两个 bug：
+  1. CSV 字段值中包含逗号时未做转义处理（未使用双引号包裹），当 message 或 windowKey 等字段中包含逗号时，会导致 CSV 格式错误，下游解析器无法正确解析。
+  2. step.message() 可能为 null，直接拼接到 String.join(",", ...) 中会输出字面字符串 "null"，而非空字符串。
+
+  请修复：
+  - 将字符串拼接改为真正的 CSV 格式：对包含逗号、双引号、换行符的字段用双引号包裹，字段内部的双引号需要转义为两个双引号
+  - 对 null 字段输出空字符串而非 "null"
+  - 注意 step.message() 和 item.getFinalResult() 都可能为 null
+  - 编写对应的单元测试（ExportAppServiceTest.java）
+
+  相关文件：
+  - backend/releasehub-application/src/main/java/io/releasehub/application/export/ExportAppService.java
+  - backend/releasehub-application/src/test/java/io/releasehub/application/export/ExportAppServiceTest.java（新建）
+
+  项目使用 Maven 构建，Java 21，JUnit 5 + Mockito + AssertJ。
+expectedFiles:
+  - backend/releasehub-application/src/main/java/io/releasehub/application/export/ExportAppService.java
+  - backend/releasehub-application/src/test/java/io/releasehub/application/export/ExportAppServiceTest.java
+expectPass: true
+verificationCommands:
+  - "cd /tmp/dsh-candidate-release-hub/backend && mvn test -pl releasehub-application -Dtest=\"ExportAppServiceTest\" -q"
+architectureRules:
+  - Application 层不能依赖 Infrastructure、Interfaces 或 Bootstrap
+  - 测试必须使用 JUnit 5 + Mockito + AssertJ
+  - Mock RunPort 使用 Mockito
+maxRepairRounds: 2
+repoPath: /tmp/dsh-candidate-release-hub
