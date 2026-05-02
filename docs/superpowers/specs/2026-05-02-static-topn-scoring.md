@@ -125,6 +125,7 @@ dimensions: { severity: 200, changedFile: 300, security: 0, buildBlocking: 150, 
 | `packages/core/src/static-topn.test.ts` | **新建** | 评分维度测试 |
 | `packages/core/src/static-scanner.ts` | 修改 | 替换 selectTopFindings 为 static-topn 版本；buildTopNReasoning 改用 ScoredFinding.reason |
 | `packages/core/src/index.ts` | 修改 | 导出新类型和函数 |
+| `packages/core/src/pipeline.ts` | 修改 | `topN` → `topNConfig` 适配（StaticScanConfig 签名变更） |
 | `packages/core/src/task-state.ts` | **不修改** | top_n_reasoning 保持 string[] |
 
 ## 7. 成功标准
