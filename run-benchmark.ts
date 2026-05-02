@@ -42,10 +42,12 @@ try {
 } catch (e) {
   const msg = e instanceof Error ? e.message : String(e);
   if (isCi) {
-    console.log(JSON.stringify({ error: "client_init_failed", message: msg }));
+    process.stdout.write(JSON.stringify({ error: "client_init_failed", message: msg }) + "\n");
   }
-  console.error(`[benchmark] FATAL: ${msg}`);
-  process.exit(2); // exit code 2 = configuration error
+  // Use synchronous write to ensure flush before exit
+  process.stderr.write(`[benchmark] FATAL: ${msg}\n`);
+  process.exitCode = 2;
+  setImmediate(() => process.exit(2));
 }
 
 const runStart = new Date();

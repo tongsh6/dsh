@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import type { DeepSeekClient } from "@dsh/provider";
+import { PROTOCOL_OP_SCHEMA } from "./task-fixtures.js";
 import type { ProtocolOp } from "./task-fixtures.js";
 import type { LoadedFixture } from "./task-fixtures.js";
 
@@ -45,7 +46,9 @@ export function createEmptyResult(fixture: LoadedFixture): TaskResult {
     manualInterventions: 0,
     handoffQuality: 0,
     durationMs: 0,
-    expectedProtocolOps: (fixture.expectedProtocolOperations as ProtocolOp[]) ?? [],
+    expectedProtocolOps: (fixture.expectedProtocolOperations ?? []).filter(
+      (op): op is ProtocolOp => PROTOCOL_OP_SCHEMA.safeParse(op).success,
+    ),
     actualProtocolOps: [],
   };
 }
@@ -155,8 +158,16 @@ function gitQuiet(cwd: string, args: string): void {
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 10_000,
     });
-  } catch {
-    // best effort
+  } catch (e: unknown) {
+    const err = e as NodeJS.ErrnoException;
+    // Only suppress branch-delete ENOENT (branch didn't exist)
+    if (args.startsWith("branch -D") && err?.code === "ENOENT") {
+      return;
+    }
+    throw new Error(
+      `git ${args} failed in ${cwd}: ${err?.message ?? String(e)}`,
+      { cause: e },
+    );
   }
 }
 
@@ -269,7 +280,8 @@ export async function runTask(
       await runHandoff({ cwd: repoPath });
       handoffQuality = 2;
     } catch (e) {
-      console.warn(`[benchmark] handoff failed for ${fixture.id}: ${e instanceof Error ? e.message : String(e)}`);
+      const msg = `handoff failed: ${e instanceof Error ? e.message : String(e)}`;
+      result.error = msg;
     }
 
     // 8. Assess results

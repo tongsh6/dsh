@@ -123,6 +123,19 @@ describe("loadAllFixtures", () => {
     const fixtures = loadAllFixtures(path.join(tmp, "nonexistent"));
     assert.deepEqual(fixtures, []);
   });
+
+  it("throws with details when fixtures fail schema validation", () => {
+    // Create a deliberately invalid fixture (missing required taskPrompt)
+    fs.writeFileSync(
+      path.join(tmp, "invalid.yaml"),
+      "id: invalid-fixture\ndescription: Missing taskPrompt\ncategory: bugfix\nexpectedFiles: []\nverificationCommands: []\narchitectureRules: []\nexpectedProtocolOperations: [PATCH]\n",
+      "utf-8",
+    );
+    assert.throws(
+      () => loadAllFixtures(tmp),
+      /Failed to load 1 fixture/,
+    );
+  });
 });
 
 describe("real fixture validation", () => {

@@ -96,8 +96,10 @@ export function loadAllFixtures(dir: string): LoadedFixture[] {
         try {
           fixtures.push(loadFixture(filePath));
         } catch (e) {
-          if (e instanceof z.ZodError) {
-            const issues = e.issues.map(
+          // loadFixture wraps ZodError in plain Error with { cause }
+          const cause = e instanceof Error ? e.cause : undefined;
+          if (cause instanceof z.ZodError) {
+            const issues = cause.issues.map(
               (i) => `    ${i.path.join(".") || "(root)"}: ${i.message}`,
             ).join("\n");
             errors.push(`${entry.name}: validation failed:\n${issues}`);

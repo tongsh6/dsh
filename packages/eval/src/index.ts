@@ -13,5 +13,6 @@ export {
   runTask,
   runAll,
   formatEvaluationReport,
+  detectProtocolOpsFromText,
 } from "./benchmark-runner.js";
 export type { TaskResult, ComparisonReport } from "./benchmark-runner.js";
