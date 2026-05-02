@@ -145,9 +145,10 @@ dsh/
 │   └── handoff/
 │
 ├── docs/
-│   └── superpowers/
-│       └── specs/
-│           └── 2026-04-29-dsh-design.md
+│   ├── specs/           # 设计说明
+│   ├── plans/           # 实现计划
+│   ├── tasks/           # 任务卡片
+│   └── reports/         # 评测报告
 │
 ├── pnpm-workspace.yaml
 ├── package.json
@@ -864,7 +865,7 @@ Spec 描述与实际代码的对照。标记说明：✅ 已完成 | 🔧 实现
 | dsh-* fixtures（TypeScript self-hosting） | ✅ | 3 个（已创建，待执行） |
 | task-* fixtures（通用） | ✅ | 20 个 |
 | 基线对比（dsh vs OpenCode vs Claude Code） | 📋 | 首次 benchmark 已跑 4/5 pi-*，但未做跨工具对比 |
-| 报告归档 | ✅ | `docs/superpowers/reports/<run-id>/` |
+| 报告归档 | ✅ | `docs/reports/<run-id>/` |
 
 ### 19.4 文档与项目治理
 

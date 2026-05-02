@@ -3,8 +3,8 @@ id: "semgrep-parser"
 status: done
 priority: p1
 type: feature
-spec_ref: "docs/superpowers/specs/2026-05-01-static-scan-governance.md"
-plan_ref: "docs/superpowers/plans/2026-05-01-static-scan-governance-plan.md"
+spec_ref: "docs/specs/2026-05-01-static-scan-governance.md"
+plan_ref: "docs/plans/2026-05-01-static-scan-governance-plan.md"
 dependencies: []
 created: "2026-05-02"
 updated: "2026-05-02"

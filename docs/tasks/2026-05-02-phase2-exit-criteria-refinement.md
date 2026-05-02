@@ -3,8 +3,8 @@ id: "phase2-exit-criteria-refinement"
 status: ready
 priority: p1
 type: docs
-spec_ref: "docs/superpowers/specs/2026-05-02-benchmark-operability-fix.md"
-plan_ref: "docs/superpowers/plans/2026-05-02-benchmark-operability-fix.md"
+spec_ref: "docs/specs/2026-05-02-benchmark-operability-fix.md"
+plan_ref: "docs/plans/2026-05-02-benchmark-operability-fix.md"
 dependencies: []
 created: "2026-05-02"
 updated: "2026-05-02"

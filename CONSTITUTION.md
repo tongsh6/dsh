@@ -46,9 +46,9 @@ tasks/              ← 任务卡片：可独立执行的最小工作单元
 - 验证方式（测试命令）
 - 依赖关系
 
-**设计文档存放位置：** `docs/superpowers/specs/` 和 `docs/superpowers/plans/`
+**设计文档存放位置：** `docs/specs/` 和 `docs/plans/`
 
-**执行细节参见：** `docs/superpowers/TASK-SPEC.md`
+**执行细节参见：** `docs/TASK-SPEC.md`
 
 ---
 

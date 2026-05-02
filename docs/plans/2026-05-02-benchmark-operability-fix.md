@@ -1,6 +1,6 @@
 # Benchmark 可操作性修复实现计划
 
-> 关联 Spec: `docs/superpowers/specs/2026-05-02-benchmark-operability-fix.md`
+> 关联 Spec: `docs/specs/2026-05-02-benchmark-operability-fix.md`
 
 ## 文件映射
 
@@ -13,8 +13,8 @@
 | `BLUEPRINT.md` | 细化 Phase 2 退出条件 |
 | `.github/workflows/benchmark.yml` | 新建 CI workflow |
 | `run-benchmark.ts` | 新增 --ci 模式 |
-| `docs/superpowers/tasks/2026-05-02-baseline-benchmark.md` | 状态 → done |
-| `docs/superpowers/TASK-SPEC.md` | 更新 §6 索引 |
+| `docs/tasks/2026-05-02-baseline-benchmark.md` | 状态 → done |
+| `docs/TASK-SPEC.md` | 更新 §6 索引 |
 
 ## Phase 1: Fixture 协议操作元数据 (p0)
 

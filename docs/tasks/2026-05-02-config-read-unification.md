@@ -3,8 +3,8 @@ id: "config-read-unification"
 status: ready
 priority: p1
 type: refactor
-spec_ref: "docs/superpowers/specs/2026-05-02-config-architecture.md"
-plan_ref: "docs/superpowers/plans/2026-05-02-config-architecture.md"
+spec_ref: "docs/specs/2026-05-02-config-architecture.md"
+plan_ref: "docs/plans/2026-05-02-config-architecture.md"
 dependencies: ["config-loader-rewrite"]
 created: "2026-05-02"
 updated: "2026-05-02"

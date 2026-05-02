@@ -12,7 +12,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixturesDir = path.join(__dirname, "packages/eval/src/fixtures");
 const DSH_REPO = __dirname;
 const PI_REPO = "/tmp/pi-proof-forge";
-const REPORTS_DIR = path.join(__dirname, "docs", "superpowers", "reports");
+const REPORTS_DIR = path.join(__dirname, "docs", "reports");
 
 // Parse CLI flags
 const args = process.argv.slice(2);

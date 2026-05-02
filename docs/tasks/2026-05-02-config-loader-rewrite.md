@@ -3,8 +3,8 @@ id: "config-loader-rewrite"
 status: in_progress
 priority: p0
 type: feature
-spec_ref: "docs/superpowers/specs/2026-05-02-config-architecture.md"
-plan_ref: "docs/superpowers/plans/2026-05-02-config-architecture.md"
+spec_ref: "docs/specs/2026-05-02-config-architecture.md"
+plan_ref: "docs/plans/2026-05-02-config-architecture.md"
 dependencies: []
 created: "2026-05-02"
 updated: "2026-05-02"

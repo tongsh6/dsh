@@ -14,7 +14,7 @@
 ### 2.1 文件命名
 
 ```
-docs/superpowers/tasks/{YYYY-MM-DD}-{slug}.md
+docs/tasks/{YYYY-MM-DD}-{slug}.md
 ```
 
 - 日期：创建日期，用于排序
@@ -224,9 +224,9 @@ spec/           ← 设计文档：描述"要做什么"和"为什么这样做"
 
 | 层 | 文件 | 生命周期 | 受众 |
 |----|------|---------|------|
-| **Spec** | `docs/superpowers/specs/*.md` | 长周期，版本号管理 | 所有人 |
-| **Plan** | `docs/superpowers/plans/*.md` | 中周期，Phase 完成后更新 | 开发者 |
-| **Task** | `docs/superpowers/tasks/*.md` | 短周期，做完即归档 | 执行者 |
+| **Spec** | `docs/specs/*.md` | 长周期，版本号管理 | 所有人 |
+| **Plan** | `docs/plans/*.md` | 中周期，Phase 完成后更新 | 开发者 |
+| **Task** | `docs/tasks/*.md` | 短周期，做完即归档 | 执行者 |
 
 ### 4.2 流转关系
 
@@ -235,7 +235,7 @@ spec/           ← 设计文档：描述"要做什么"和"为什么这样做"
 3. **每个 Task** → 创建独立 `.md` 文件，初始状态 `backlog`
 4. **Task done** → 更新 Plan 中的 checkbox
 5. **Plan 全部 done** → 更新 Spec 版本号
-6. **Task 归档** → 移到 `docs/superpowers/tasks/archive/`（可选）
+6. **Task 归档** → 移到 `docs/tasks/archive/`（可选）
 
 ### 4.3 何时跳过 Plan/Task 文件
 

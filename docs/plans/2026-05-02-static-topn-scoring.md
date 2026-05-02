@@ -1,6 +1,6 @@
 # 静态扫描 Top N 可解释评分实现计划
 
-> 关联 Spec: `docs/superpowers/specs/2026-05-02-static-topn-scoring.md`
+> 关联 Spec: `docs/specs/2026-05-02-static-topn-scoring.md`
 
 ## 文件映射
 

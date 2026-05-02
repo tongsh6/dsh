@@ -3,8 +3,8 @@ id: "benchmark-ci-workflow"
 status: ready
 priority: p1
 type: infra
-spec_ref: "docs/superpowers/specs/2026-05-02-benchmark-operability-fix.md"
-plan_ref: "docs/superpowers/plans/2026-05-02-benchmark-operability-fix.md"
+spec_ref: "docs/specs/2026-05-02-benchmark-operability-fix.md"
+plan_ref: "docs/plans/2026-05-02-benchmark-operability-fix.md"
 dependencies: ["fixture-protocol-metadata"]
 created: "2026-05-02"
 updated: "2026-05-02"

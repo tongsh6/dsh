@@ -1,10 +1,10 @@
 # DSH Next Steps Implementation Plan
 
-> **状态更新 (2026-05-02):** Phase 3（Search/Replace 回退策略）已全部实现完成。Phase 2（扩展 fixture）中 3 个 dsh-* fixture 已创建。任务跟踪方式已升级为 `docs/superpowers/TASK-SPEC.md` 定义的独立 task 文件体系。
+> **状态更新 (2026-05-02):** Phase 3（Search/Replace 回退策略）已全部实现完成。Phase 2（扩展 fixture）中 3 个 dsh-* fixture 已创建。任务跟踪方式已升级为 `docs/TASK-SPEC.md` 定义的独立 task 文件体系。
 
 **Goal:** 将 dsh 从"框架已搭建"推进到"有实证数据支撑 + 可对比基线 + v0.3 协议升级"
 
-**新增治理计划:** AI 后静态扫描与 Top N 修复不是一次性小功能，完整目标和分阶段推进见 `docs/superpowers/specs/2026-05-01-static-scan-governance.md` 与 `docs/superpowers/plans/2026-05-01-static-scan-governance-plan.md`。当前 Phase 1 基础闭环已完成，Phase 2（finding parser + Semgrep + SARIF）已完成。
+**新增治理计划:** AI 后静态扫描与 Top N 修复不是一次性小功能，完整目标和分阶段推进见 `docs/specs/2026-05-01-static-scan-governance.md` 与 `docs/plans/2026-05-01-static-scan-governance-plan.md`。当前 Phase 1 基础闭环已完成，Phase 2（finding parser + Semgrep + SARIF）已完成。
 
 **Architecture:** 三个独立工作流：(1) 跑通真实 benchmark 收集实证数据，(2) 扩展可执行 fixture 到多语言多 repo，(3) ~~在 patch-parser 中实现 Search/Replace 回退策略~~ ✅ 已完成。三个流可并行推进。
 
@@ -187,13 +187,13 @@ cd /Users/loong/workspace/code/github/ai/dsh && \
 - [ ] **Step 3: 将 benchmark 报告保存到 docs/**
 
 ```bash
-cp /tmp/dsh-benchmark-output.txt /Users/loong/workspace/code/github/ai/dsh/docs/superpowers/reports/
+cp /tmp/dsh-benchmark-output.txt /Users/loong/workspace/code/github/ai/dsh/docs/reports/
 ```
 
 先创建目录：
 
 ```bash
-mkdir -p /Users/loong/workspace/code/github/ai/dsh/docs/superpowers/reports
+mkdir -p /Users/loong/workspace/code/github/ai/dsh/docs/reports
 ```
 
 - [ ] **Step 4: 分析结果，记录关键指标**
@@ -208,7 +208,7 @@ mkdir -p /Users/loong/workspace/code/github/ai/dsh/docs/superpowers/reports
 - [ ] **Step 5: Commit 报告**
 
 ```bash
-git add docs/superpowers/reports/
+git add docs/reports/
 git commit -m "docs(report): add first dsh benchmark report against pi-proof-forge"
 ```
 

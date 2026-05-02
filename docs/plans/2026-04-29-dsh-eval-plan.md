@@ -1,7 +1,5 @@
 # DSH Phase 5-6 Eval System Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** 构建可复用的 pipeline API + 自动化 benchmark runner + 5 个 pi-proof-forge fixture + 评测报告
 
 **Architecture:** 从 CLI 命令中抽取 pipeline.ts 纯函数层 (Plan → Patch → Verify → Repair → Handoff)，CLI 改为薄封装。benchmark runner 通过 git branch 隔离每个 fixture 执行完整闭环，收集 10 维评分并生成 markdown 报告。

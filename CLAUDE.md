@@ -66,10 +66,10 @@ pnpm run lint             # ESLint across all packages
 ## Project State
 
 - **Version:** 0.1.0 (active development)
-- **Task tracking:** `docs/superpowers/TASK-SPEC.md` — defines task format, lifecycle, and spec→plan→task hierarchy
-- **Active tasks:** see `docs/superpowers/TASK-SPEC.md` §6 index
-- **Specs:** `docs/superpowers/specs/`
-- **Plans:** `docs/superpowers/plans/`
+- **Task tracking:** `docs/TASK-SPEC.md` — defines task format, lifecycle, and spec→plan→task hierarchy
+- **Active tasks:** see `docs/TASK-SPEC.md` §6 index
+- **Specs:** `docs/specs/`
+- **Plans:** `docs/plans/`
 
 ## Runtime Files
 

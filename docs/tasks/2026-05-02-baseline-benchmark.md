@@ -3,8 +3,8 @@ id: "baseline-benchmark"
 status: done
 priority: p2
 type: feature
-spec_ref: "docs/superpowers/specs/2026-04-29-dsh-eval-design.md"
-plan_ref: "docs/superpowers/plans/2026-05-01-dsh-next-steps.md"
+spec_ref: "docs/specs/2026-04-29-dsh-eval-design.md"
+plan_ref: "docs/plans/2026-05-01-dsh-next-steps.md"
 dependencies: ["spec-v0.3-upgrade"]
 created: "2026-05-02"
 updated: "2026-05-02"
@@ -28,7 +28,7 @@ assignee: "ai"
 - [x] ~~至少 5 个 fixture 在 OpenCode + DeepSeek 上执行~~ → 已执行 5 个（4 完成，1 stuck）
 - [x] 产出对比报告，包含：完成率、首次通过率、修复成功率、平均修复轮数、人工介入次数
 - [x] 对比报告对每个维度给出 dsh vs 基线的差距及解释
-- [x] benchmark 结果归档到 `docs/superpowers/reports/<run-id>/`
+- [x] benchmark 结果归档到 `docs/reports/<run-id>/`
 
 ## Steps
 
@@ -54,7 +54,7 @@ assignee: "ai"
 - 分析失败原因分布差异
 
 ## Notes
-- 产出成果：DSH vs OpenCode 对比报告（5 fixtures）→ `docs/superpowers/reports/compare-20260502-120419/comparison-report.md`
+- 产出成果：DSH vs OpenCode 对比报告（5 fixtures）→ `docs/reports/compare-20260502-120419/comparison-report.md`
 - 完成项：对比报告产出 ✅、结果归档 ✅、维度差距分析 ✅
 - 未完成项移交新 task：
   - fixture 扩展至 10+ → `fixture-protocol-metadata`

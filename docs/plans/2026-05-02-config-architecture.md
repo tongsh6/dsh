@@ -1,6 +1,6 @@
 # 配置管理架构统一实现计划
 
-> 关联 Spec: `docs/superpowers/specs/2026-05-02-config-architecture.md`
+> 关联 Spec: `docs/specs/2026-05-02-config-architecture.md`
 
 ## 文件映射
 

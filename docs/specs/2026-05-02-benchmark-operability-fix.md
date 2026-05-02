@@ -91,11 +91,11 @@ const TaskFixtureSchema = z.object({
 | `BLUEPRINT.md` | 修改 | 细化 Phase 2 退出条件 |
 | `.github/workflows/benchmark.yml` | 新建 | Benchmark CI workflow |
 | `run-benchmark.ts` | 修改 | 新增 `--ci` 模式 |
-| `docs/superpowers/tasks/2026-05-02-baseline-benchmark.md` | 修改 | 状态 → done |
-| `docs/superpowers/TASK-SPEC.md` | 修改 | 更新 §6 索引 |
-| `docs/superpowers/tasks/2026-05-02-fixture-protocol-metadata.md` | 新建 | 新 task |
-| `docs/superpowers/tasks/2026-05-02-phase2-exit-criteria-refinement.md` | 新建 | 新 task |
-| `docs/superpowers/tasks/2026-05-02-benchmark-ci-workflow.md` | 新建 | 新 task |
+| `docs/tasks/2026-05-02-baseline-benchmark.md` | 修改 | 状态 → done |
+| `docs/TASK-SPEC.md` | 修改 | 更新 §6 索引 |
+| `docs/tasks/2026-05-02-fixture-protocol-metadata.md` | 新建 | 新 task |
+| `docs/tasks/2026-05-02-phase2-exit-criteria-refinement.md` | 新建 | 新 task |
+| `docs/tasks/2026-05-02-benchmark-ci-workflow.md` | 新建 | 新 task |
 
 ## 6. 成功标准
 

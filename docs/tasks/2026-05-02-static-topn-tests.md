@@ -3,8 +3,8 @@ id: "static-topn-tests"
 status: ready
 priority: p1
 type: test
-spec_ref: "docs/superpowers/specs/2026-05-02-static-topn-scoring.md"
-plan_ref: "docs/superpowers/plans/2026-05-02-static-topn-scoring.md"
+spec_ref: "docs/specs/2026-05-02-static-topn-scoring.md"
+plan_ref: "docs/plans/2026-05-02-static-topn-scoring.md"
 dependencies: ["static-topn-core"]
 created: "2026-05-02"
 updated: "2026-05-02"

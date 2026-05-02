@@ -2,7 +2,7 @@
 
 > **接手者必读:** 本计划是完整目标，不是当前实现说明。当前代码只完成 Phase 1 的基础闭环。后续推进必须按阶段更新 checkbox，不要把“能跑”误认为“做完”。
 
-**关联 Spec:** `docs/superpowers/specs/2026-05-01-static-scan-governance.md`
+**关联 Spec:** `docs/specs/2026-05-01-static-scan-governance.md`
 
 **总目标:** 在任何 AI 代码实现后，自动执行静态扫描，选择 Top N 问题进行可审计修复，并保留扫描、选择、处理、复扫和剩余风险的完整记录。
 
