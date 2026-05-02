@@ -1,6 +1,7 @@
 id: hallucinated-api
 description: "编造不存在的文件、函数或 API"
 category: failure_mode
+taskPrompt: "Test the failure pattern"
 detection:
   - patch 引用了项目中不存在的导入
   - 调用了不存在的函数或方法

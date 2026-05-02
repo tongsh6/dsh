@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import type { DeepSeekClient } from "@dsh/provider";
+import type { ProtocolOp } from "./task-fixtures.js";
 import type { LoadedFixture } from "./task-fixtures.js";
 
 // ---- Existing Types ----
@@ -22,8 +23,8 @@ export interface TaskResult {
   handoffQuality: number; // 0-3
   durationMs: number;
   error?: string;
-  expectedProtocolOps: string[];
-  actualProtocolOps: string[];
+  expectedProtocolOps: ProtocolOp[];
+  actualProtocolOps: ProtocolOp[];
 }
 
 // ---- Existing Functions ----
@@ -44,7 +45,7 @@ export function createEmptyResult(fixture: LoadedFixture): TaskResult {
     manualInterventions: 0,
     handoffQuality: 0,
     durationMs: 0,
-    expectedProtocolOps: fixture.expectedProtocolOperations ?? [],
+    expectedProtocolOps: (fixture.expectedProtocolOperations as ProtocolOp[]) ?? [],
     actualProtocolOps: [],
   };
 }
@@ -267,8 +268,8 @@ export async function runTask(
     try {
       await runHandoff({ cwd: repoPath });
       handoffQuality = 2;
-    } catch {
-      // non-critical
+    } catch (e) {
+      console.warn(`[benchmark] handoff failed for ${fixture.id}: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     // 8. Assess results
@@ -312,19 +313,33 @@ export async function runAll(
 
 // ---- Detect protocol ops from patch text ----
 
-function detectProtocolOpsFromText(patchText: string): string[] {
-  const ops: string[] = [];
-  if (/<CREATE\s/i.test(patchText)) ops.push("CREATE");
-  if (/<PATCH\s/i.test(patchText) && !/type="search"/i.test(patchText)) ops.push("PATCH");
-  if (/<PATCH\s+type="search"/i.test(patchText)) ops.push("SEARCH_REPLACE");
-  if (/<INSERT\s/i.test(patchText)) ops.push("INSERT");
-  if (/<DELETE\s/i.test(patchText)) ops.push("DELETE");
-  if (/<RENAME\s/i.test(patchText)) ops.push("RENAME");
+export function detectProtocolOpsFromText(patchText: string): ProtocolOp[] {
+  const ops: ProtocolOp[] = [];
+  const found = new Set<ProtocolOp>();
+
+  // Match each protocol tag individually to avoid cross-tag interference
+  for (const match of patchText.matchAll(/<(\w+)(\s[^>]*)?>/gi)) {
+    const tag = match[1]!.toUpperCase();
+    const attrs = match[2] ?? "";
+
+    if (tag === "CREATE") found.add("CREATE");
+    if (tag === "INSERT") found.add("INSERT");
+    if (tag === "DELETE") found.add("DELETE");
+    if (tag === "RENAME") found.add("RENAME");
+    if (tag === "PATCH") {
+      if (/type\s*=\s*"search"/i.test(attrs)) {
+        found.add("SEARCH_REPLACE");
+      } else {
+        found.add("PATCH");
+      }
+    }
+  }
+
+  for (const op of found) ops.push(op);
   return ops;
 }
 
-/** 6 种协议操作 */
-const ALL_PROTOCOL_OPS = ["CREATE", "PATCH", "SEARCH_REPLACE", "INSERT", "DELETE", "RENAME"];
+const ALL_PROTOCOL_OPS: readonly ProtocolOp[] = ["CREATE", "PATCH", "SEARCH_REPLACE", "INSERT", "DELETE", "RENAME"];
 
 // ---- Report ----
 

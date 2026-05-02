@@ -1,6 +1,7 @@
 id: overconfidence
 description: "DeepSeek 过度自信，跳过验证直接声称完成"
 category: failure_mode
+taskPrompt: "Test the failure pattern"
 detection:
   - patch 为空但声称修改完成
   - VERIFY 块为空

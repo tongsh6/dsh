@@ -36,7 +36,18 @@ if (!isCi) {
   console.log();
 }
 
-const client = DeepSeekClient.fromEnv();
+let client: DeepSeekClient;
+try {
+  client = DeepSeekClient.fromEnv();
+} catch (e) {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (isCi) {
+    console.log(JSON.stringify({ error: "client_init_failed", message: msg }));
+  }
+  console.error(`[benchmark] FATAL: ${msg}`);
+  process.exit(2); // exit code 2 = configuration error
+}
+
 const runStart = new Date();
 const runId = `${runStart.getFullYear().toString().slice(2)}${String(runStart.getMonth() + 1).padStart(2, "0")}${String(runStart.getDate()).padStart(2, "0")}-${String(runStart.getHours()).padStart(2, "0")}${String(runStart.getMinutes()).padStart(2, "0")}${String(runStart.getSeconds()).padStart(2, "0")}`;
 const runDir = path.join(REPORTS_DIR, runId);

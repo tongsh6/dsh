@@ -17,4 +17,5 @@ architectureRules:
   - 实现类代码不重复
 maxRepairRounds: 3
 expectedProtocolOperations:
-  - CREATE PATCH
+  - CREATE
+  - PATCH

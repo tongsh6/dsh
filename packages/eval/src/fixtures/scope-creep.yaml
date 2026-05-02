@@ -1,6 +1,7 @@
 id: scope-creep
 description: "修改范围扩大，在解决目标问题时额外修改了无关代码"
 category: failure_mode
+taskPrompt: "Test the failure pattern"
 detection:
   - 修改文件数超出 plan 声明的文件
   - 对无关函数或变量进行了重命名/重构

@@ -1,0 +1,51 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '3 2 * * 6'
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build all packages
+        run: pnpm -r run build
+
+      - name: Clone target repos
+        run: |
+          git clone https://github.com/tongsh6/pi-proof-forge.git /tmp/pi-proof-forge 2>/dev/null || (cd /tmp/pi-proof-forge && git fetch origin && git checkout main && git pull)
+
+      - name: Run benchmark
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: npx tsx run-benchmark.ts --ci 2>&1 | tee /tmp/benchmark-output.txt
+
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-report
+          path: /tmp/benchmark-output.txt
+
+      - name: CI summary
+        if: always()
+        run: |
+          {
+            echo "## Benchmark Summary"
+            grep -A 10 "## Overview" /tmp/benchmark-output.txt | head -10 || echo "No benchmark output found"
+          } >> "$GITHUB_STEP_SUMMARY"

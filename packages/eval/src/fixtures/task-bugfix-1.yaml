@@ -15,4 +15,5 @@ architectureRules:
   - 不修改 token 的签名格式
 maxRepairRounds: 3
 expectedProtocolOperations:
-  - PATCH SEARCH_REPLACE
+  - PATCH
+  - SEARCH_REPLACE

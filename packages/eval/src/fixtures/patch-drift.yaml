@@ -1,6 +1,7 @@
 id: patch-drift
 description: "patch 格式不稳定，hunk header 行号偏移导致 apply 失败"
 category: failure_mode
+taskPrompt: "Test the failure pattern"
 detection:
   - hunk header 与文件实际行号不匹配
   - patch apply 失败并报 "Failed to apply"

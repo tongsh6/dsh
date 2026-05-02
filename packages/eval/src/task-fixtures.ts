@@ -51,22 +51,38 @@ export interface LoadedFixture extends TaskFixture {
 export function loadFixture(filePath: string): LoadedFixture {
   const raw = fs.readFileSync(filePath, "utf-8");
   const parsed = yaml.load(raw) as Record<string, unknown>;
-  const validated = TASK_FIXTURE_SCHEMA.parse(parsed);
-  const fixture: LoadedFixture = {
-    id: validated.id,
-    description: validated.description,
-    category: validated.category,
-    taskPrompt: validated.taskPrompt,
-    expectedFiles: validated.expectedFiles,
-    expectPass: validated.expectPass,
-    verificationCommands: validated.verificationCommands,
-    architectureRules: validated.architectureRules,
-    maxRepairRounds: validated.maxRepairRounds,
-    repoPath: validated.repoPath,
-    expectedProtocolOperations: validated.expectedProtocolOperations,
-    filePath,
-  };
-  return fixture;
+  try {
+    const validated = TASK_FIXTURE_SCHEMA.parse(parsed);
+    const fixture: LoadedFixture = {
+      id: validated.id,
+      description: validated.description,
+      category: validated.category,
+      taskPrompt: validated.taskPrompt,
+      expectedFiles: validated.expectedFiles,
+      expectPass: validated.expectPass,
+      verificationCommands: validated.verificationCommands,
+      architectureRules: validated.architectureRules,
+      maxRepairRounds: validated.maxRepairRounds,
+      repoPath: validated.repoPath,
+      expectedProtocolOperations: validated.expectedProtocolOperations,
+      filePath,
+    };
+    return fixture;
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      const issues = e.issues.map(
+        (i) => `  ${i.path.join(".") || "(root)"}: ${i.message}`,
+      ).join("\n");
+      throw new Error(
+        `Fixture "${filePath}" validation failed:\n${issues}`,
+        { cause: e },
+      );
+    }
+    throw new Error(
+      `Failed to parse fixture "${filePath}": ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
+  }
 }
 
 export function loadAllFixtures(dir: string): LoadedFixture[] {
@@ -80,13 +96,27 @@ export function loadAllFixtures(dir: string): LoadedFixture[] {
         try {
           fixtures.push(loadFixture(filePath));
         } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          errors.push(`${entry.name}: ${msg}`);
+          if (e instanceof z.ZodError) {
+            const issues = e.issues.map(
+              (i) => `    ${i.path.join(".") || "(root)"}: ${i.message}`,
+            ).join("\n");
+            errors.push(`${entry.name}: validation failed:\n${issues}`);
+          } else {
+            const msg = e instanceof Error ? e.message : String(e);
+            errors.push(`${entry.name}: ${msg}`);
+          }
         }
       }
     }
-  } catch {
-    return fixtures;
+  } catch (e: unknown) {
+    const err = e as NodeJS.ErrnoException;
+    if (err?.code === "ENOENT") {
+      return fixtures;
+    }
+    throw new Error(
+      `Failed to read fixtures directory "${dir}": ${err?.message ?? String(e)}`,
+      { cause: e },
+    );
   }
   if (errors.length > 0) {
     throw new Error(

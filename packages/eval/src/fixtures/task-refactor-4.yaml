@@ -16,4 +16,5 @@ architectureRules:
   - 被其他 package 引用的导出不能删除
 maxRepairRounds: 2
 expectedProtocolOperations:
-  - PATCH DELETE
+  - PATCH
+  - DELETE

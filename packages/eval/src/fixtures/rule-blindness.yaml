@@ -1,6 +1,7 @@
 id: rule-blindness
 description: "漏读或忽略项目规则文件中的业务约束"
 category: failure_mode
+taskPrompt: "Test the failure pattern"
 detection:
   - 修改违反了 .cursorrules 或 CLAUDE.md 中的规则
   - 使用的 API 风格与项目约定不一致

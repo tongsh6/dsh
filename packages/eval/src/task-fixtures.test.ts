@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { fileURLToPath } from "node:url";
 import { loadFixture, loadAllFixtures } from "./task-fixtures.js";
 
 describe("loadFixture", () => {
@@ -121,5 +122,16 @@ describe("loadAllFixtures", () => {
   it("returns empty array for non-existent directory", () => {
     const fixtures = loadAllFixtures(path.join(tmp, "nonexistent"));
     assert.deepEqual(fixtures, []);
+  });
+});
+
+describe("real fixture validation", () => {
+  it("all real fixtures pass schema validation", () => {
+    const fixturesDir = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "fixtures",
+    );
+    const fixtures = loadAllFixtures(fixturesDir);
+    assert.ok(fixtures.length > 0, "should load at least one fixture");
   });
 });
