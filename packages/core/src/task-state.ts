@@ -13,11 +13,24 @@ const verifyResultSchema = z.object({
   duration_ms: z.number(),
 });
 
+const toolCallRecordSchema = z.object({
+  name: z.string(),
+  arguments: z.record(z.string()),
+  status: z.enum(["success", "error"]),
+  summary: z.string(),
+});
+
+const toolRoundRecordSchema = z.object({
+  round: z.number(),
+  calls: z.array(toolCallRecordSchema),
+});
+
 const patchRecordSchema = z.object({
   round: z.number(),
   patch: z.string(),
   apply_status: z.enum(["ok", "failed", "skipped"]),
   files_changed: z.array(z.string()),
+  tool_rounds: z.array(toolRoundRecordSchema).optional(),
 });
 
 const planSchema = z.object({
@@ -94,6 +107,7 @@ export const taskStateSchema = z.object({
   }),
   plan: planSchema.optional(),
   patches: z.array(patchRecordSchema).default([]),
+  tool_rounds: z.array(toolRoundRecordSchema).default([]),
   verify_results: z.array(verifyRoundSchema).default([]),
   static_scan_runs: z.array(staticScanRunSchema).default([]),
   static_repair_results: z.array(staticRepairResultSchema).default([]),
@@ -104,6 +118,8 @@ export const taskStateSchema = z.object({
 export type TaskState = z.infer<typeof taskStateSchema>;
 export type VerifyResult = z.infer<typeof verifyResultSchema>;
 export type PatchRecord = z.infer<typeof patchRecordSchema>;
+export type ToolCallRecord = z.infer<typeof toolCallRecordSchema>;
+export type ToolRoundRecord = z.infer<typeof toolRoundRecordSchema>;
 export type StaticScanFinding = z.infer<typeof staticScanFindingSchema>;
 export type StaticScanRun = z.infer<typeof staticScanRunSchema>;
 export type StaticRepairResult = z.infer<typeof staticRepairResultSchema>;
@@ -177,6 +193,7 @@ export function createTaskState(
       created_at: new Date().toISOString(),
     },
     patches: [],
+    tool_rounds: [],
     verify_results: [],
     static_scan_runs: [],
     static_repair_results: [],

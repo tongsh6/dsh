@@ -11,6 +11,8 @@ export type {
   TaskStatus,
   VerifyResult,
   PatchRecord,
+  ToolCallRecord,
+  ToolRoundRecord,
   StaticScanFinding,
   StaticScanRun,
   StaticRepairResult,

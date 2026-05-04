@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { loadDshConfig } from "@dsh/repo";
-import type { DeepSeekClient, DeepSeekMessage, DeepSeekToolCall } from "@dsh/provider";
+import type { DeepSeekClient, DeepSeekMessage } from "@dsh/provider";
 import { classify } from "@dsh/provider";
 import type { ContextLayers } from "./context-builder.js";
 import { assembleContext, buildDynamicContext } from "./context-builder.js";
@@ -50,31 +50,6 @@ const PATCH_BLOCK_PATTERN = /<\/?(?:CREATE|PATCH|INSERT|DELETE|RENAME|SEARCH|REP
 
 function hasPatchBlocks(content: string): boolean {
   return PATCH_BLOCK_PATTERN.test(content);
-}
-
-function formatToolCallMessages(
-  toolCalls: DeepSeekToolCall[],
-  currentContent: string,
-  reasoningContent: string | undefined,
-  cwd: string,
-): DeepSeekMessage[] {
-  const assistantMsg: DeepSeekMessage = { role: "assistant", content: currentContent, tool_calls: toolCalls };
-  if (reasoningContent) assistantMsg.reasoning_content = reasoningContent;
-  const messages: DeepSeekMessage[] = [assistantMsg];
-
-  for (const tc of toolCalls) {
-    let args: Record<string, string>;
-    try {
-      args = JSON.parse(tc.function.arguments) as Record<string, string>;
-    } catch {
-      args = {};
-    }
-    const result = executeTool(tc.function.name as ToolName, args, cwd, tc.id);
-    const formatted = formatToolResult(tc.function.name as ToolName, args, result);
-    messages.push({ role: "tool", content: formatted, tool_call_id: tc.id });
-  }
-
-  return messages;
 }
 
 // ---- Types ----
@@ -297,6 +272,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   const messages: DeepSeekMessage[] = buildMessages({ context: fullLayers, taskDescription, phase: "patch" });
   let content = "";
   let toolRounds = 0;
+  const toolRoundRecords: import("./task-state.js").ToolRoundRecord[] = [];
 
   while (toolRounds < MAX_TOOL_ROUNDS) {
     const response = await client.chat({
@@ -313,12 +289,38 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
     const toolCalls = choice.message.tool_calls;
 
     if (toolCalls && toolCalls.length > 0) {
-      messages.push(...formatToolCallMessages(toolCalls, content, choice.message.reasoning_content, cwd));
+      const roundNum = toolRounds + 1;
+      // Execute tools once, collect both results and records
+      const callRecords: import("./task-state.js").ToolCallRecord[] = [];
+      const assistantMsg: DeepSeekMessage = { role: "assistant", content, tool_calls: toolCalls };
+      if (choice.message.reasoning_content) assistantMsg.reasoning_content = choice.message.reasoning_content;
+      messages.push(assistantMsg);
+
+      for (const tc of toolCalls) {
+        let args: Record<string, string> = {};
+        try { args = JSON.parse(tc.function.arguments) as Record<string, string>; } catch { /* keep empty */ }
+        const result = executeTool(tc.function.name as ToolName, args, cwd, tc.id);
+        const formatted = formatToolResult(tc.function.name as ToolName, args, result);
+        messages.push({ role: "tool", content: formatted, tool_call_id: tc.id });
+        callRecords.push({
+          name: tc.function.name,
+          arguments: args,
+          status: result.status,
+          summary: result.status === "success" ? result.content.slice(0, 200) : (result.error ?? "").slice(0, 200),
+        });
+      }
+      toolRoundRecords.push({ round: roundNum, calls: callRecords });
       toolRounds++;
       continue;
     }
 
     break;
+  }
+
+  // Record tool calls in state
+  if (toolRoundRecords.length > 0) {
+    state.tool_rounds.push(...toolRoundRecords);
+    writeTaskState(cwd, state);
   }
 
   // Force output if max tool rounds reached without patch blocks
