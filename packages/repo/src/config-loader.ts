@@ -43,11 +43,40 @@ export interface DshConfig extends Record<string, unknown> {
   };
 }
 
+// ---- DSH root discovery ----
+
+/**
+ * Walk up the directory tree from `startDir` to find the nearest `.dsh/` directory.
+ * Returns the path to the `.dsh/` directory, or null if not found (up to filesystem root).
+ */
+export function findDshRoot(startDir: string): string | null {
+  let current = path.resolve(startDir);
+  const root = path.parse(current).root;
+
+  while (current !== root) {
+    const dshPath = path.join(current, ".dsh");
+    if (fs.existsSync(dshPath) && fs.statSync(dshPath).isDirectory()) {
+      return dshPath;
+    }
+    current = path.dirname(current);
+  }
+
+  // Check root as well
+  const rootDsh = path.join(root, ".dsh");
+  if (fs.existsSync(rootDsh) && fs.statSync(rootDsh).isDirectory()) {
+    return rootDsh;
+  }
+
+  return null;
+}
+
 // ---- Read ----
 
 export function loadDshConfig(cwd: string): DshConfig {
   try {
-    const raw = fs.readFileSync(path.join(cwd, ".dsh", "config.yml"), "utf-8");
+    const dshRoot = findDshRoot(cwd);
+    if (!dshRoot) return {};
+    const raw = fs.readFileSync(path.join(dshRoot, "config.yml"), "utf-8");
     const parsed = yaml.load(raw);
     if (parsed === null || parsed === undefined) return {};
     return parsed as DshConfig;
@@ -61,7 +90,8 @@ export function loadDshConfig(cwd: string): DshConfig {
 export function writeDshConfig(cwd: string, overrides: DshConfig): void {
   const existing = loadDshConfig(cwd);
   const merged = mergeConfig(existing, overrides);
-  const configPath = path.join(cwd, ".dsh", "config.yml");
+  const dshRoot = findDshRoot(cwd) ?? path.join(path.resolve(cwd), ".dsh");
+  const configPath = path.join(dshRoot, "config.yml");
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, yaml.dump(merged, { lineWidth: -1, noRefs: true }), "utf-8");
 }

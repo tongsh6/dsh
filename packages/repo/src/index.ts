@@ -3,7 +3,7 @@ export {
   detectVerifyCommands,
   generateRepoContext,
 } from "./scanner.js";
-export type { TechStack, VerifyCommands, RepoContext } from "./scanner.js";
+export type { TechStack, SubModule, VerifyCommands, RepoContext } from "./scanner.js";
 
 export {
   findRuleFiles,
@@ -31,6 +31,7 @@ export {
 export type { GitInfo } from "./git.js";
 
 export {
+  findDshRoot,
   loadDshConfig,
   writeDshConfig,
   readApiKey,

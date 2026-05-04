@@ -147,4 +147,79 @@ describe("detectTechStack", () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it("detects Java Maven project from pom.xml", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-scanner-"));
+    try {
+      touch(path.join(tmp, "pom.xml"), "<project></project>");
+
+      const stack = detectTechStack(tmp);
+      assert.equal(stack.language, "java");
+      assert.equal(stack.packageManager, "maven");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("detects Java Maven from backend/pom.xml for mixed projects", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-scanner-"));
+    try {
+      fs.mkdirSync(path.join(tmp, "backend"), { recursive: true });
+      touch(path.join(tmp, "backend", "pom.xml"), "<project></project>");
+
+      const stack = detectTechStack(tmp);
+      assert.equal(stack.language, "java");
+      assert.equal(stack.packageManager, "maven");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("detects Spring Boot framework from pom.xml", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-scanner-"));
+    try {
+      touch(path.join(tmp, "pom.xml"), "<project><parent><groupId>org.springframework.boot</groupId></parent></project>");
+
+      const stack = detectTechStack(tmp);
+      assert.equal(stack.language, "java");
+      assert.equal(stack.framework, "spring-boot");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("detects mixed project with backend Java and frontend TypeScript", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-scanner-"));
+    try {
+      fs.mkdirSync(path.join(tmp, "backend"), { recursive: true });
+      touch(path.join(tmp, "backend", "pom.xml"), "<project></project>");
+      fs.mkdirSync(path.join(tmp, "frontend"), { recursive: true });
+      touch(path.join(tmp, "frontend", "package.json"), '{"name":"web","devDependencies":{"typescript":"^5.0"}}');
+      touch(path.join(tmp, "frontend", "tsconfig.json"), "{}");
+
+      const stack = detectTechStack(tmp);
+      assert.equal(stack.language, "java");
+      assert.equal(stack.packageManager, "maven");
+      assert.ok(stack.modules);
+      assert.equal(stack.modules!.length, 1);
+      assert.equal(stack.modules![0]!.path, "frontend");
+      assert.equal(stack.modules![0]!.language, "typescript");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("returns no modules for single-language project", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-scanner-"));
+    try {
+      touch(path.join(tmp, "package.json"), '{"name":"test"}');
+      touch(path.join(tmp, "tsconfig.json"), "{}");
+
+      const stack = detectTechStack(tmp);
+      assert.equal(stack.language, "typescript");
+      assert.equal(stack.modules, undefined);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });

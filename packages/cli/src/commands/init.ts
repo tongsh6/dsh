@@ -68,6 +68,13 @@ export async function initCommand(opts: InitOptions): Promise<void> {
   console.log("");
   console.log(`✓ 检测到 ${stack.language} 项目`);
   if (stack.framework) console.log(`  框架: ${stack.framework}`);
+  if (stack.modules && stack.modules.length > 0) {
+    console.log("  子项目:");
+    for (const m of stack.modules) {
+      const fw = m.framework ? ` (${m.framework})` : "";
+      console.log(`    ${m.path}/  ${m.language}${fw}`);
+    }
+  }
   console.log("");
   console.log("✓ 验证命令:");
   if (verify.test) console.log(`  test:      ${verify.test}`);

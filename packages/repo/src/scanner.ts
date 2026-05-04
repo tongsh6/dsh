@@ -2,11 +2,20 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+export interface SubModule {
+  path: string;
+  language: string;
+  packageManager: string | null;
+  framework: string | null;
+}
+
 export interface TechStack {
   language: string;
   packageManager: string | null;
   framework: string | null;
   details: Record<string, string>;
+  /** Sub-modules detected in mixed projects (e.g., backend/ + frontend/) */
+  modules?: SubModule[];
 }
 
 export interface VerifyCommands {
@@ -26,6 +35,7 @@ export interface RepoContext {
 
 export function detectTechStack(cwd: string): TechStack {
   const files = listFiles(cwd, 1);
+  let primary: TechStack | null = null;
 
   // Node / TypeScript
   if (files.has("package.json")) {
@@ -36,8 +46,6 @@ export function detectTechStack(cwd: string): TechStack {
       (pkg?.devDependencies && "typescript-eslint" in (pkg.devDependencies ?? {}));
     const pkgManager = detectPackageManager(cwd, files);
 
-    // For pnpm workspaces, TypeScript may only be declared in sub-packages.
-    // Fall back to extension counts when package.json alone is ambiguous.
     let language = hasTypeScript ? "typescript" : "javascript";
     if (!hasTypeScript) {
       const extLang = detectLanguageByFiles(cwd);
@@ -46,7 +54,7 @@ export function detectTechStack(cwd: string): TechStack {
       }
     }
 
-    return {
+    primary = {
       language,
       packageManager: pkgManager,
       framework: detectFramework(pkg),
@@ -59,8 +67,8 @@ export function detectTechStack(cwd: string): TechStack {
   }
 
   // Python
-  if (files.has("pyproject.toml")) {
-    return {
+  if (!primary && files.has("pyproject.toml")) {
+    primary = {
       language: "python",
       packageManager: detectPythonPM(cwd, files),
       framework: null,
@@ -69,35 +77,109 @@ export function detectTechStack(cwd: string): TechStack {
   }
 
   // Go
-  if (files.has("go.mod")) {
-    return {
-      language: "go",
-      packageManager: null,
-      framework: null,
-      details: {},
-    };
+  if (!primary && files.has("go.mod")) {
+    primary = { language: "go", packageManager: null, framework: null, details: {} };
   }
 
   // Rust
-  if (files.has("Cargo.toml")) {
-    return {
-      language: "rust",
-      packageManager: null,
-      framework: null,
-      details: {},
-    };
+  if (!primary && files.has("Cargo.toml")) {
+    primary = { language: "rust", packageManager: null, framework: null, details: {} };
+  }
+
+  // Java / Maven (including backend/ subdirectory)
+  if (!primary && files.has("pom.xml")) {
+    primary = { language: "java", packageManager: "maven", framework: detectJavaFramework(cwd), details: {} };
+  }
+  if (!primary && fs.existsSync(path.join(cwd, "backend", "pom.xml"))) {
+    primary = { language: "java", packageManager: "maven", framework: detectJavaFramework(path.join(cwd, "backend")), details: {} };
+  }
+
+  // Java / Gradle
+  if (!primary && (files.has("build.gradle") || files.has("build.gradle.kts"))) {
+    primary = { language: "java", packageManager: "gradle", framework: detectJavaFramework(cwd), details: {} };
   }
 
   // Fallback: detect by file extensions
-  const extLang = detectLanguageByFiles(cwd);
-  if (extLang) return extLang;
+  if (!primary) {
+    primary = detectLanguageByFiles(cwd);
+  }
 
+  if (!primary) {
+    primary = { language: "unknown", packageManager: null, framework: null, details: {} };
+  }
+
+  // Scan sub-modules for all detected languages
+  primary.modules = scanSubModules(cwd, primary.language);
+  return primary;
+}
+
+type SubModuleDetector = (dir: string, name: string) => SubModule | null;
+
+function detectTypeScriptModule(dir: string, name: string): SubModule | null {
+  const pkgPath = path.join(dir, "package.json");
+  if (!fs.existsSync(pkgPath)) return null;
+  const pkg = readJsonFile(pkgPath);
+  const hasTS = fs.existsSync(path.join(dir, "tsconfig.json")) ||
+    (pkg?.devDependencies && "typescript" in (pkg.devDependencies ?? {}));
+  const pm = detectPackageManager(dir, listFiles(dir, 1));
   return {
-    language: "unknown",
-    packageManager: null,
-    framework: null,
-    details: {},
+    path: name,
+    language: hasTS ? "typescript" : "javascript",
+    packageManager: pm,
+    framework: pkg ? detectFramework(pkg) : null,
   };
+}
+
+function detectJavaModule(dir: string, name: string, buildTool: "maven" | "gradle"): SubModule {
+  return {
+    path: name,
+    language: "java",
+    packageManager: buildTool,
+    framework: detectJavaFramework(dir),
+  };
+}
+
+function detectPythonModule(dir: string, name: string): SubModule | null {
+  if (!fs.existsSync(path.join(dir, "pyproject.toml"))) return null;
+  return { path: name, language: "python", packageManager: detectPythonPM(dir, listFiles(dir, 1)), framework: null };
+}
+
+function scanSubModules(cwd: string, primaryLanguage: string): SubModule[] | undefined {
+  // Ordered by priority: each subdirectory matches the first config file found
+  const configDetectors: { file: string; detect: SubModuleDetector }[] = [
+    { file: "pom.xml",          detect: (dir, name) => detectJavaModule(dir, name, "maven") },
+    { file: "build.gradle",     detect: (dir, name) => detectJavaModule(dir, name, "gradle") },
+    { file: "package.json",     detect: detectTypeScriptModule },
+    { file: "pyproject.toml",   detect: detectPythonModule },
+    { file: "go.mod",           detect: (dir, name) => ({ path: name, language: "go", packageManager: null, framework: null }) },
+    { file: "Cargo.toml",       detect: (dir, name) => ({ path: name, language: "rust", packageManager: null, framework: null }) },
+  ];
+
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(cwd, { withFileTypes: true });
+  } catch {
+    return undefined;
+  }
+
+  const modules: SubModule[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const name = entry.name;
+    if (name.startsWith(".") || name === "node_modules") continue;
+
+    const dir = path.join(cwd, name);
+    for (const detector of configDetectors) {
+      if (!fs.existsSync(path.join(dir, detector.file))) continue;
+      const result = detector.detect(dir, name);
+      if (result && result.language !== primaryLanguage) {
+        modules.push(result);
+      }
+      break; // one project type per directory
+    }
+  }
+
+  return modules.length > 0 ? modules : undefined;
 }
 
 function detectLanguageByFiles(cwd: string): TechStack | null {
@@ -149,8 +231,26 @@ function detectLanguageByFiles(cwd: string): TechStack | null {
   if (rsCount >= threshold) {
     return { language: "rust", packageManager: null, framework: null, details: {} };
   }
+  const javaCount = (extCounts[".java"] ?? 0);
+  if (javaCount >= threshold) {
+    return { language: "java", packageManager: "maven", framework: null, details: {} };
+  }
 
   return null;
+}
+
+function detectJavaFramework(cwd: string): string | null {
+  try {
+    const pomPath = path.join(cwd, "pom.xml");
+    if (!fs.existsSync(pomPath)) return null;
+    const pom = fs.readFileSync(pomPath, "utf-8");
+    if (pom.includes("spring-boot") || pom.includes("springframework.boot")) return "spring-boot";
+    if (pom.includes("quarkus")) return "quarkus";
+    if (pom.includes("micronaut")) return "micronaut";
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export function detectVerifyCommands(
@@ -188,6 +288,17 @@ export function detectVerifyCommands(
       lint: "golangci-lint run",
       typecheck: "go vet ./...",
       build: "go build ./...",
+    };
+  }
+
+  if (stack.language === "java") {
+    const mvnCmd = stack.packageManager === "gradle" ? "gradle" : "mvn";
+    const testCmd = mvnCmd === "gradle" ? "gradle test" : "mvn test -q";
+    return {
+      test: testCmd,
+      lint: mvnCmd === "gradle" ? "gradle checkstyleMain" : "mvn checkstyle:check -q",
+      typecheck: mvnCmd === "gradle" ? "gradle compileJava" : "mvn compile -q",
+      build: mvnCmd === "gradle" ? "gradle build" : "mvn package -DskipTests -q",
     };
   }
 

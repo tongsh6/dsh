@@ -48,6 +48,13 @@ export function buildRepoContext(ctx: RepoContext): string {
   if (ctx.techStack.framework) {
     parts.push(`Framework: ${ctx.techStack.framework}`);
   }
+  if (ctx.techStack.modules && ctx.techStack.modules.length > 0) {
+    parts.push("Sub-projects:");
+    for (const m of ctx.techStack.modules) {
+      const fw = m.framework ? ` (${m.framework})` : "";
+      parts.push(`  - ${m.path}/  ${m.language}${fw}`);
+    }
+  }
 
   parts.push("");
   parts.push("## Directory Structure");

@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { z } from "zod";
+import { findDshRoot } from "@dsh/repo";
 
 // ---- Schema ----
 
@@ -129,10 +130,10 @@ export function canTransition(from: TaskStatus, to: TaskStatus): boolean {
 
 // ---- File I/O ----
 
-const STATE_FILE = ".dsh/task-state.json";
-
 export function readTaskState(cwd: string): TaskState | null {
-  const filePath = path.join(cwd, STATE_FILE);
+  const dshRoot = findDshRoot(cwd);
+  if (!dshRoot) return null;
+  const filePath = path.join(dshRoot, "task-state.json");
   try {
     const raw = fs.readFileSync(filePath, "utf-8");
     const json = JSON.parse(raw);
@@ -143,9 +144,9 @@ export function readTaskState(cwd: string): TaskState | null {
 }
 
 export function writeTaskState(cwd: string, state: TaskState): void {
-  const dshDir = path.join(cwd, ".dsh");
-  fs.mkdirSync(dshDir, { recursive: true });
-  const filePath = path.join(cwd, STATE_FILE);
+  const dshRoot = findDshRoot(cwd) ?? path.join(path.resolve(cwd), ".dsh");
+  fs.mkdirSync(dshRoot, { recursive: true });
+  const filePath = path.join(dshRoot, "task-state.json");
   fs.writeFileSync(filePath, JSON.stringify(state, null, 2), "utf-8");
 }
 

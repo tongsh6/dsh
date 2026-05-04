@@ -4,11 +4,42 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import {
+  findDshRoot,
   loadDshConfig,
   writeDshConfig,
   readApiKey,
   mergeConfig,
 } from "./config-loader.js";
+
+describe("findDshRoot", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-findroot-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("returns null when no .dsh directory exists", () => {
+    assert.equal(findDshRoot(tmp), null);
+  });
+
+  it("finds .dsh directory at the given path", () => {
+    const dshDir = path.join(tmp, ".dsh");
+    fs.mkdirSync(dshDir);
+    assert.equal(findDshRoot(tmp), dshDir);
+  });
+
+  it("walks up from a subdirectory to find .dsh", () => {
+    const dshDir = path.join(tmp, ".dsh");
+    fs.mkdirSync(dshDir);
+    const subDir = path.join(tmp, "packages", "core", "src");
+    fs.mkdirSync(subDir, { recursive: true });
+    assert.equal(findDshRoot(subDir), dshDir);
+  });
+});
 
 describe("mergeConfig", () => {
   it("preserves existing keys not in overrides", () => {
