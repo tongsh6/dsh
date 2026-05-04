@@ -1,0 +1,143 @@
+[
+  {
+    "fixtureId": "loam-bugfix-cli-error-handling",
+    "category": "bugfix",
+    "completed": true,
+    "filesChanged": [
+      "packages/cli/src/capture.ts",
+      "packages/cli/src/distill.ts",
+      "packages/cli/src/capture.ts",
+      "packages/cli/src/distill.ts",
+      "packages/cli/src/distill.ts",
+      "packages/cli/src/distill.ts",
+      "packages/cli/src/daemon.ts",
+      "packages/cli/src/daemon.ts"
+    ],
+    "filesExpected": [
+      "packages/cli/src/capture.ts",
+      "packages/cli/src/distill.ts",
+      "packages/cli/src/daemon.ts"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 2,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 1283385,
+    "expectedProtocolOps": [
+      "PATCH"
+    ],
+    "actualProtocolOps": []
+  },
+  {
+    "fixtureId": "loam-docs-provider-readme",
+    "category": "docs",
+    "completed": true,
+    "filesChanged": [
+      "docs/providers.md"
+    ],
+    "filesExpected": [
+      "docs/providers.md"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": true,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 160472,
+    "expectedProtocolOps": [
+      "PATCH"
+    ],
+    "actualProtocolOps": []
+  },
+  {
+    "fixtureId": "loam-refactor-provider-dedup",
+    "category": "refactor",
+    "completed": true,
+    "filesChanged": [
+      "packages/distill/src/providers/shared.ts",
+      "packages/distill/src/providers/openai-compatible.ts",
+      "packages/distill/src/providers/openai-compatible.ts",
+      "packages/distill/src/providers/anthropic.ts",
+      "packages/distill/src/providers/anthropic.ts"
+    ],
+    "filesExpected": [
+      "packages/distill/src/providers/shared.ts",
+      "packages/distill/src/providers/openai.ts",
+      "packages/distill/src/providers/deepseek.ts",
+      "packages/distill/src/providers/anthropic.ts"
+    ],
+    "extraFiles": [
+      "packages/distill/src/providers/openai-compatible.ts",
+      "packages/distill/src/providers/openai-compatible.ts"
+    ],
+    "scopeViolation": true,
+    "testsPassed": false,
+    "repairRounds": 2,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 507760,
+    "expectedProtocolOps": [
+      "CREATE",
+      "PATCH"
+    ],
+    "actualProtocolOps": [
+      "SEARCH_REPLACE"
+    ]
+  },
+  {
+    "fixtureId": "loam-test-distill-engine",
+    "category": "test",
+    "completed": true,
+    "filesChanged": [
+      "packages/distill/src/engine.test.ts"
+    ],
+    "filesExpected": [
+      "packages/distill/src/engine.test.ts"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": true,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 462764,
+    "expectedProtocolOps": [
+      "CREATE"
+    ],
+    "actualProtocolOps": []
+  },
+  {
+    "fixtureId": "loam-test-distill-state",
+    "category": "test",
+    "completed": false,
+    "filesChanged": [],
+    "filesExpected": [
+      "packages/distill/src/state.test.ts"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 0,
+    "durationMs": 268923,
+    "expectedProtocolOps": [
+      "CREATE"
+    ],
+    "actualProtocolOps": [],
+    "error": "变更应用失败 — parse failed"
+  }
+]
