@@ -6,6 +6,8 @@ export type {
   DeepSeekChoice,
   DeepSeekUsage,
   DeepSeekStreamChunk,
+  DeepSeekToolCall,
+  DeepSeekToolResultMessage,
   DeepSeekClientConfig,
 } from "./client.js";
 

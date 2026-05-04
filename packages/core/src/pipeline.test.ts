@@ -5,7 +5,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as yaml from "js-yaml";
 import { runPlan, runPatch, runVerify, runRepair, runHandoff, runFullPipeline } from "./pipeline.js";
-import type { DeepSeekClient } from "@dsh/provider";
+import type { DeepSeekClient, DeepSeekResponse } from "@dsh/provider";
 
 // Helper: create a mock DeepSeekClient that returns the given content
 function mockClient(responseContent: string): DeepSeekClient {
@@ -260,6 +260,81 @@ describe("runPatch", () => {
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
+  });
+
+  it("executes tool calls in loop before applying patch", async () => {
+    const tmp = await setupTempDir("planned");
+
+    // Create a source file that the tool will read
+    const sourceDir = path.join(tmp, "src");
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sourceDir, "utils.ts"),
+      "export function add(a: number, b: number): number {\n  return a + b;\n}\n",
+      "utf-8",
+    );
+
+    // Update task plan to reference the source file
+    const taskState = JSON.parse(fs.readFileSync(path.join(tmp, ".dsh", "task-state.json"), "utf-8"));
+    taskState.plan.files = ["src/utils.ts"];
+    fs.writeFileSync(path.join(tmp, ".dsh", "task-state.json"), JSON.stringify(taskState, null, 2), "utf-8");
+
+    let callIndex = 0;
+    const responses: DeepSeekResponse[] = [
+      // Round 0: model calls read_file to explore the source
+      {
+        id: "r1",
+        object: "chat.completion",
+        created: Date.now(),
+        model: "deepseek-v4-pro",
+        choices: [{
+          index: 0,
+          message: {
+            role: "assistant",
+            content: "",
+            tool_calls: [{
+              id: "call_read_1",
+              type: "function",
+              function: {
+                name: "read_file",
+                arguments: '{"path":"src/utils.ts"}',
+              },
+            }],
+          },
+          finish_reason: "tool_calls",
+        }],
+        usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 },
+      },
+      // Round 1: model outputs patch after reading the file
+      {
+        id: "r2",
+        object: "chat.completion",
+        created: Date.now(),
+        model: "deepseek-v4-pro",
+        choices: [{
+          index: 0,
+          message: { role: "assistant", content: VALID_PATCH_RESPONSE },
+          finish_reason: "stop",
+        }],
+        usage: { prompt_tokens: 150, completion_tokens: 80, total_tokens: 230 },
+      },
+    ];
+
+    const client = {
+      chat: async () => {
+        const res = responses[Math.min(callIndex, responses.length - 1)]!;
+        callIndex++;
+        return res;
+      },
+      chatStream: async function* () { yield undefined as any; },
+    } as unknown as DeepSeekClient;
+
+    const state = await runPatch({ cwd: tmp, client, auto: true });
+
+    assert.equal(state.status, "patched");
+    assert.equal(callIndex, 2, "should have made exactly 2 API calls (1 tool + 1 patch)");
+    assert.equal(state.patches.length, 1);
+    assert.equal(state.patches[0]!.apply_status, "ok");
   });
 });
 

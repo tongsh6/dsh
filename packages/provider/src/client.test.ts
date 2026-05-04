@@ -122,6 +122,86 @@ describe("DeepSeekClient", () => {
         },
       );
     });
+
+    it("passes tools in request body when provided", async () => {
+      let capturedBody: string | null = null;
+
+      globalThis.fetch = ((url: string, init: RequestInit) => {
+        capturedBody = init.body as string;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "resp-1",
+              choices: [{
+                index: 0,
+                message: { role: "assistant", content: "OK" },
+                finish_reason: "stop",
+              }],
+              usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+            }),
+            { status: 200 },
+          ),
+        );
+      }) as typeof globalThis.fetch;
+
+      const tools = [{
+        type: "function",
+        function: {
+          name: "read_file",
+          description: "Read a file",
+          parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+        },
+      }];
+
+      await client.chat({
+        model: "deepseek-v4-pro",
+        messages: [{ role: "user", content: "test" }],
+        tools,
+      });
+
+      const parsed = JSON.parse(capturedBody!);
+      assert.deepEqual(parsed["tools"], tools);
+    });
+
+    it("parses tool_calls from response", async () => {
+      globalThis.fetch = (() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "resp-1",
+              choices: [{
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: "",
+                  tool_calls: [{
+                    id: "call_1",
+                    type: "function",
+                    function: {
+                      name: "read_file",
+                      arguments: '{"path":"src/foo.ts"}',
+                    },
+                  }],
+                },
+                finish_reason: "tool_calls",
+              }],
+              usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+            }),
+            { status: 200 },
+          ),
+        )) as typeof globalThis.fetch;
+
+      const res = await client.chat({
+        model: "deepseek-v4-pro",
+        messages: [{ role: "user", content: "read the file" }],
+        tools: [],
+      });
+
+      const toolCalls = res.choices[0]?.message.tool_calls;
+      assert.ok(toolCalls);
+      assert.equal(toolCalls![0]!.function.name, "read_file");
+      assert.equal(toolCalls![0]!.function.arguments, '{"path":"src/foo.ts"}');
+    });
   });
 
   describe("chatStream", () => {

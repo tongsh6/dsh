@@ -117,6 +117,25 @@ new content to insert here
 - NEVER use /dev/null in PATCH headers — use <CREATE> instead
 - <CREATE> blocks contain RAW FILE CONTENT — no diff formatting whatsoever
 
+## Available Tools
+
+You have access to tools that let you explore the codebase BEFORE writing patches. Use them to verify your assumptions and find exact code to modify.
+
+### Tools
+
+- **read_file(path)** — Read the full content of any file. Use this to confirm file structure, line numbers, and exact text for SEARCH blocks. Read the files you plan to modify before outputting patches.
+- **grep_files(pattern, include?)** — Search the codebase for a regex pattern. Use this to find function definitions, call sites, import paths, or any code you need to reference. Specify include (e.g., "*.ts") to filter by file type.
+- **exec_shell(command)** — Run a read-only shell command: tests, lint, typecheck, git status/diff/log, cat, grep, find, ls. WRITE commands (rm, mv, git commit/push) are rejected.
+
+### Tool Usage Rules
+
+1. EXPLORE FIRST — Before outputting patches, use read_file to confirm the current content of every file you plan to modify. Never assume file content from the task context alone.
+2. SEARCH BEFORE REPLACE — When using <PATCH type="search">, use read_file or grep_files to find the exact text for your <SEARCH> block. Copy it verbatim from the tool output.
+3. CHECK CALLERS — If you change a function signature, use grep_files to find all call sites that need updating.
+4. VERIFY YOUR WORK — Use exec_shell to run tests/lint/typecheck after generating patches.
+5. BE EFFICIENT — Limit exploration to 2-5 tool calls. Use the most targeted tool for each question.
+6. After exploration, output your patches using the XML protocol blocks below.
+
 <VERIFY>
 [shell commands to verify the change, one per line]
 command1
@@ -132,7 +151,7 @@ command2
 
 1. Never output code blocks or patches outside the designated XML blocks
 2. Each <PATCH> block contains VALID unified diff format
-3. Hunk headers (@@ -l,s +l,s @@) MUST match current file line numbers — read the file content in context carefully
+3. Hunk headers (@@ -l,s +l,s @@) MUST match current file line numbers — read the file content carefully using read_file
 4. Always include VERIFY commands — never claim completion without them
 5. List at least 2 risks. Never write "无风险" or "No risks"
 6. Only modify files listed in <FILES>

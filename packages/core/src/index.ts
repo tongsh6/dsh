@@ -138,3 +138,24 @@ export type {
   FullPipelineParams,
   PipelineBase,
 } from "./pipeline.js";
+
+export {
+  READ_FILE_DEF,
+  GREP_FILES_DEF,
+  EXEC_SHELL_DEF,
+  ALL_TOOL_DEFINITIONS,
+  EXEC_SHELL_ALLOW_LIST,
+  EXEC_SHELL_BLOCK_PATTERNS,
+} from "./tool-definitions.js";
+export type {
+  ToolName,
+  ToolCall,
+  ToolResult,
+  ToolDefinition,
+} from "./tool-definitions.js";
+
+export {
+  executeTool,
+  isShellAllowed,
+  formatToolResult,
+} from "./tool-executor.js";

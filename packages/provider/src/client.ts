@@ -1,7 +1,25 @@
 // ---- Types ----
 
 export interface DeepSeekMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  reasoning_content?: string;
+  tool_call_id?: string;
+  tool_calls?: DeepSeekToolCall[];
+}
+
+export interface DeepSeekToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+export interface DeepSeekToolResultMessage {
+  role: "tool";
+  tool_call_id: string;
   content: string;
 }
 
@@ -12,6 +30,7 @@ export interface DeepSeekRequest {
   max_tokens?: number;
   temperature?: number;
   stream?: boolean;
+  tools?: Record<string, unknown>[];
 }
 
 export interface DeepSeekChoice {
@@ -20,8 +39,9 @@ export interface DeepSeekChoice {
     role: "assistant";
     content: string;
     reasoning_content?: string;
+    tool_calls?: DeepSeekToolCall[];
   };
-  finish_reason: "stop" | "length" | "content_filter" | null;
+  finish_reason: "stop" | "length" | "content_filter" | "tool_calls" | null;
 }
 
 export interface DeepSeekUsage {
@@ -295,6 +315,7 @@ export class DeepSeekClient {
     if (req.max_tokens !== undefined) body["max_tokens"] = req.max_tokens;
     if (req.temperature !== undefined) body["temperature"] = req.temperature;
     if (req.stream !== undefined) body["stream"] = req.stream;
+    if (req.tools !== undefined) body["tools"] = req.tools;
 
     return body;
   }

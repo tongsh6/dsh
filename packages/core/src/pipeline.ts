@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { loadDshConfig } from "@dsh/repo";
-import type { DeepSeekClient } from "@dsh/provider";
+import type { DeepSeekClient, DeepSeekMessage, DeepSeekToolCall } from "@dsh/provider";
 import { classify } from "@dsh/provider";
 import type { ContextLayers } from "./context-builder.js";
 import { assembleContext, buildDynamicContext } from "./context-builder.js";
@@ -39,6 +39,43 @@ import {
   loadTopFiles,
   scanProjectFiles,
 } from "@dsh/repo";
+import { ALL_TOOL_DEFINITIONS } from "./tool-definitions.js";
+import { executeTool, formatToolResult } from "./tool-executor.js";
+import type { ToolName } from "./tool-definitions.js";
+
+// ---- Helpers ----
+
+const MAX_TOOL_ROUNDS = 5;
+const PATCH_BLOCK_PATTERN = /<\/?(?:CREATE|PATCH|INSERT|DELETE|RENAME|SEARCH|REPLACE)[>\s]/i;
+
+function hasPatchBlocks(content: string): boolean {
+  return PATCH_BLOCK_PATTERN.test(content);
+}
+
+function formatToolCallMessages(
+  toolCalls: DeepSeekToolCall[],
+  currentContent: string,
+  reasoningContent: string | undefined,
+  cwd: string,
+): DeepSeekMessage[] {
+  const assistantMsg: DeepSeekMessage = { role: "assistant", content: currentContent, tool_calls: toolCalls };
+  if (reasoningContent) assistantMsg.reasoning_content = reasoningContent;
+  const messages: DeepSeekMessage[] = [assistantMsg];
+
+  for (const tc of toolCalls) {
+    let args: Record<string, string>;
+    try {
+      args = JSON.parse(tc.function.arguments) as Record<string, string>;
+    } catch {
+      args = {};
+    }
+    const result = executeTool(tc.function.name as ToolName, args, cwd, tc.id);
+    const formatted = formatToolResult(tc.function.name as ToolName, args, result);
+    messages.push({ role: "tool", content: formatted, tool_call_id: tc.id });
+  }
+
+  return messages;
+}
 
 // ---- Types ----
 
@@ -257,14 +294,46 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
 
   const target = classify({ command: "patch", fileCount });
 
-  const messages = buildMessages({ context: fullLayers, taskDescription, phase: "patch" });
-  const response = await client.chat({
-    model: target.model,
-    messages,
-    thinking: target.thinking,
-  });
+  const messages: DeepSeekMessage[] = buildMessages({ context: fullLayers, taskDescription, phase: "patch" });
+  let content = "";
+  let toolRounds = 0;
 
-  const content = response.choices[0]?.message.content ?? "";
+  while (toolRounds < MAX_TOOL_ROUNDS) {
+    const response = await client.chat({
+      model: target.model,
+      messages,
+      thinking: target.thinking,
+      tools: ALL_TOOL_DEFINITIONS as unknown as Record<string, unknown>[],
+    });
+
+    const choice = response.choices[0];
+    if (!choice) throw new Error("DeepSeek API 返回空响应");
+
+    content = choice.message.content;
+    const toolCalls = choice.message.tool_calls;
+
+    if (toolCalls && toolCalls.length > 0) {
+      messages.push(...formatToolCallMessages(toolCalls, content, choice.message.reasoning_content, cwd));
+      toolRounds++;
+      continue;
+    }
+
+    break;
+  }
+
+  // Force output if max tool rounds reached without patch blocks
+  if (toolRounds >= MAX_TOOL_ROUNDS && !hasPatchBlocks(content)) {
+    messages.push({
+      role: "user",
+      content: "MAX TOOL ROUNDS REACHED. You MUST now output your patch using CREATE/PATCH/INSERT/DELETE/RENAME XML blocks. Do not call any more tools.",
+    });
+    const finalResponse = await client.chat({
+      model: "deepseek-v4-pro",
+      messages,
+      thinking: true,
+    });
+    content = finalResponse.choices[0]?.message.content ?? "";
+  }
 
   // Try to parse changes; if unified diff fails, retry with SEARCH/REPLACE hint
   let changes: ReturnType<typeof parseChanges>;
@@ -321,9 +390,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
       retryHintParts.push(" context");
       retryHintParts.push("+added");
       retryHintParts.push("</PATCH>");
-    } else if (isParseError) {
-      retryHintParts.push("");
-    if (isSearchMismatch) {
+    } else if (isSearchMismatch) {
       retryHintParts.push("SEARCH TEXT MISMATCH — the <SEARCH> block did not match any text in the file.");
       retryHintParts.push("");
       retryHintParts.push("Here is the ACTUAL file content. COPY text DIRECTLY from here into <SEARCH>:");
@@ -369,7 +436,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
       retryHintParts.push("<INSERT position=\"before\" anchor=\"pick from anchor list\" file=\"tools/README.md\" from=\"tools/README-new-section.md\" />");
       retryHintParts.push("");
       retryHintParts.push("The system will read the temp file and insert its content at the anchor position.");
-    } else {
+    } else if (isParseError) {
       retryHintParts.push("The unified diff format failed to parse. Use <INSERT> or <PATCH type=\"search\"> instead:");
       retryHintParts.push("");
       retryHintParts.push("For ADDING new content (recommended):");
@@ -383,7 +450,6 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
       retryHintParts.push("<SEARCH>exact code from the file content</SEARCH>");
       retryHintParts.push("<REPLACE>replacement code</REPLACE>");
       retryHintParts.push("</PATCH>");
-    }
     }
     if (hints) {
       retryHintParts.push("");

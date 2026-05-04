@@ -1,0 +1,157 @@
+export type ToolName = "read_file" | "grep_files" | "exec_shell";
+
+export interface ToolCall {
+  id: string;
+  name: ToolName;
+  arguments: Record<string, string>;
+}
+
+export interface ToolResult {
+  callId: string;
+  status: "success" | "error";
+  content: string;
+  error?: string;
+}
+
+export interface ToolDefinition {
+  type: "function";
+  function: {
+    name: ToolName;
+    description: string;
+    parameters: {
+      type: "object";
+      properties: Record<string, { type: string; description: string }>;
+      required: string[];
+    };
+  };
+}
+
+export const READ_FILE_DEF: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "read_file",
+    description:
+      "读取指定文件的完整内容。在生成 patch 前用于确认文件的最新状态。每次调用读取一个文件。",
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "相对于项目根目录的文件路径，例如 packages/core/src/verifier.ts",
+        },
+      },
+      required: ["path"],
+    },
+  },
+};
+
+export const GREP_FILES_DEF: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "grep_files",
+    description:
+      "在项目中搜索匹配正则模式的内容。用于查找函数定义、调用点、import 语句等。返回匹配的文件路径、行号和内容摘要。",
+    parameters: {
+      type: "object",
+      properties: {
+        pattern: {
+          type: "string",
+          description: "JavaScript 正则表达式模式，例如 detectVerifyCommands、import.*from.*scanner",
+        },
+        include: {
+          type: "string",
+          description: "可选的文件类型过滤 glob，例如 *.ts、*.test.ts。不指定则搜索所有文本文件。",
+        },
+      },
+      required: ["pattern"],
+    },
+  },
+};
+
+export const EXEC_SHELL_DEF: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "exec_shell",
+    description:
+      "执行只读的 shell 命令。用于运行 test/lint/typecheck 等验证命令，或查看 git 状态。命令在项目根目录执行。注意：只能执行安全命令，写入操作会被拒绝。",
+    parameters: {
+      type: "object",
+      properties: {
+        command: {
+          type: "string",
+          description:
+            "要执行的 shell 命令，例如 'pnpm --filter @dsh/repo test'、'git diff --stat'",
+        },
+      },
+      required: ["command"],
+    },
+  },
+};
+
+export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
+  READ_FILE_DEF,
+  GREP_FILES_DEF,
+  EXEC_SHELL_DEF,
+];
+
+/** 命令必须以这些前缀之一开头才被允许执行 */
+export const EXEC_SHELL_ALLOW_LIST = [
+  "pnpm run test",
+  "pnpm test",
+  "pnpm --filter",
+  "pnpm run lint",
+  "pnpm run typecheck",
+  "pnpm run build",
+  "pnpm run scan",
+  "npm test",
+  "npm run test",
+  "npm run lint",
+  "npm run typecheck",
+  "npx jest",
+  "npx eslint",
+  "npx tsc",
+  "npx vitest",
+  "python3 -m pytest",
+  "pytest",
+  "go test",
+  "cargo test",
+  "cat ",
+  "head ",
+  "tail ",
+  "wc ",
+  "git diff",
+  "git log",
+  "git status",
+  "git branch",
+  "ls ",
+  "find ",
+  "grep ",
+  "rg ",
+];
+
+/** 命令中包含这些模式则拒绝执行 */
+export const EXEC_SHELL_BLOCK_PATTERNS = [
+  /\brm\b/,
+  /\brmdir\b/,
+  /\bunlink\b/,
+  />/,
+  /\|/,
+  /\$\(/,
+  /`/,
+  /\bsudo\b/,
+  /\bchmod\b/,
+  /\bchown\b/,
+  /\bcurl\b/,
+  /\bwget\b/,
+  /git\s+push/,
+  /git\s+commit/,
+  /git\s+merge/,
+  /git\s+rebase/,
+  /&&/,
+  /;/,
+  /\bmv\b/,
+  /\bcp\b/,
+  /\bdd\b/,
+  /\bmkfs\b/,
+  /\bmount\b/,
+];
