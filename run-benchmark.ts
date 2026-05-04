@@ -5,18 +5,21 @@ import { runTask, formatEvaluationReport } from "./packages/eval/dist/benchmark-
 import type { TaskResult } from "./packages/eval/dist/benchmark-runner.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as os from "node:os";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixturesDir = path.join(__dirname, "packages/eval/src/fixtures");
-const DSH_REPO = __dirname;
-const PI_REPO = "/tmp/pi-proof-forge";
+const BENCH_ROOT = path.join(os.homedir(), "dsh-bench");
+const REPOS_DIR = path.join(BENCH_ROOT, "repos");
 const REPORTS_DIR = path.join(__dirname, "docs", "reports");
 
 // Parse CLI flags
 const args = process.argv.slice(2);
 const isCi = args.includes("--ci");
+const filterArg = args.find((a) => a.startsWith("--filter="));
+const filterPrefix = filterArg ? filterArg.slice("--filter=".length) : null;
 
 function gitShortHash(): string {
   try {
@@ -28,7 +31,8 @@ function gitShortHash(): string {
 
 const allFixtures = loadAllFixtures(fixturesDir);
 const benchFixtures = allFixtures
-  .filter((f) => f.id.startsWith("pi-") || f.id.startsWith("dsh-"))
+  .filter((f) => f.id.startsWith("pi-") || f.id.startsWith("loam-") || f.id.startsWith("rh-"))
+  .filter((f) => !filterPrefix || f.id.startsWith(filterPrefix))
   .sort((a, b) => a.id.localeCompare(b.id));
 
 if (!isCi) {
@@ -37,9 +41,24 @@ if (!isCi) {
   console.log();
 }
 
+// Map fixture prefix to repo path
+const REPO_PREFIX_MAP: Record<string, string> = {
+  "pi-": path.join(REPOS_DIR, "pi-proof-forge"),
+  "loam-": path.join(REPOS_DIR, "loamlog"),
+  "rh-": path.join(REPOS_DIR, "release-hub"),
+};
+
+function resolveRepoPath(fixture: typeof benchFixtures[0]): string {
+  if (fixture.repoPath) return fixture.repoPath;
+  for (const [prefix, repoPath] of Object.entries(REPO_PREFIX_MAP)) {
+    if (fixture.id.startsWith(prefix)) return repoPath;
+  }
+  throw new Error(`Cannot resolve repo path for fixture ${fixture.id}`);
+}
+
 let client: DeepSeekClient;
 try {
-  const apiKey = process.env["DEEPSEEK_API_KEY"] ?? readApiKey(DSH_REPO) ?? "";
+  const apiKey = process.env["DEEPSEEK_API_KEY"] ?? readApiKey(__dirname) ?? "";
   if (!apiKey) throw new Error("DEEPSEEK_API_KEY not set");
   client = new DeepSeekClient({ apiKey });
 } catch (e) {
@@ -59,7 +78,7 @@ const runDir = path.join(REPORTS_DIR, runId);
 
 const results: TaskResult[] = [];
 for (const fixture of benchFixtures) {
-  const repoPath = fixture.repoPath ?? (fixture.id.startsWith("dsh-") ? DSH_REPO : PI_REPO);
+  const repoPath = resolveRepoPath(fixture);
   if (isCi) {
     console.log(`[benchmark] starting ${fixture.id} on ${path.basename(repoPath)}`);
   } else {
@@ -104,7 +123,7 @@ const metadata = {
   fixtures: benchFixtures.map((f) => ({
     id: f.id,
     category: f.category,
-    repo: f.repoPath ?? (f.id.startsWith("dsh-") ? "dsh" : "pi-proof-forge"),
+    repo: resolveRepoPath(f),
   })),
 };
 

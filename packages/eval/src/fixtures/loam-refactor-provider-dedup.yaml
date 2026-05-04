@@ -43,7 +43,6 @@ architectureRules:
   - 已有的 Provider 测试必须继续通过
   - 只提取真正重复的逻辑，不做过度抽象
 maxRepairRounds: 2
-repoPath: /tmp/dsh-candidate-loamlog
 expectedProtocolOperations:
   - CREATE
   - PATCH

@@ -33,14 +33,13 @@ expectedFiles:
   - backend/releasehub-application/src/test/java/io/releasehub/application/release/BranchOperationOrchestratorTest.java
 expectPass: true
 verificationCommands:
-  - "cd /tmp/dsh-candidate-release-hub/backend && mvn test -pl releasehub-application -q"
+  - "cd backend && mvn test -pl releasehub-application -q"
 architectureRules:
   - 新组件必须在 io.releasehub.application 包
   - Application 层只能依赖 Domain 和 Common
   - 不能依赖 Infrastructure、Interfaces 或 Bootstrap
   - 使用构造器注入，不使用字段注入
 maxRepairRounds: 2
-repoPath: /tmp/dsh-candidate-release-hub
 expectedProtocolOperations:
   - CREATE
   - PATCH

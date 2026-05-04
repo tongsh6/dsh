@@ -25,6 +25,5 @@ architectureRules:
   - 使用 node:test + node:assert/strict
   - Mock LLM Provider 和 Sink，不发起真实网络请求
 maxRepairRounds: 2
-repoPath: /tmp/dsh-candidate-loamlog
 expectedProtocolOperations:
   - CREATE

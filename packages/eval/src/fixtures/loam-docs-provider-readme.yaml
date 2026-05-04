@@ -24,6 +24,5 @@ architectureRules:
   - 不修改任何源代码文件
   - 使用中文撰写
 maxRepairRounds: 1
-repoPath: /tmp/dsh-candidate-loamlog
 expectedProtocolOperations:
   - PATCH

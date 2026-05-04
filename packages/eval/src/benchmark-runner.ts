@@ -5,7 +5,7 @@ import type { DeepSeekClient } from "@dsh/provider";
 import { detectProtocolOpsFromText } from "@dsh/core";
 import type { ProtocolOp } from "@dsh/core";
 import { runPlan, runPatch, runVerify, runRepair, runHandoff } from "@dsh/core";
-import { writeDshConfig, getBaseBranch } from "@dsh/repo";
+import { writeDshConfig, getBaseBranch, detectTechStack } from "@dsh/repo";
 import { PROTOCOL_OP_SCHEMA } from "./task-fixtures.js";
 import type { LoadedFixture } from "./task-fixtures.js";
 
@@ -206,13 +206,18 @@ export async function runTask(
     // 1. Git prepare
     prepareBranch(repoPath, fixture.id);
 
-    // 2. Setup dsh config
+    // 2. Setup dsh config — detect tech stack from the actual project
+    const stack = detectTechStack(repoPath);
     const dshDir = path.join(repoPath, ".dsh");
     fs.mkdirSync(dshDir, { recursive: true });
 
-    // writeDshConfig merges with existing — api_key and other fields preserved
+    // writeDshConfig merges with existing — only override verify + deepseek, preserve project metadata
     writeDshConfig(repoPath, {
-      project: { name: path.basename(repoPath), language: "python", package_manager: "pip" },
+      project: {
+        name: path.basename(repoPath),
+        language: stack.language,
+        package_manager: stack.packageManager ?? "unknown",
+      },
       verify: {
         test: fixture.verificationCommands[0] ?? "",
         lint: "",

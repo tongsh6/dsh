@@ -22,12 +22,11 @@ expectedFiles:
   - backend/releasehub-application/src/test/java/io/releasehub/application/export/ExportAppServiceTest.java
 expectPass: true
 verificationCommands:
-  - "cd /tmp/dsh-candidate-release-hub/backend && mvn test -pl releasehub-application -Dtest=\"ExportAppServiceTest\" -q"
+  - "cd backend && mvn test -pl releasehub-application -Dtest=\"ExportAppServiceTest\" -q"
 architectureRules:
   - Application 层不能依赖 Infrastructure、Interfaces 或 Bootstrap
   - 测试必须使用 JUnit 5 + Mockito + AssertJ
   - Mock RunPort 使用 Mockito
 maxRepairRounds: 2
-repoPath: /tmp/dsh-candidate-release-hub
 expectedProtocolOperations:
   - PATCH

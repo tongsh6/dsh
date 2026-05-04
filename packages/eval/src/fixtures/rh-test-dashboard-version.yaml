@@ -34,13 +34,12 @@ expectedFiles:
   - backend/releasehub-application/src/test/java/io/releasehub/application/version/VersionUpdateAppServiceTest.java
 expectPass: true
 verificationCommands:
-  - "cd /tmp/dsh-candidate-release-hub/backend && mvn test -pl releasehub-application -Dtest=\"DashboardAppServiceTest,VersionUpdateAppServiceTest\" -q"
+  - "cd backend && mvn test -pl releasehub-application -Dtest=\"DashboardAppServiceTest,VersionUpdateAppServiceTest\" -q"
 architectureRules:
   - 使用 JUnit 5 + Mockito (@ExtendWith(MockitoExtension.class)) + AssertJ
   - 使用 @Mock 注解 mock 依赖，构造器注入 SUT
   - 遵循现有命名模式：@Nested + @DisplayName
   - 不修改源代码
 maxRepairRounds: 2
-repoPath: /tmp/dsh-candidate-release-hub
 expectedProtocolOperations:
   - CREATE
