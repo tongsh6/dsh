@@ -205,8 +205,8 @@ export async function runRepairLoop(
       phase: "repair",
     });
 
-    // Tool call loop for repair (max 2 rounds — repair should be focused)
-    const MAX_REPAIR_TOOL_ROUNDS = 2;
+    // Tool call loop for repair (max 3 rounds — diagnosis then fix)
+    const MAX_REPAIR_TOOL_ROUNDS = 3;
     let content = "";
     for (let tr = 0; tr <= MAX_REPAIR_TOOL_ROUNDS; tr++) {
       const response = await config.client.chat({

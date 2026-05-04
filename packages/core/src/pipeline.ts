@@ -472,6 +472,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
       model: "deepseek-v4-pro", // Always use Pro for retry
       messages: retryMessages,
       thinking: true,
+      tools: ALL_TOOL_DEFINITIONS as unknown as Record<string, unknown>[],
     });
 
     const retryContent = retryResponse.choices[0]?.message.content ?? "";

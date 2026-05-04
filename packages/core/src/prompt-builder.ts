@@ -117,6 +117,16 @@ new content to insert here
 - NEVER use /dev/null in PATCH headers — use <CREATE> instead
 - <CREATE> blocks contain RAW FILE CONTENT — no diff formatting whatsoever
 
+## Multi-Turn Protocol
+
+This is a MULTI-TURN conversation. You are NOT limited to a single response. You have multiple turns to interact with the system.
+
+**Turn 1-N (Exploration):** Call tools to explore the codebase. The system will execute your tool calls and return results. Continue exploring until you have enough context to make correct changes.
+
+**Final Turn (Action):** Output your changes using the XML protocol blocks (CREATE/PATCH/INSERT/DELETE/SEARCH_REPLACE).
+
+Make at least 1-2 exploration tool calls before outputting patches. If you have NOT used any tools yet, you MUST explore first.
+
 ## Available Tools
 
 You have access to tools that let you explore the codebase BEFORE writing patches. Use them to verify your assumptions and find exact code to modify.
@@ -159,7 +169,7 @@ command2
 7. Do NOT reference APIs or files that don't exist in the provided context
 8. Keep changes minimal — fix ONLY the specific issue. Never restructure, delete, or move unrelated code
 9. If you are uncertain about any detail, note it in <RISKS> rather than guessing
-10. Output ONLY the XML blocks. Do not add conversational text before or after
+10. On your FINAL turn (after exploration), output ONLY the XML blocks — no conversational text before or after the blocks. On earlier turns, use tool calls to explore
 11. NEVER delete existing imports, functions, or code blocks — only add or modify what is necessary
 12. CREATE paths MUST be relative to project root — no ../ or absolute paths
 13. CREATE blocks MUST NOT be empty — every new file needs content
@@ -207,7 +217,31 @@ Your response MUST contain these blocks in order:
 3. MINIMAL CHANGE: Only fix what broke. Do not refactor unrelated code, add features, or restructure imports.
 4. DIFFERENT APPROACH: If your previous patch was semantically wrong, try a fundamentally different approach rather than tweaking the same broken code.
 5. REVERT IF NEEDED: If the original code was closer to correct than your patch, revert to the original and make a smaller targeted fix.
-6. Output ONLY the XML blocks. No conversational text.
+6. On your FINAL turn (after diagnosis), output ONLY the XML blocks. No conversational text.
+
+## Multi-Turn Protocol
+
+This is a MULTI-TURN conversation. Use tool calls to diagnose the failure before attempting repairs.
+
+**Turn 1-N (Diagnosis):** Call tools to investigate. Use exec_shell to re-run failing tests. Use read_file to check current file state. Use grep_files to find call sites.
+
+**Final Turn (Repair):** Output XML blocks with your fix.
+
+Make at least 1 tool call to diagnose before attempting a fix.
+
+## Available Tools (Repair)
+
+You have access to tools for diagnosing verification failures:
+
+- **read_file(path)** — Read file content. Use to confirm the current state of files affected by the failed patch.
+- **grep_files(pattern, include?)** — Search the codebase. Use to find call sites, definitions, and references.
+- **exec_shell(command)** — Run read-only shell commands. Use to re-run failing tests and capture exact error output.
+
+### Repair Tool Rules
+
+1. DIAGNOSE: Use exec_shell to re-run the failing tests and capture the exact error output.
+2. FIND CALLERS: If the previous patch changed a function signature, use grep_files to find ALL call sites that need updating.
+3. VERIFY CONTENT: Use read_file to confirm file content before writing SEARCH blocks — the file may have changed since the task context was assembled.
 
 ## Context Layers
 

@@ -8,6 +8,8 @@ A DeepSeek-native coding agent runtime optimized for long-context engineering ta
 
 **⚠️ 项目蓝图（必读）:** `BLUEPRINT.md` — 最终产品形态、分维度演进路线、阶段划分。理解 DSH 的长期愿景和当前 MVP 阶段的关系是正确判断所有设计决策的前提。
 
+**⚠️ 项目状态台账（优先读）:** `docs/project-ledger.md` — 已完成事项、已验证事项、进行中事项、当前优先级、关键证据索引。新会话 AI 请先读此文件恢复项目事实基线。
+
 ## Tech Stack
 
 - **Language:** TypeScript (ESM, strict mode)

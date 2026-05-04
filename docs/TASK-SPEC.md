@@ -290,6 +290,8 @@ spec/           ← 设计文档：描述"要做什么"和"为什么这样做"
 | `benchmark-ci-workflow` | 新建 Benchmark CI Workflow | done | p1 | ai |
 | `phase2-exit-criteria-refinement` | 细化 BLUEPRINT Phase 2 退出条件 | done | p1 | ai |
 | `task-lifecycle-fix` | Task 生命周期修复 | done | p2 | ai |
+| `tool-system-phase1` | 工具系统 Phase 1：执行引擎 | done | p1 | ai |
+| `tool-adoption-fix` | 修复工具采纳率为零的问题 | in_progress | p1 | ai |
 
 ## 7. 修订历史
 
