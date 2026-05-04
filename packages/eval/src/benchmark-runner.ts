@@ -29,6 +29,8 @@ export interface TaskResult {
   error?: string;
   expectedProtocolOps: ProtocolOp[];
   actualProtocolOps: ProtocolOp[];
+  toolRounds: number;
+  toolCalls: { name: string; status: string }[];
 }
 
 // ---- Existing Functions ----
@@ -53,6 +55,8 @@ export function createEmptyResult(fixture: LoadedFixture): TaskResult {
       (op): op is ProtocolOp => PROTOCOL_OP_SCHEMA.safeParse(op).success,
     ),
     actualProtocolOps: [],
+    toolRounds: 0,
+    toolCalls: [],
   };
 }
 
@@ -248,6 +252,12 @@ export async function runTask(
     // Detect actual protocol ops from the stored patch text (best-effort)
     result.actualProtocolOps = detectProtocolOpsFromText(state.patches.at(-1)?.patch ?? "");
 
+    // Record tool usage
+    result.toolRounds = state.tool_rounds?.length ?? 0;
+    result.toolCalls = (state.tool_rounds ?? []).flatMap((tr) =>
+      tr.calls.map((c) => ({ name: c.name, status: c.status })),
+    );
+
     // 5. Verify
     if (fixture.verificationCommands.length > 0) {
       try {
@@ -378,6 +388,38 @@ export function formatEvaluationReport(results: TaskResult[]): string {
     const rate = triggered > 0 ? `${((triggeredCompleted / triggered) * 100).toFixed(0)}%` : "N/A";
     lines.push(`| ${op} | ${expected} | ${triggered} | ${rate} |`);
   }
+  // 工具使用统计
+  const toolUsedResults = results.filter((r) => r.toolRounds > 0);
+  const totalToolCalls = results.reduce((s, r) => s + r.toolCalls.length, 0);
+  const totalToolRounds = results.reduce((s, r) => s + r.toolRounds, 0);
+  const toolSuccessCalls = results.reduce((s, r) => s + r.toolCalls.filter((c) => c.status === "success").length, 0);
+
+  lines.push("## 工具使用");
+  lines.push("");
+  lines.push("| 指标 | 数值 |");
+  lines.push("|--------|-------|");
+  lines.push(`| 使用工具的 fixture | ${toolUsedResults.length}/${total} |`);
+  lines.push(`| 工具调用总轮次 | ${totalToolRounds} |`);
+  lines.push(`| 工具调用总次数 | ${totalToolCalls} |`);
+  lines.push(`| 调用成功率 | ${totalToolCalls > 0 ? ((toolSuccessCalls / totalToolCalls) * 100).toFixed(0) + "%" : "N/A"} |`);
+  if (totalToolCalls > 0) {
+    // Per-tool breakdown
+    const toolCounts: Record<string, { total: number; success: number }> = {};
+    for (const r of results) {
+      for (const c of r.toolCalls) {
+        if (!toolCounts[c.name]) toolCounts[c.name] = { total: 0, success: 0 };
+        toolCounts[c.name]!.total++;
+        if (c.status === "success") toolCounts[c.name]!.success++;
+      }
+    }
+    lines.push("");
+    lines.push("| 工具 | 调用次数 | 成功率 |");
+    lines.push("|--------|-----------|--------|");
+    for (const [name, counts] of Object.entries(toolCounts)) {
+      const rate = ((counts.success / counts.total) * 100).toFixed(0) + "%";
+      lines.push(`| ${name} | ${counts.total} | ${rate} |`);
+    }
+  }
   lines.push("");
 
   // 逐任务详情
@@ -399,6 +441,11 @@ export function formatEvaluationReport(results: TaskResult[]): string {
     lines.push(`| 修复成功 | ${r.repairSuccess ? "✓" : "✗"} |`);
     lines.push(`| 规则违规 | ${r.ruleViolations.length > 0 ? r.ruleViolations.join(", ") : "0"} |`);
     lines.push(`| 交接质量 | ${r.handoffQuality}/3 |`);
+    lines.push(`| 工具调用 | ${r.toolRounds > 0 ? r.toolRounds + " 轮, " + r.toolCalls.length + " 次" : "无"} |`);
+    if (r.toolCalls.length > 0) {
+      const tc = r.toolCalls.map((c) => `${c.name}(${c.status === "success" ? "✓" : "✗"})`).join(", ");
+      lines.push(`| 工具详情 | ${tc} |`);
+    }
     lines.push(`| 耗时 | ${(r.durationMs / 1000).toFixed(1)}s |`);
     if (r.error) {
       lines.push(`| 错误 | ${r.error} |`);

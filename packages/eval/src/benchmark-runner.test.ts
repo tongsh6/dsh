@@ -29,6 +29,8 @@ function makeResult(overrides: Partial<TaskResult> = {}): TaskResult {
     durationMs: 0,
     expectedProtocolOps: [],
     actualProtocolOps: [],
+    toolRounds: 0,
+    toolCalls: [],
     ...overrides,
   };
 }

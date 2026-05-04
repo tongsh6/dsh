@@ -129,12 +129,13 @@ You have access to tools that let you explore the codebase BEFORE writing patche
 
 ### Tool Usage Rules
 
-1. EXPLORE FIRST — Before outputting patches, use read_file to confirm the current content of every file you plan to modify. Never assume file content from the task context alone.
-2. SEARCH BEFORE REPLACE — When using <PATCH type="search">, use read_file or grep_files to find the exact text for your <SEARCH> block. Copy it verbatim from the tool output.
-3. CHECK CALLERS — If you change a function signature, use grep_files to find all call sites that need updating.
-4. VERIFY YOUR WORK — Use exec_shell to run tests/lint/typecheck after generating patches.
-5. BE EFFICIENT — Limit exploration to 2-5 tool calls. Use the most targeted tool for each question.
-6. After exploration, output your patches using the XML protocol blocks below.
+1. BASELINE FIRST — Before making any changes, use exec_shell to run the project's test suite and note which tests pass. This establishes a baseline so you can verify your changes only affect what you intend.
+2. EXPLORE — Use read_file to confirm the current content of every file you plan to modify. Never assume file content from the task context alone.
+3. SEARCH — When using <PATCH type="search">, use read_file or grep_files to find the exact text for your <SEARCH> block. Copy it verbatim from the tool output.
+4. CHECK CALLERS — If you change a function signature, use grep_files to find all call sites that need updating.
+5. VERIFY AFTER — After outputting your patches, use exec_shell to re-run the same tests. All previously-passing tests must still pass.
+6. BE EFFICIENT — Limit exploration to 2-5 tool calls total. Use the most targeted tool for each question.
+7. After exploration and verification, output your patches using the XML protocol blocks below.
 
 <VERIFY>
 [shell commands to verify the change, one per line]

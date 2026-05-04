@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import * as path from "node:path";
-import type { DeepSeekClient } from "@dsh/provider";
+import type { DeepSeekClient, DeepSeekMessage } from "@dsh/provider";
 import type { TaskState } from "./task-state.js";
 import { transition, writeTaskState } from "./task-state.js";
 import { buildDynamicContext } from "./context-builder.js";
@@ -15,6 +15,9 @@ import {
   findCallSites,
   formatCallSiteContext,
 } from "./failure-detector.js";
+import { ALL_TOOL_DEFINITIONS } from "./tool-definitions.js";
+import { executeTool, formatToolResult } from "./tool-executor.js";
+import type { ToolName } from "./tool-definitions.js";
 
 export interface RepairConfig {
   client: DeepSeekClient;
@@ -196,21 +199,43 @@ export async function runRepairLoop(
       "Original task: " + current.task.description,
     ].join("\n");
 
-    const messages = buildMessages({
+    const messages: DeepSeekMessage[] = buildMessages({
       context: { ...config.contextLayers, dynamic },
       taskDescription,
       phase: "repair",
     });
 
-    // Route to Pro + thinking for repair
-    const target = { model: "deepseek-v4-pro", thinking: true };
-    const response = await config.client.chat({
-      model: target.model,
-      messages,
-      thinking: target.thinking,
-    });
+    // Tool call loop for repair (max 2 rounds — repair should be focused)
+    const MAX_REPAIR_TOOL_ROUNDS = 2;
+    let content = "";
+    for (let tr = 0; tr <= MAX_REPAIR_TOOL_ROUNDS; tr++) {
+      const response = await config.client.chat({
+        model: "deepseek-v4-pro",
+        messages,
+        thinking: true,
+        tools: ALL_TOOL_DEFINITIONS as unknown as Record<string, unknown>[],
+      });
 
-    const content = response.choices[0]?.message.content ?? "";
+      const choice = response.choices[0];
+      if (!choice) break;
+      content = choice.message.content;
+      const toolCalls = choice.message.tool_calls;
+
+      if (toolCalls && toolCalls.length > 0 && tr < MAX_REPAIR_TOOL_ROUNDS) {
+        const assistantMsg: DeepSeekMessage = { role: "assistant", content, tool_calls: toolCalls };
+        if (choice.message.reasoning_content) assistantMsg.reasoning_content = choice.message.reasoning_content;
+        messages.push(assistantMsg);
+        for (const tc of toolCalls) {
+          let args: Record<string, string> = {};
+          try { args = JSON.parse(tc.function.arguments) as Record<string, string>; } catch { /* keep empty */ }
+          const result = executeTool(tc.function.name as ToolName, args, config.cwd, tc.id);
+          const formatted = formatToolResult(tc.function.name as ToolName, args, result);
+          messages.push({ role: "tool", content: formatted, tool_call_id: tc.id });
+        }
+        continue;
+      }
+      break;
+    }
 
     // Parse and apply the repair patch
     let patchText: string | null = null;
