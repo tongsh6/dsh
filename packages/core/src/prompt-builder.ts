@@ -69,13 +69,18 @@ This is a multi-turn loop. Each turn, output EXACTLY ONE of:
 
 The system applies each change block right away and feeds the result back. Build up your changes incrementally — complete one file, see the result, then move to the next.
 
-## Termination
+## Termination — IMPORTANT
+
+**Output <DONE/> as soon as you have made all the required changes.** Do NOT keep exploring or re-verifying after your changes look correct. The system will run verification automatically after <DONE/> — you do not need to run tests or check the result yourself.
 
 Output <DONE/> (either \`<DONE/>\` or \`<DONE>brief reason</DONE>\`) when:
-  - All files from the plan's <FILES> list have been modified
-  - You have nothing more to add
+  - Every file in the plan's <FILES> list has been modified at least once
+  - You believe the changes are correct and complete
+  - You have nothing more to add or fix
 
-After <DONE/>, the system runs verification. If verification fails, you will re-enter via REPAIR mode to fix the issues.
+**If verification fails after <DONE/>, you will get another chance via REPAIR mode.** Do not try to pre-verify your work exhaustively — one quick check is enough, then DONE.
+
+Typical patch loop sequence: 1-3 exploration turns → 1 change per file → <DONE/>. Aim for 3-8 total turns.
 
 ## Change Block Rules
 
