@@ -50,6 +50,7 @@ import type { ToolName } from "./tool-definitions.js";
 
 const MAX_PATCH_ROUNDS = 30;
 const MAX_CONSECUTIVE_INVALID = 3;
+const MAX_CONSECUTIVE_TOOLS_ONLY = 5;
 
 function _totalCharCount(messages: DeepSeekMessage[]): number {
   let chars = 0;
@@ -296,6 +297,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
 
   const allChangedFiles: string[] = [];
   let consecutiveInvalid = 0;
+  let consecutiveToolsOnly = 0;
   let round = 0;
 
   while (round < MAX_PATCH_ROUNDS) {
@@ -361,10 +363,12 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
         }
         record.tool_calls = callRecords;
         consecutiveInvalid = 0;
+        consecutiveToolsOnly++;
         break;
       }
 
       case "change": {
+        consecutiveToolsOnly = 0;
         if (choice.message.reasoning_content) {
           record.reasoning_excerpt = choice.message.reasoning_content.slice(0, 500);
         }
@@ -379,12 +383,23 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
         if (result.ok && result.files_changed.length > 0) {
           allChangedFiles.push(...result.files_changed);
         }
-        messages.push({
-          role: "user",
-          content: result.ok
-            ? `✓ change applied: ${action.change.file} (op=${action.change.op})`
-            : `✗ change failed: ${result.error ?? "unknown error"}`,
-        });
+        // Build progress-aware feedback message
+        const planFiles = state.plan?.files ?? [];
+        const deduped = [...new Set(allChangedFiles)];
+        const covered = planFiles.filter((f) =>
+          deduped.some((pf) => pf === f || pf.endsWith("/" + f)),
+        );
+        const uncovered = planFiles.filter((f) => !covered.includes(f));
+        const baseMsg = result.ok
+          ? `✓ change applied: ${action.change.file} (op=${action.change.op})`
+          : `✗ change failed: ${result.error ?? "unknown error"}`;
+        const progressMsg =
+          planFiles.length > 0 && result.ok
+            ? uncovered.length > 0
+              ? `${baseMsg}\n进度: plan.files 覆盖 ${covered.length}/${planFiles.length} (剩余: ${uncovered.join(", ")})`
+              : `${baseMsg}\n进度: plan.files 已全部覆盖，可输出 <DONE/>`
+            : baseMsg;
+        messages.push({ role: "user", content: progressMsg });
         consecutiveInvalid = 0;
         break;
       }
@@ -415,6 +430,11 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
 
     // Guard: consecutive invalid threshold
     if (consecutiveInvalid >= MAX_CONSECUTIVE_INVALID) {
+      break;
+    }
+
+    // Guard: continuous tools with no change produced
+    if (consecutiveToolsOnly >= MAX_CONSECUTIVE_TOOLS_ONLY) {
       break;
     }
   }
