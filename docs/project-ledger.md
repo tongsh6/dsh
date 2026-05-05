@@ -1,6 +1,6 @@
 # DSH 项目事实台账
 
-> 状态: active | 最后更新: 2026-05-04
+> 状态: active | 最后更新: 2026-05-06
 >
 > 任何新会话 AI 或新人进入项目后，**请先阅读本文件**，以便快速恢复项目状态基线。
 
@@ -8,14 +8,16 @@
 
 Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 
-退出条件（7 条）详见 BLUEPRINT.md。当前进展：
+退出条件（8 条）详见 BLUEPRINT.md。当前进展：
 - [x] 静态扫描 Phase 2-3（Top N 可解释选择）
 - [x] 首份 DSH vs OpenCode 对比报告
-- [ ] v0.3 协议操作覆盖率（每条操作 ≥3 fixture + ≥1 实际触发）
-- [ ] 多语言（Python + TypeScript 各 ≥3 fixture 通过）
-- [ ] 多仓库（≥3 repo 各 ≥3 fixture 通过）
-- [ ] 完成率（≥10 fixture 完成率 >60%）
-- [ ] ≥5 相同 fixture DSH vs OpenCode 对比
+- [x] 多仓库（3 repos 各 ≥3 fixture，13 fixture full benchmark 已完成）
+- [x] 完成率（13/13 = 100%）
+- [x] 对比报告（`docs/reports/260506-004042`）
+- [ ] v0.4 协议操作覆盖率（6 种操作中 4/6 已达标，PATCH/DELETE/RENAME 待覆盖）
+- [ ] 多语言（Python 5/5 ✅，TypeScript 3/8 ⚠️ 需提升）
+- [ ] 跨工具对比（DSH vs OpenCode，13 fixture 数据待用 OpenCode 重跑）
+- [ ] 长期跟踪事项复审（2026-05-06 已执行，含 21 条复核 + 3 条状态变更）
 
 ## 2. 已完成事项
 
@@ -94,24 +96,24 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 
 | type | id | source | title | trigger | prio | status | last_reviewed |
 |------|----|--------|-------|---------|------|--------|---------------|
-| deferred | patchloop-repair-upgrade | spec:docs/specs/2026-05-05-patch-loop-architecture.md | repair-loop 升级到 v0.4 patch loop 协议 | v0.4 patch loop 上线后跑 ≥10 fixture，repair 表现出与 patch 类似的多文件不完整 | P2 | waiting | 2026-05-05 |
-| deferred | patch-loop-stash-rollback | spec:docs/specs/2026-05-05-patch-loop-architecture.md | 事务 rollback / stash-apply（v0.5 优化） | v0.4 patch loop 上线后出现「应用后行号错位」实证 | P3 | waiting | 2026-05-05 |
-| bug | exec-shell-redirect | report:docs/reports/260504-185028 | exec_shell 把 `2>&1` 误判为危险（block-pattern `/>/` 过宽） | 修 EXEC_SHELL_BLOCK_PATTERNS：把单字符 `>` 改为更精确正则（仅拒文件重定向，允许 fd 复制如 `2>&1`）；`cd X && Y` 形式留待 v0.5（受 `&&` block-pattern 阻断，需更深改造） | P3 | resolved | 2026-05-05 |
-| bug | multi-file-patch-output-incomplete | report:docs/reports/260504-183633 | patch 阶段多文件任务输出不完整：模型 5 轮工具调用充分但仅产出 1/3 文件 PATCH | patch loop v0.4（spec:2026-05-05-patch-loop-architecture）上线后用相同 fixture 验证；如解决则 status→resolved | P1 | waiting | 2026-05-05 |
-| debt | tool-args-coerce | code:packages/core/src/pipeline.ts:300 | tool args 写 state 前 string-coerce 临时方案（修 Bug C） | schema 放宽为 z.record(z.unknown()) + executeTool/pipeline/repair-loop 全链路类型改 unknown | P3 | waiting | 2026-05-05 |
-| debt | history-spec-backfill | spec:docs/specs/2026-05-05-tracked-items-governance.md | 历史 spec（创建日期 < 2026-05-05）未按原则 8 回填「跟踪事项」章节 | best-effort：日常审阅时遇到主要 spec 顺手补，不强制时点 | P3 | waiting | 2026-05-05 |
-| evidence | dsh-vs-oc-resample | report:docs/reports/compare-20260502-120419 | DSH vs OpenCode 对比仅 5 共同 fixture，样本量不足以断言 60% vs 100% | 工具系统稳定后跑 ≥10 共同 fixture（含工具系统启用版）重生成对比报告 | P2 | waiting | 2026-05-05 |
-| deferred | patchloop-protocol-negotiation | spec:docs/specs/2026-05-05-patch-loop-architecture.md | 协议自动版本协商（v0.3 / v0.4 共存） | v0.4 上线后若需多版本 prompt 共存（不期望发生） | P3 | waiting | 2026-05-05 |
-| deferred | phase4-agent-loop | spec:docs/specs/2026-05-05-patch-loop-architecture.md | BLUEPRINT Phase 4 完整 Agent Loop（任务自主分解、子 Agent 并行） | BLUEPRINT Phase 2 退出 + Phase 3 工具化退出后启动 | P3 | waiting | 2026-05-05 |
-| evidence | patchloop-vs-batch-baseline | spec:docs/specs/2026-05-05-patch-loop-architecture.md | v0.4 patch loop vs v0.3 batch 协议的对比基线（≥3 fixtures × 3 次） | patch-loop spec G6 实施完成后立即收集 | P1 | waiting | 2026-05-05 |
-| deferred | tracked-items-dashboard | spec:docs/specs/2026-05-05-tracked-items-governance.md | 跟踪事项可视化 / dashboard | 跟踪事项数 > 30 时启动 | P3 | waiting | 2026-05-05 |
-| deferred | tracked-items-auto-promotion | spec:docs/specs/2026-05-05-tracked-items-governance.md | 跟踪事项自动 promotion 推荐（"该 ready 了"提示） | CI 脚本稳定运行 90 天后启动 | P3 | waiting | 2026-05-05 |
-| evidence | governance-overhead-baseline | spec:docs/specs/2026-05-05-tracked-items-governance.md | 治理体系实际维护成本 vs spec §5.3 估算（人工登记 < 30s、CI < 5s、月度复审 < 15min） | G4 完成 30 天后统计实际数据 | P3 | waiting | 2026-05-05 |
-| bug | scan-workflow-branch-mismatch | code:.github/workflows/scan.yml:6 | scan.yml push 触发分支配置为 `main`，但项目主分支是 `master`，导致 push 到 master 不触发 lint/typecheck/test/check-tracked-items CI | 改为 `branches: [master, main]`，同时支持两分支以便未来重命名 | P2 | resolved | 2026-05-05 |
-| bug | ci-pnpm-version-missing | code:package.json | scan-workflow-branch-mismatch 修复后 CI 首次实际触发 push 即报错：`pnpm/action-setup@v4` 找不到 pnpm version（package.json 缺 `packageManager` 字段） | 加 `"packageManager": "pnpm@10.33.0"` 到 package.json（与本机 pnpm 版本对齐） | P1 | resolved | 2026-05-05 |
-| bug | ci-missing-build-step | code:.github/workflows/scan.yml | ci-pnpm-version-missing 修复后 CI 第二轮触发 typecheck 失败：找不到 `@dsh/repo` / `@dsh/provider` 模块。本地 typecheck 通过是因为 `packages/*/dist/` 已 build；CI pnpm install 后 dist/ 为空，跨包 import 解析失败 | 在 scan.yml 的 pnpm install 之后、pnpm run scan 之前插入 `pnpm -r run build` step | P1 | resolved | 2026-05-05 |
-| deferred | ci-actions-node24-upgrade | code:.github/workflows/scan.yml | actions/checkout@v4 / setup-node@v4 / pnpm-action-setup@v4 仍跑在 Node.js 20，GitHub 已宣布 2026-06-02 默认切到 Node 24、2026-09-16 后 Node 20 移除 | 2026-06-02 之前升级到支持 Node 24 的 actions/* 主版本（或在 workflow 设 FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true 临时过渡） | P3 | waiting | 2026-05-05 |
-| evidence | patchloop-e2e-selfhost-260505 | report:docs/reports/session-260505-summary.md | P6.1 自托管 e2e：v0.4 patch loop 端到端跑通（30 轮，tool/change 交替正常，patch_rounds 完整记录）。模型未主动 `<DONE/>`，用完 30 轮上限；SEARCH_REPLACE 损坏函数签名。prompt DONE 触发需强化。 | P6.2 之前 prompt tweak；P6.2 后对比 DONE 率变化 | P1 | waiting | 2026-05-05 |
-| debt | patchloop-done-prompt-weak | code:packages/core/src/prompt-builder.ts | v0.4 PATCH_PROMPT_V4 Termination 节对 `<DONE/>` 触发条件描述不够显著，P6.1 自托管 e2e 模型 30 轮未主动 DONE。P6.2 中 1/3 fixture 触发了 DONE（改进但不充分） | prompt 微调两次：①Termination 节提前并强调"立即 DONE" ② P6.2 数据显示 DONE 率 33%，仍需进一步优化。后续方向：加"MAX 10 turns，默认 DONE"约束、减工具描述长度以减少探索倾向 | P1 | waiting | 2026-05-05 |
-| evidence | patchloop-search-replace-risk-realized | code:packages/core/src/pipeline.ts | spec §6 风险"SEARCH/REPLACE 行号错位"变体实证：P6.1 e2e 中模型用 SEARCH_REPLACE 替换 JSDoc 时误删函数参数列表。prompt 已强调"copy verbatim"，但模型仍不精确。 | 长期跟踪；v0.5 考虑 stash-rollback（相关 deferred item：patch-loop-stash-rollback） | P2 | waiting | 2026-05-05 |
-| evidence | patchloop-p62-first-run | report:docs/reports/260505-135720 | P6.2 首轮 3 fixtures × 1 run：DONE 率 33% (1/3)，0% test pass，avg 27 tool rounds/fixture，模型系统性地过度探索。loam-bugfix-cli-error-handling 仅改 2/3 文件。 | 建议 ≥3 次 run 收集统计显著性后再评估 spec §5.2；prompt 需进一步约束探索轮数 | P1 | waiting | 2026-05-05 |
+| deferred | patchloop-repair-upgrade | spec:docs/specs/2026-05-05-patch-loop-architecture.md | repair-loop 升级到 v0.4 patch loop 协议 | v0.4 patch loop 上线后跑 ≥10 fixture，repair 表现出与 patch 类似的多文件不完整 | P1 | waiting | 2026-05-06 |
+| deferred | patch-loop-stash-rollback | spec:docs/specs/2026-05-05-patch-loop-architecture.md | 事务 rollback / stash-apply（v0.5 优化） | v0.4 patch loop 上线后出现「应用后行号错位」实证 | P3 | waiting | 2026-05-06 |
+| bug | exec-shell-redirect | report:docs/reports/260504-185028 | exec_shell 把 `2>&1` 误判为危险 | 修 EXEC_SHELL_BLOCK_PATTERNS：`/>/` 改为 `/{1,2}\s*[^\s&]/` | P3 | resolved | 2026-05-05 |
+| bug | multi-file-patch-output-incomplete | report:docs/reports/260504-183633 | patch 阶段多文件任务输出不完整 | P1+P2 部分解决（rounds -23%），但多文件输出仍不稳定 | P1 | waiting | 2026-05-06 |
+| debt | tool-args-coerce | code:packages/core/src/pipeline.ts:300 | tool args 写 state 前 string-coerce 临时方案 | schema 放宽为 z.record(z.unknown()) + 全链路改 unknown | P3 | waiting | 2026-05-06 |
+| debt | history-spec-backfill | spec:docs/specs/2026-05-05-tracked-items-governance.md | 历史 spec 未按原则 8 回填跟踪事项 | best-effort：日常审阅时遇到主要 spec 顺手补 | P3 | waiting | 2026-05-06 |
+| evidence | dsh-vs-oc-resample | report:docs/reports/compare-20260502-120419 | DSH vs OpenCode 对比样本不足 | 触发条件已满足（≥10 fixture）；需用 OpenCode 重跑 | P2 | ready | 2026-05-06 |
+| deferred | patchloop-protocol-negotiation | spec:docs/specs/2026-05-05-patch-loop-architecture.md | 协议自动版本协商 | cancelled：被 P2 guard 替代 | P3 | cancelled | 2026-05-06 |
+| deferred | phase4-agent-loop | spec:docs/specs/2026-05-05-patch-loop-architecture.md | BLUEPRINT Phase 4 Agent Loop | Phase 2 退出 + Phase 3 退出后启动 | P3 | waiting | 2026-05-06 |
+| evidence | patchloop-vs-batch-baseline | spec:docs/specs/2026-05-05-patch-loop-architecture.md | v0.4 vs v0.3 对比基线（≥3 fixtures × 3 次） | 数据已收集但未做正式对比报告 | P1 | waiting | 2026-05-06 |
+| deferred | tracked-items-dashboard | spec:docs/specs/2026-05-05-tracked-items-governance.md | 跟踪事项可视化 / dashboard | 跟踪事项数 > 30 时启动 | P3 | waiting | 2026-05-06 |
+| deferred | tracked-items-auto-promotion | spec:docs/specs/2026-05-05-tracked-items-governance.md | 跟踪事项自动 promotion | CI 脚本稳定运行 90 天后启动 | P3 | waiting | 2026-05-06 |
+| evidence | governance-overhead-baseline | spec:docs/specs/2026-05-05-tracked-items-governance.md | 治理体系实际维护成本验证 | G4 完成 30 天后统计实际数据 | P3 | waiting | 2026-05-06 |
+| bug | scan-workflow-branch-mismatch | code:.github/workflows/scan.yml:6 | scan.yml branches 配置 | 改为 branches: [master, main] | P2 | resolved | 2026-05-05 |
+| bug | ci-pnpm-version-missing | code:package.json | pnpm version 缺失 | 加 packageManager 到 package.json | P1 | resolved | 2026-05-05 |
+| bug | ci-missing-build-step | code:.github/workflows/scan.yml | CI 缺少 build 步骤 | pnpm install 后加 pnpm -r run build | P1 | resolved | 2026-05-05 |
+| deferred | ci-actions-node24-upgrade | code:.github/workflows/scan.yml | actions Node.js 20 deprecation | 2026-06-02 之前升级到支持 Node 24 的 actions/* 主版本 | P3 | waiting | 2026-05-06 |
+| evidence | patchloop-e2e-selfhost-260505 | report:docs/reports/260506-004042 | P6.1 自托管 e2e 验证（已 supersede 原始 report） | superseded 13 fixture full benchmark (260506-004042) | P1 | resolved | 2026-05-06 |
+| deferred | patchloop-done-prompt-weak | code:packages/core/src/prompt-builder.ts | v0.4 DONE 触发（根因在第 7 条：元认知任务） | P1+P2 pipeline 自动终止已从代码层替代 prompt 方案 | P1 | waiting | 2026-05-06 |
+| evidence | patchloop-search-replace-risk-realized | code:packages/core/src/pipeline.ts | SEARCH/REPLACE 行号错位风险已实证 | 长期跟踪；v0.5 考虑 stash-rollback | P2 | waiting | 2026-05-06 |
+| evidence | patchloop-p62-first-run | report:docs/reports/260506-024933 | P6.2 首轮结果（已 supersede） | superseded 由后续多次 run（含 P1+P2 验证）替代 | P1 | resolved | 2026-05-06 |

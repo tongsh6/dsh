@@ -166,7 +166,7 @@ Phase 1 (当前)              Phase 2                     Phase 3
 
 每个条件含阈值和数据来源，可逐项验证。
 
-- [ ] **v0.3 协议操作覆盖率** — 6 种操作（CREATE/PATCH/SEARCH_REPLACE/INSERT/DELETE/RENAME）每种 ≥3 个 fixture 标注预期触发，且 ≥1 个 fixture 实际触发并记录成功率。数据来源：`formatEvaluationReport` 输出的 Protocol Operation Coverage 表
+- [ ] **v0.4 协议操作覆盖率** — 6 种操作（CREATE/PATCH/SEARCH_REPLACE/INSERT/DELETE/RENAME）每种 ≥3 个 fixture 标注预期触发，且 ≥1 个 fixture 实际触发并记录成功率。数据来源：`formatEvaluationReport` 输出的 Protocol Operation Coverage 表
 - [ ] **多语言** — Python（pi-proof-forge）+ TypeScript（dsh/loamlog/release-hub）各有 ≥3 个 fixture 执行通过。Java 为 Phase 3 目标。数据来源：benchmark 报告 Per-Task Detail
 - [ ] **多仓库** — ≥3 个不同 repo 上有 ≥3 个 fixture 执行通过。数据来源：benchmark 报告
 - [ ] **完成率** — ≥10 个 fixture 完成率 >60%。数据来源：benchmark 报告 Overview
