@@ -302,6 +302,7 @@ spec/           ← 设计文档：描述"要做什么"和"为什么这样做"
 | `patchloop-p4-pipeline-rewrite` | Patch Loop P4：runPatch 循环重写 | done | p1 | ai |
 | `patchloop-p5-benchmark-adapt` | Patch Loop P5：benchmark-runner 适配 + scope-completeness | done | p1 | ai |
 | `patchloop-p6-e2e-validation` | Patch Loop P6：端到端验证 + ship/回退决策 | in_progress | p1 | ai |
+| `patchloop-auto-termination` | Pipeline 自动终止 + 安全网（P1+P2）| in_progress | p1 | ai |
 
 ## 7. 修订历史
 
