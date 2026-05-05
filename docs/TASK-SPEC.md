@@ -291,7 +291,11 @@ spec/           ← 设计文档：描述"要做什么"和"为什么这样做"
 | `phase2-exit-criteria-refinement` | 细化 BLUEPRINT Phase 2 退出条件 | done | p1 | ai |
 | `task-lifecycle-fix` | Task 生命周期修复 | done | p2 | ai |
 | `tool-system-phase1` | 工具系统 Phase 1：执行引擎 | done | p1 | ai |
-| `tool-adoption-fix` | 修复工具采纳率为零的问题 | in_progress | p1 | ai |
+| `tool-adoption-fix` | 修复工具采纳率为零的问题 | in_review | p1 | ai |
+| `governance-g1-doc-foundation` | 治理 G1：CONSTITUTION 原则 8 + ledger §8 + BLUEPRINT 退出 checkbox | ready | p1 | ai |
+| `governance-g2-spec-template` | 治理 G2：spec 模板 + 回填 patch-loop spec | backlog | p1 | ai |
+| `governance-g3-ci-script` | 治理 G3：scripts/check-tracked-items.ts | backlog | p1 | ai |
+| `governance-g4-ci-integration` | 治理 G4：CI 集成 + 红绿验证 | backlog | p1 | ai |
 
 ## 7. 修订历史
 
