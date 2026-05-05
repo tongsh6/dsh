@@ -30,6 +30,25 @@ export function isShellAllowed(command: string): string | null {
 
   for (const pattern of EXEC_SHELL_BLOCK_PATTERNS) {
     if (pattern.test(trimmed)) {
+      // Allow safe pipe patterns: `| head`, `| tail`, `| grep` (reading operations)
+      if (pattern.source === "\\|" || pattern.source === "\\/\\|\\/") {
+        const pipeIndex = trimmed.lastIndexOf("|");
+        if (pipeIndex >= 0) {
+          const afterPipe = trimmed.slice(pipeIndex + 1).trimStart();
+          const safePipes = ["head ", "tail ", "grep ", "rg "];
+          const isSafePipe = safePipes.some((p) => afterPipe.startsWith(p));
+          if (isSafePipe) continue;
+        }
+      }
+      // Allow `cd <dir> && <cmd>` — model's common chdir + run pattern
+      if (pattern.source === "&&" && trimmed.startsWith("cd ")) {
+        const parts = trimmed.split("&&");
+        if (parts.length === 2) {
+          const second = parts[1]?.trimStart() ?? "";
+          const isAllowed = EXEC_SHELL_ALLOW_LIST.some((p) => second.startsWith(p));
+          if (isAllowed) continue;
+        }
+      }
       return `命令包含禁止的模式: ${String(pattern)}`;
     }
   }

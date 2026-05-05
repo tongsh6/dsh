@@ -77,6 +77,27 @@ describe("isShellAllowed", () => {
     assert.equal(isShellAllowed("pnpm test 2>&1"), null);
   });
 
+  it("allows expanded command prefixes (node --import tsx, cd, sed, python3)", () => {
+    assert.equal(isShellAllowed("node --import tsx --test packages/cli/test.ts"), null);
+    assert.equal(isShellAllowed("node --import tsx packages/cli/test.ts"), null);
+    assert.equal(isShellAllowed("cd packages/cli && pnpm test"), null);
+    assert.equal(isShellAllowed("sed -n '10,20p' file.ts"), null);
+    assert.equal(isShellAllowed("python3 tools/check.py --root ."), null);
+    assert.equal(isShellAllowed("npm exec tsx run-benchmark.ts"), null);
+  });
+
+  it("allows safe pipe patterns (| head, | tail, | grep)", () => {
+    assert.equal(isShellAllowed("pnpm run typecheck 2>&1 | head -20"), null);
+    assert.equal(isShellAllowed("cat package.json | grep name"), null);
+    assert.equal(isShellAllowed("git log --oneline | head -5"), null);
+    assert.equal(isShellAllowed("ls -la | tail -10"), null);
+  });
+
+  it("rejects dangerous pipe patterns", () => {
+    assert.ok(isShellAllowed("pnpm test | wc -l")); // wc is not in safePipes
+    assert.ok(isShellAllowed("ls | xargs rm")); // destructive
+  });
+
   it("rejects unrecognized commands", () => {
     assert.ok(isShellAllowed("some-random-command --flag"));
     assert.ok(isShellAllowed("whoami"));
