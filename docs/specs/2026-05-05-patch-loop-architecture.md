@@ -365,8 +365,23 @@ packages/eval/src/
 - TUI（BLUEPRINT Phase 6）
 - MCP / 多 Provider（BLUEPRINT Phase 7）
 
-## 9. 修订历史
+## 9. 本 spec 引发的跟踪事项
+
+> **CONSTITUTION v1.1 原则 8 强制**：以下条目必须在本 spec 状态 ≥ in_review 之前同步登记到 `docs/project-ledger.md` §8 长期跟踪事项表格。CI 脚本（`scripts/check-tracked-items.ts`，G3 实现中）会校验差集。
+>
+> source 字段在本表中省略，隐式 = `spec:docs/specs/2026-05-05-patch-loop-architecture.md`。
+
+| type | id | trigger | priority | notes |
+|------|----|---------|----------|-------|
+| deferred | patchloop-repair-upgrade | v0.4 patch loop 上线后跑 ≥10 fixture，repair 表现出与 patch 类似的多文件不完整 | P2 | §2.2 第 3 项 / §3.7 |
+| deferred | patch-loop-stash-rollback | v0.4 patch loop 上线后出现「应用后行号错位」实证 | P3 | §2.2 第 5 项 |
+| deferred | patchloop-protocol-negotiation | v0.4 上线后若需多版本 prompt 共存（不期望发生）| P3 | §2.2 第 4 项 |
+| deferred | phase4-agent-loop | BLUEPRINT Phase 2 退出 + Phase 3 工具化退出后启动 | P3 | §2.2 第 1 项 / §7.3 解锁 |
+| evidence | patchloop-vs-batch-baseline | G6 实施完成后跑 ≥3 fixtures × 3 次对比 v0.3 基线 | P1 | §5.2 行为验收 |
+
+## 10. 修订历史
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
 | 2026-05-05 | v1.0 (draft) | 初始 spec：从 batch 协议切换到 patch loop，含 6 phase 实施计划与回退策略 |
+| 2026-05-05 | v1.1 (draft) | §9 新增「本 spec 引发的跟踪事项」（治理 G2 回填，依据 CONSTITUTION v1.1 原则 8）；原 §9 修订历史顺延为 §10 |
