@@ -13,6 +13,7 @@ export default tseslint.config(
       ".worktrees/**",
       "eslint.config.mjs",
       "docs/superpowers/reports/**",
+      "scripts/**",
     ],
   },
   js.configs.recommended,
