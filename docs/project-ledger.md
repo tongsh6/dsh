@@ -69,7 +69,7 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 
 | 证据 | 路径 | 说明 |
 |------|------|------|
-| 项目宪法 | `CONSTITUTION.md` | 5 项核心原则 + 3 条 AI 规则 |
+| 项目宪法 | `CONSTITUTION.md` | 5 项核心原则 + 3 条 AI 规则 + 3 项技术原则（含原则 8 跟踪事项治理） |
 | 产品蓝图 | `BLUEPRINT.md` | 7 阶段演进 + Phase 2 退出条件 |
 | 任务规范 | `docs/TASK-SPEC.md` | 任务格式、生命周期、三层体系 |
 | 最新 Benchmark | `docs/reports/260504-140432/` | 5 fixtures loamlog，工具零调用 |
@@ -82,3 +82,21 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 | Repo 源码 | `packages/repo/src/` | 扫描器、配置加载、文件排序 |
 | Eval 源码 | `packages/eval/src/` | Benchmark 执行器、fixtures |
 | CI 配置 | `.github/workflows/` | scan, benchmark, codeql, gitleaks |
+| 跟踪事项治理 Spec | `docs/specs/2026-05-05-tracked-items-governance.md` | CONSTITUTION 原则 8 设计依据 |
+
+## 8. 长期跟踪事项
+
+> 治理依据：`CONSTITUTION.md` 原则 8。新会话 AI 启动时必读。任何 status ≠ resolved/cancelled 的条目都需要在合适时机被复审（BLUEPRINT 各 Phase 退出条件含「长期跟踪事项复审」checkbox）。
+>
+> 字段说明（按列）：type / id / source / title / trigger / prio / status / last_reviewed
+> trigger 字段语义：deferred=activate_when / bug=resolve_when / debt=pay_when / evidence=collect_when
+
+| type | id | source | title | trigger | prio | status | last_reviewed |
+|------|----|--------|-------|---------|------|--------|---------------|
+| deferred | patchloop-repair-upgrade | spec:docs/specs/2026-05-05-patch-loop-architecture.md | repair-loop 升级到 v0.4 patch loop 协议 | v0.4 patch loop 上线后跑 ≥10 fixture，repair 表现出与 patch 类似的多文件不完整 | P2 | waiting | 2026-05-05 |
+| deferred | patch-loop-stash-rollback | spec:docs/specs/2026-05-05-patch-loop-architecture.md | 事务 rollback / stash-apply（v0.5 优化） | v0.4 patch loop 上线后出现「应用后行号错位」实证 | P3 | waiting | 2026-05-05 |
+| bug | exec-shell-redirect | report:docs/reports/260504-185028 | exec_shell 把 `2>&1` 误判为危险（block-pattern `/>/` 过宽） | 修 EXEC_SHELL_BLOCK_PATTERNS：把单字符 `>` 改为更精确正则；同时处理 `cd X && Y` 形式 | P3 | waiting | 2026-05-05 |
+| bug | multi-file-patch-output-incomplete | report:docs/reports/260504-183633 | patch 阶段多文件任务输出不完整：模型 5 轮工具调用充分但仅产出 1/3 文件 PATCH | patch loop v0.4（spec:2026-05-05-patch-loop-architecture）上线后用相同 fixture 验证；如解决则 status→resolved | P1 | waiting | 2026-05-05 |
+| debt | tool-args-coerce | code:packages/core/src/pipeline.ts:300 | tool args 写 state 前 string-coerce 临时方案（修 Bug C） | schema 放宽为 z.record(z.unknown()) + executeTool/pipeline/repair-loop 全链路类型改 unknown | P3 | waiting | 2026-05-05 |
+| debt | history-spec-backfill | spec:docs/specs/2026-05-05-tracked-items-governance.md | 历史 spec（创建日期 < 2026-05-05）未按原则 8 回填「跟踪事项」章节 | best-effort：日常审阅时遇到主要 spec 顺手补，不强制时点 | P3 | waiting | 2026-05-05 |
+| evidence | dsh-vs-oc-resample | report:docs/reports/compare-20260502-120419 | DSH vs OpenCode 对比仅 5 共同 fixture，样本量不足以断言 60% vs 100% | 工具系统稳定后跑 ≥10 共同 fixture（含工具系统启用版）重生成对比报告 | P2 | waiting | 2026-05-05 |

@@ -1,6 +1,6 @@
-# DSH Project Constitution v1.0
+# DSH Project Constitution v1.1
 
-> 状态: active | 批准: 2026-05-02 | 最后修订: 2026-05-02
+> 状态: active | 批准: 2026-05-02 | 最后修订: 2026-05-05
 >
 > 本宪法是 dsh 项目的最高原则文件。所有贡献者（人类和 AI）必须遵守。
 
@@ -145,6 +145,28 @@ tasks/              ← 任务卡片：可独立执行的最小工作单元
 - 不做 MCP、不做 Web server、不做数据库
 - 通过文件系统与上下游工具对接
 
+### 原则 8：长期跟踪事项可追溯（Tracked-Items Traceable）
+
+**任何 spec / 报告 / 代码评审中标记的延后事项、已知 bug、技术债、待跟进证据必须登记到 `docs/project-ledger.md` §8 长期跟踪事项表格。**
+
+| 信息出现位置 | 登记义务方 | 登记时点 |
+|-------------|----------|---------|
+| spec §「非目标」/§「跟踪事项」 | spec 作者 | spec 状态 ≥ in_review 之前 |
+| benchmark 报告 / 实证发现 | 报告作者 | 报告归档同 PR |
+| 代码评审标识的技术债 | reviewer 或 PR 作者 | merge 前 |
+| 实证数据缺口 | 写报告的人 | 报告归档同 PR |
+
+不得删除已登记条目；只能将 status 改为 `resolved` 或 `cancelled`。spec 关闭、报告归档、PR merge 时若漏登记，CI 检查会阻断（见 `scripts/check-tracked-items.ts`）。
+
+跟踪事项 4 类（type 字段）：
+
+- `deferred` —— 延后事项：本期非目标但未来要做（trigger 字段表 activate_when）
+- `bug` —— 已知 bug：本期不修但需登记（trigger 字段表 resolve_when）
+- `debt` —— 技术债：明知妥协的临时方案（trigger 字段表 pay_when）
+- `evidence` —— 待跟进证据：数据/对比/复跑等实证缺口（trigger 字段表 collect_when）
+
+详见设计 spec：`docs/specs/2026-05-05-tracked-items-governance.md`。
+
 ---
 
 ## 第四章：修订程序
@@ -161,3 +183,4 @@ tasks/              ← 任务卡片：可独立执行的最小工作单元
 | 日期 | 版本 | 变更 |
 |------|------|------|
 | 2026-05-02 | v1.0 | 初始宪法：5 项核心原则 + 3 条 AI 协作规则 + 2 项技术原则 + 修订程序 |
+| 2026-05-05 | v1.1 | 第三章追加原则 8：长期跟踪事项可追溯（依据 `docs/specs/2026-05-05-tracked-items-governance.md`） |

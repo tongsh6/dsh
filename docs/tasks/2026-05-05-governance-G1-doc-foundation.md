@@ -1,6 +1,6 @@
 ---
 id: "governance-g1-doc-foundation"
-status: ready
+status: in_review
 priority: p1
 type: docs
 spec_ref: "docs/specs/2026-05-05-tracked-items-governance.md"

@@ -173,6 +173,21 @@ Phase 1 (当前)              Phase 2                     Phase 3
 - [ ] **静态扫描治理 Phase 2-3** — 完整 finding schema（Phase 2 ✅）+ Top N 可解释选择（Phase 3：`static-topn.ts` 存在，支持多维 scoring + 选择理由记录）。数据来源：`packages/core/src/static-topn.ts` 文件存在 + 测试通过
 - [ ] **跨工具对比** — ≥5 个相同 fixture 的 DSH vs OpenCode 对比数据产出。Claude Code 对比为 Phase 3 目标。数据来源：`docs/reports/` 下对比报告
 - [ ] **对比报告** — 首份正式 DSH Evaluation Report v1.0，含协议操作分类统计。数据来源：`docs/reports/` 下归档报告
+- [ ] **长期跟踪事项复审** — 遍历 `docs/project-ledger.md` §8 全部条目，对每个 status=waiting 的事项做出决策（promote 为 ready task / 继续延后 / cancel）；复审记录归档到 `docs/reports/phase-2-exit-review.md`。详见 §3.1 Phase 退出复审协议。数据来源：`docs/project-ledger.md` §8 + 归档复审报告
+
+### 3.1 Phase 退出复审协议
+
+每个 Phase 退出条件中含「长期跟踪事项复审」checkbox（治理依据：CONSTITUTION 原则 8）。复审流程：
+
+1. 遍历 `docs/project-ledger.md` §8 全部 status=waiting 条目
+2. 对每条做出决策之一：
+   - **trigger 已满足** → status 转 `ready`，并创建对应 task 卡片到 `docs/tasks/`
+   - **trigger 未满足** → 仅更新 `last_reviewed` 为本次复审日期
+   - **已被 superseded**（被新 spec / 新条目替代）→ status 转 `cancelled`，备注新替代条目 id
+3. 复审记录归档到 `docs/reports/phase-X-exit-review.md`，列出本次决策矩阵（事项 id / 决策 / 理由）
+4. 该 checkbox 仅在所有 waiting 条目都被处理后才能勾选
+
+复审节奏：每 Phase 退出时强制触发；日常无强制频率，但 CI（`scripts/check-tracked-items.ts`）对 last_reviewed > 90 天的条目发出 warn。
 
 ---
 
@@ -195,3 +210,4 @@ Phase 1 (当前)              Phase 2                     Phase 3
 | 日期 | 版本 | 变更 |
 |------|------|------|
 | 2026-05-02 | v1.0 | 初始蓝图：产品形态、5 个维度演进路线、7 阶段划分 |
+| 2026-05-05 | v1.1 | Phase 2 退出条件追加「长期跟踪事项复审」checkbox；新增 §3.1 Phase 退出复审协议（依据 CONSTITUTION v1.1 原则 8） |
