@@ -1,5 +1,3 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { loadDshConfig } from "@dsh/repo";
 import type { DeepSeekClient, DeepSeekMessage } from "@dsh/provider";
 import { classify } from "@dsh/provider";
@@ -53,7 +51,7 @@ import type { ToolName } from "./tool-definitions.js";
 const MAX_PATCH_ROUNDS = 30;
 const MAX_CONSECUTIVE_INVALID = 3;
 
-function totalCharCount(messages: DeepSeekMessage[]): number {
+function _totalCharCount(messages: DeepSeekMessage[]): number {
   let chars = 0;
   for (const m of messages) {
     if (m.content) chars += m.content.length;
@@ -431,7 +429,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   );
   const allOk = okChanges.length > 0 && failedChanges.length === 0;
   const partialOk = okChanges.length > 0 && failedChanges.length > 0;
-  const allFailed = okChanges.length === 0;
+  const _allFailed = okChanges.length === 0;
 
   const dedupedFiles = [...new Set(allChangedFiles)];
 

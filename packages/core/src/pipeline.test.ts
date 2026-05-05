@@ -114,7 +114,7 @@ echo ok
 </RISKS>
 `;
 
-const STATIC_REPAIR_PATCH_RESPONSE = `
+const _STATIC_REPAIR_PATCH_RESPONSE = `
 <PLAN>
 ## Goal
 Fix selected static scan finding

@@ -146,7 +146,7 @@ new content to insert here
 
 After each change block, the system replies with one of:
 
-  "✓ change applied: <file> (op=CREATE, +42 lines)"   on success
+  "✓ change applied: <file> (op=CREATE)"               on success
   "✗ change failed: <reason>"                         on failure
 
 If a change fails, read the file again to check its current state, then try a different approach. Do NOT re-output the same failed change block.

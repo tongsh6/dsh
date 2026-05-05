@@ -32,7 +32,7 @@ export interface TaskResult {
   toolRounds: number;
   toolCalls: { name: string; status: string }[];
   patchRounds: number;
-  patchRoundActions: { round: number; action: string }[];
+  patchRoundActions: { round: number; action: string; toolCalls?: { name: string; status: string }[] }[];
 }
 
 // ---- Existing Functions ----
@@ -257,17 +257,31 @@ export async function runTask(
     // Detect actual protocol ops from the stored patch text (best-effort)
     result.actualProtocolOps = detectProtocolOpsFromText(state.patches.at(-1)?.patch ?? "");
 
-    // Record tool usage
-    result.toolRounds = state.tool_rounds?.length ?? 0;
-    result.toolCalls = (state.tool_rounds ?? []).flatMap((tr) =>
-      tr.calls.map((c) => ({ name: c.name, status: c.status })),
-    );
+    // Record tool usage — prefer v0.4 patch_rounds data when available
+    if (state.patch_rounds && state.patch_rounds.length > 0) {
+      // v0.4: tools are tracked inside patch_rounds as "tools" action rounds
+      const toolActionRounds = state.patch_rounds.filter((pr) => pr.action === "tools");
+      result.toolRounds = toolActionRounds.length;
+      result.toolCalls = toolActionRounds.flatMap((pr) =>
+        (pr.tool_calls ?? []).map((tc) => ({ name: tc.name, status: tc.status })),
+      );
+    } else {
+      // v0.3: tools are in tool_rounds
+      result.toolRounds = state.tool_rounds?.length ?? 0;
+      result.toolCalls = (state.tool_rounds ?? []).flatMap((tr) =>
+        tr.calls.map((c) => ({ name: c.name, status: c.status })),
+      );
+    }
 
-    // Record patch loop stats
+    // Record patch loop stats (v0.4)
     result.patchRounds = state.patch_rounds?.length ?? 0;
     result.patchRoundActions = (state.patch_rounds ?? []).map((pr) => ({
       round: pr.round,
       action: pr.action,
+      toolCalls:
+        pr.action === "tools" && pr.tool_calls
+          ? pr.tool_calls.map((tc) => ({ name: tc.name, status: tc.status }))
+          : undefined,
     }));
 
     // 5. Verify
@@ -327,15 +341,28 @@ export async function runTask(
     // as zero/empty for any patch-failed fixture.
     const stateOnDisk = readTaskState(repoPath);
     if (stateOnDisk) {
-      result.toolRounds = stateOnDisk.tool_rounds?.length ?? 0;
-      result.toolCalls = (stateOnDisk.tool_rounds ?? []).flatMap((tr) =>
-        tr.calls.map((c) => ({ name: c.name, status: c.status })),
-      );
       result.patchRounds = stateOnDisk.patch_rounds?.length ?? 0;
       result.patchRoundActions = (stateOnDisk.patch_rounds ?? []).map((pr) => ({
         round: pr.round,
         action: pr.action,
+        toolCalls:
+          pr.action === "tools" && pr.tool_calls
+            ? pr.tool_calls.map((tc) => ({ name: tc.name, status: tc.status }))
+            : undefined,
       }));
+
+      if (result.patchRounds > 0) {
+        // v0.4: consolidate from patch_rounds
+        const toolsRounds = result.patchRoundActions.filter((a) => a.action === "tools");
+        result.toolRounds = toolsRounds.length;
+        result.toolCalls = toolsRounds.flatMap((a) => a.toolCalls ?? []);
+      } else {
+        result.toolRounds = stateOnDisk.tool_rounds?.length ?? 0;
+        result.toolCalls = (stateOnDisk.tool_rounds ?? []).flatMap((tr) =>
+          tr.calls.map((c) => ({ name: c.name, status: c.status })),
+        );
+      }
+
       const lastPatch = stateOnDisk.patches.at(-1);
       if (lastPatch) {
         result.filesChanged = lastPatch.files_changed;
@@ -466,7 +493,7 @@ export function formatEvaluationReport(results: TaskResult[]): string {
   const avgInvalid = resultsWithPatchLoop.length > 0
     ? allActions.filter((a) => a === "invalid").length / resultsWithPatchLoop.length
     : 0;
-  const doneCount = allActions.filter((a) => a === "done").length;
+  const _doneCount = allActions.filter((a) => a === "done").length;
   const doneRate = resultsWithPatchLoop.length > 0
     ? ((resultsWithPatchLoop.filter((r) => r.patchRoundActions.some((a) => a.action === "done")).length / resultsWithPatchLoop.length) * 100).toFixed(0) + "%"
     : "N/A";
@@ -519,9 +546,28 @@ export function formatEvaluationReport(results: TaskResult[]): string {
     lines.push(`| 规则违规 | ${r.ruleViolations.length > 0 ? r.ruleViolations.join(", ") : "0"} |`);
     lines.push(`| 交接质量 | ${r.handoffQuality}/3 |`);
     lines.push(`| 工具调用 | ${r.toolRounds > 0 ? r.toolRounds + " 轮, " + r.toolCalls.length + " 次" : "无"} |`);
-    if (r.toolCalls.length > 0) {
+    if (r.toolCalls.length > 0 && !r.patchRounds) {
+      // v0.3: per-call breakdown is short enough
       const tc = r.toolCalls.map((c) => `${c.name}(${c.status === "success" ? "✓" : "✗"})`).join(", ");
       lines.push(`| 工具详情 | ${tc} |`);
+    }
+    if (r.patchRounds > 0) {
+      const actions = r.patchRoundActions.map((a) => a.action);
+      const changes = actions.filter((a) => a === "change").length;
+      const done = actions.includes("done") ? "✓" : "✗";
+      lines.push(`| Patch Loop | ${r.patchRounds} rounds, ${changes} changes, DONE=${done} |`);
+      if (r.toolCalls.length > 0) {
+        const toolCounts: Record<string, number> = {};
+        let toolSuccess = 0;
+        for (const tc of r.toolCalls) {
+          toolCounts[tc.name] = (toolCounts[tc.name] ?? 0) + 1;
+          if (tc.status === "success") toolSuccess++;
+        }
+        const detail = Object.entries(toolCounts)
+          .map(([name, count]) => `${name}(${count})`)
+          .join(", ");
+        lines.push(`| 工具详情 | ${detail} (${((toolSuccess / r.toolCalls.length) * 100).toFixed(0)}% 成功) |`);
+      }
     }
     lines.push(`| 耗时 | ${(r.durationMs / 1000).toFixed(1)}s |`);
     if (r.error) {
