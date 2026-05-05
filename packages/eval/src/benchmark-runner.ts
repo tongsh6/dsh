@@ -462,13 +462,22 @@ export function formatEvaluationReport(results: TaskResult[]): string {
   lines.push(`| 工具调用总次数 | ${totalToolCalls} |`);
   lines.push(`| 调用成功率 | ${totalToolCalls > 0 ? ((toolSuccessCalls / totalToolCalls) * 100).toFixed(0) + "%" : "N/A"} |`);
   if (totalToolCalls > 0) {
-    // Per-tool breakdown
+    // Per-tool breakdown (only known tool names; model sometimes hallucinates
+    // protocol operation names as tools — those are aggregated under "其他无效调用")
+    const VALID_TOOL_NAMES = new Set(["read_file", "grep_files", "exec_shell"]);
     const toolCounts: Record<string, { total: number; success: number }> = {};
+    let invalidTotal = 0;
+    let invalidSuccess = 0;
     for (const r of results) {
       for (const c of r.toolCalls) {
-        if (!toolCounts[c.name]) toolCounts[c.name] = { total: 0, success: 0 };
-        toolCounts[c.name]!.total++;
-        if (c.status === "success") toolCounts[c.name]!.success++;
+        if (VALID_TOOL_NAMES.has(c.name)) {
+          if (!toolCounts[c.name]) toolCounts[c.name] = { total: 0, success: 0 };
+          toolCounts[c.name]!.total++;
+          if (c.status === "success") toolCounts[c.name]!.success++;
+        } else {
+          invalidTotal++;
+          if (c.status === "success") invalidSuccess++;
+        }
       }
     }
     lines.push("");
@@ -477,6 +486,10 @@ export function formatEvaluationReport(results: TaskResult[]): string {
     for (const [name, counts] of Object.entries(toolCounts)) {
       const rate = ((counts.success / counts.total) * 100).toFixed(0) + "%";
       lines.push(`| ${name} | ${counts.total} | ${rate} |`);
+    }
+    if (invalidTotal > 0) {
+      const rate = ((invalidSuccess / invalidTotal) * 100).toFixed(0) + "%";
+      lines.push(`| 其他无效调用 | ${invalidTotal} | ${rate} |`);
     }
   }
   lines.push("");
@@ -557,16 +570,20 @@ export function formatEvaluationReport(results: TaskResult[]): string {
       const done = actions.includes("done") ? "✓" : "✗";
       lines.push(`| Patch Loop | ${r.patchRounds} rounds, ${changes} changes, DONE=${done} |`);
       if (r.toolCalls.length > 0) {
+        const VALID_TOOL_NAMES = new Set(["read_file", "grep_files", "exec_shell"]);
         const toolCounts: Record<string, number> = {};
         let toolSuccess = 0;
+        let totalCalls = 0;
         for (const tc of r.toolCalls) {
+          if (!VALID_TOOL_NAMES.has(tc.name)) continue;
           toolCounts[tc.name] = (toolCounts[tc.name] ?? 0) + 1;
           if (tc.status === "success") toolSuccess++;
+          totalCalls++;
         }
         const detail = Object.entries(toolCounts)
           .map(([name, count]) => `${name}(${count})`)
           .join(", ");
-        lines.push(`| 工具详情 | ${detail} (${((toolSuccess / r.toolCalls.length) * 100).toFixed(0)}% 成功) |`);
+        lines.push(`| 工具详情 | ${detail} (${totalCalls > 0 ? ((toolSuccess / totalCalls) * 100).toFixed(0) : 0}% 成功) |`);
       }
     }
     lines.push(`| 耗时 | ${(r.durationMs / 1000).toFixed(1)}s |`);
