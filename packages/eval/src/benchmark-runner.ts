@@ -2,7 +2,7 @@ import { execSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import type { DeepSeekClient } from "@dsh/provider";
-import { detectProtocolOpsFromText } from "@dsh/core";
+import { detectProtocolOpsFromText, readTaskState } from "@dsh/core";
 import type { ProtocolOp } from "@dsh/core";
 import { runPlan, runPatch, runVerify, runRepair, runHandoff } from "@dsh/core";
 import { writeDshConfig, getBaseBranch, detectTechStack } from "@dsh/repo";
@@ -310,6 +310,21 @@ export async function runTask(
   } catch (err) {
     result.completed = false;
     result.error = err instanceof Error ? err.message : String(err);
+    // Recover stats from disk — even when the pipeline throws, task-state.json
+    // is already written. Without this, tool_rounds/files_changed get reported
+    // as zero/empty for any patch-failed fixture.
+    const stateOnDisk = readTaskState(repoPath);
+    if (stateOnDisk) {
+      result.toolRounds = stateOnDisk.tool_rounds?.length ?? 0;
+      result.toolCalls = (stateOnDisk.tool_rounds ?? []).flatMap((tr) =>
+        tr.calls.map((c) => ({ name: c.name, status: c.status })),
+      );
+      const lastPatch = stateOnDisk.patches.at(-1);
+      if (lastPatch) {
+        result.filesChanged = lastPatch.files_changed;
+        result.actualProtocolOps = detectProtocolOpsFromText(lastPatch.patch);
+      }
+    }
   } finally {
     resetToMain(repoPath);
   }

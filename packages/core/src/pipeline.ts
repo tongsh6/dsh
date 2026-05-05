@@ -297,8 +297,14 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
       messages.push(assistantMsg);
 
       for (const tc of toolCalls) {
-        let args: Record<string, string> = {};
-        try { args = JSON.parse(tc.function.arguments) as Record<string, string>; } catch { /* keep empty */ }
+        let rawArgs: Record<string, unknown> = {};
+        try { rawArgs = JSON.parse(tc.function.arguments) as Record<string, unknown>; } catch { /* keep empty */ }
+        // Models sometimes pass non-string values (e.g. read_file({offset: 580})). The state-state
+        // schema requires Record<string, string>; coerce here so writeTaskState round-trips through readTaskState.
+        const args: Record<string, string> = {};
+        for (const [k, v] of Object.entries(rawArgs)) {
+          args[k] = typeof v === "string" ? v : JSON.stringify(v);
+        }
         const result = executeTool(tc.function.name as ToolName, args, cwd, tc.id);
         const formatted = formatToolResult(tc.function.name as ToolName, args, result);
         messages.push({ role: "tool", content: formatted, tool_call_id: tc.id });
