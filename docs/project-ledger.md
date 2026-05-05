@@ -96,7 +96,7 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 |------|----|--------|-------|---------|------|--------|---------------|
 | deferred | patchloop-repair-upgrade | spec:docs/specs/2026-05-05-patch-loop-architecture.md | repair-loop 升级到 v0.4 patch loop 协议 | v0.4 patch loop 上线后跑 ≥10 fixture，repair 表现出与 patch 类似的多文件不完整 | P2 | waiting | 2026-05-05 |
 | deferred | patch-loop-stash-rollback | spec:docs/specs/2026-05-05-patch-loop-architecture.md | 事务 rollback / stash-apply（v0.5 优化） | v0.4 patch loop 上线后出现「应用后行号错位」实证 | P3 | waiting | 2026-05-05 |
-| bug | exec-shell-redirect | report:docs/reports/260504-185028 | exec_shell 把 `2>&1` 误判为危险（block-pattern `/>/` 过宽） | 修 EXEC_SHELL_BLOCK_PATTERNS：把单字符 `>` 改为更精确正则；同时处理 `cd X && Y` 形式 | P3 | waiting | 2026-05-05 |
+| bug | exec-shell-redirect | report:docs/reports/260504-185028 | exec_shell 把 `2>&1` 误判为危险（block-pattern `/>/` 过宽） | 修 EXEC_SHELL_BLOCK_PATTERNS：把单字符 `>` 改为更精确正则（仅拒文件重定向，允许 fd 复制如 `2>&1`）；`cd X && Y` 形式留待 v0.5（受 `&&` block-pattern 阻断，需更深改造） | P3 | resolved | 2026-05-05 |
 | bug | multi-file-patch-output-incomplete | report:docs/reports/260504-183633 | patch 阶段多文件任务输出不完整：模型 5 轮工具调用充分但仅产出 1/3 文件 PATCH | patch loop v0.4（spec:2026-05-05-patch-loop-architecture）上线后用相同 fixture 验证；如解决则 status→resolved | P1 | waiting | 2026-05-05 |
 | debt | tool-args-coerce | code:packages/core/src/pipeline.ts:300 | tool args 写 state 前 string-coerce 临时方案（修 Bug C） | schema 放宽为 z.record(z.unknown()) + executeTool/pipeline/repair-loop 全链路类型改 unknown | P3 | waiting | 2026-05-05 |
 | debt | history-spec-backfill | spec:docs/specs/2026-05-05-tracked-items-governance.md | 历史 spec（创建日期 < 2026-05-05）未按原则 8 回填「跟踪事项」章节 | best-effort：日常审阅时遇到主要 spec 顺手补，不强制时点 | P3 | waiting | 2026-05-05 |
@@ -107,4 +107,4 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 | deferred | tracked-items-dashboard | spec:docs/specs/2026-05-05-tracked-items-governance.md | 跟踪事项可视化 / dashboard | 跟踪事项数 > 30 时启动 | P3 | waiting | 2026-05-05 |
 | deferred | tracked-items-auto-promotion | spec:docs/specs/2026-05-05-tracked-items-governance.md | 跟踪事项自动 promotion 推荐（"该 ready 了"提示） | CI 脚本稳定运行 90 天后启动 | P3 | waiting | 2026-05-05 |
 | evidence | governance-overhead-baseline | spec:docs/specs/2026-05-05-tracked-items-governance.md | 治理体系实际维护成本 vs spec §5.3 估算（人工登记 < 30s、CI < 5s、月度复审 < 15min） | G4 完成 30 天后统计实际数据 | P3 | waiting | 2026-05-05 |
-| bug | scan-workflow-branch-mismatch | code:.github/workflows/scan.yml:6 | scan.yml push 触发分支配置为 `main`，但项目主分支是 `master`，导致 push 到 master 不触发 lint/typecheck/test/check-tracked-items CI | 改 `branches: [master]`（或同步两分支）；G4 实施时发现的连带问题，独立 PR 处理 | P2 | waiting | 2026-05-05 |
+| bug | scan-workflow-branch-mismatch | code:.github/workflows/scan.yml:6 | scan.yml push 触发分支配置为 `main`，但项目主分支是 `master`，导致 push 到 master 不触发 lint/typecheck/test/check-tracked-items CI | 改为 `branches: [master, main]`，同时支持两分支以便未来重命名 | P2 | resolved | 2026-05-05 |

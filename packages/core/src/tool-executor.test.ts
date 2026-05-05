@@ -63,7 +63,18 @@ describe("isShellAllowed", () => {
     assert.ok(isShellAllowed("pnpm test && rm -rf /"));
     assert.ok(isShellAllowed("pnpm test; cat /etc/passwd"));
     assert.ok(isShellAllowed("pnpm test > /tmp/output"));
+    assert.ok(isShellAllowed("pnpm test >> /tmp/output"));
+    assert.ok(isShellAllowed("pnpm test 2>err.log"));
+    assert.ok(isShellAllowed("pnpm test &>/dev/null"));
     assert.ok(isShellAllowed("echo test | grep test"));
+  });
+
+  it("allows fd duplication (2>&1) — not a file write", () => {
+    // 2>&1 is "redirect stderr to wherever stdout goes" — a fd copy, not a file write.
+    // Models commonly use `cmd 2>&1` to capture both streams; previously over-strict
+    // /\>/ pattern rejected this.
+    assert.equal(isShellAllowed("pnpm run typecheck 2>&1"), null);
+    assert.equal(isShellAllowed("pnpm test 2>&1"), null);
   });
 
   it("rejects unrecognized commands", () => {
