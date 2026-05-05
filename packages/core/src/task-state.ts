@@ -155,7 +155,7 @@ const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   "verification_failed": ["repairing", "repair_exhausted"],
   "repairing": ["patched", "repair_exhausted"],
   "repair_exhausted": ["done"],
-  "patch_failed": ["repairing", "repair_exhausted"],
+  "patch_failed": ["repairing", "repair_exhausted", "verification_failed"],
   "done": [],
 };
 
