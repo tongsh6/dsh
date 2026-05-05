@@ -214,10 +214,11 @@ export async function runTask(
     // 1. Git prepare
     prepareBranch(repoPath, fixture.id);
 
-    // 2. Setup dsh config — detect tech stack from the actual project
-    const stack = detectTechStack(repoPath);
+    // 2. Clean stale state from previous runs + setup
     const dshDir = path.join(repoPath, ".dsh");
+    fs.rmSync(path.join(dshDir, "task-state.json"), { force: true });
     fs.mkdirSync(dshDir, { recursive: true });
+    const stack = detectTechStack(repoPath);
 
     // writeDshConfig merges with existing — only override verify + deepseek, preserve project metadata
     writeDshConfig(repoPath, {
