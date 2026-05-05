@@ -19,3 +19,5 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run scan
+      - name: Check tracked items (CONSTITUTION 原则 8)
+        run: ./packages/core/node_modules/.bin/tsx scripts/check-tracked-items.ts

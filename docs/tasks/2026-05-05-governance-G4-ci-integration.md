@@ -1,6 +1,6 @@
 ---
 id: "governance-g4-ci-integration"
-status: backlog
+status: in_review
 priority: p1
 type: infra
 spec_ref: "docs/specs/2026-05-05-tracked-items-governance.md"

@@ -83,6 +83,7 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 | Eval 源码 | `packages/eval/src/` | Benchmark 执行器、fixtures |
 | CI 配置 | `.github/workflows/` | scan, benchmark, codeql, gitleaks |
 | 跟踪事项治理 Spec | `docs/specs/2026-05-05-tracked-items-governance.md` | CONSTITUTION 原则 8 设计依据 |
+| 跟踪事项 CI 脚本 | `scripts/check-tracked-items.ts` | CONSTITUTION 原则 8 兜底；扫描 spec/report 与 ledger §8 差集；scan workflow 集成 |
 
 ## 8. 长期跟踪事项
 
@@ -106,3 +107,4 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 | deferred | tracked-items-dashboard | spec:docs/specs/2026-05-05-tracked-items-governance.md | 跟踪事项可视化 / dashboard | 跟踪事项数 > 30 时启动 | P3 | waiting | 2026-05-05 |
 | deferred | tracked-items-auto-promotion | spec:docs/specs/2026-05-05-tracked-items-governance.md | 跟踪事项自动 promotion 推荐（"该 ready 了"提示） | CI 脚本稳定运行 90 天后启动 | P3 | waiting | 2026-05-05 |
 | evidence | governance-overhead-baseline | spec:docs/specs/2026-05-05-tracked-items-governance.md | 治理体系实际维护成本 vs spec §5.3 估算（人工登记 < 30s、CI < 5s、月度复审 < 15min） | G4 完成 30 天后统计实际数据 | P3 | waiting | 2026-05-05 |
+| bug | scan-workflow-branch-mismatch | code:.github/workflows/scan.yml:6 | scan.yml push 触发分支配置为 `main`，但项目主分支是 `master`，导致 push 到 master 不触发 lint/typecheck/test/check-tracked-items CI | 改 `branches: [master]`（或同步两分支）；G4 实施时发现的连带问题，独立 PR 处理 | P2 | waiting | 2026-05-05 |
