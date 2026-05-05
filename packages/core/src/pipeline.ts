@@ -298,6 +298,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   const allChangedFiles: string[] = [];
   let consecutiveInvalid = 0;
   let consecutiveToolsOnly = 0;
+  let hasProducedChange = false;
   let round = 0;
 
   while (round < MAX_PATCH_ROUNDS) {
@@ -363,12 +364,13 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
         }
         record.tool_calls = callRecords;
         consecutiveInvalid = 0;
-        consecutiveToolsOnly++;
+        if (hasProducedChange) consecutiveToolsOnly++;
         break;
       }
 
       case "change": {
         consecutiveToolsOnly = 0;
+        hasProducedChange = true;
         if (choice.message.reasoning_content) {
           record.reasoning_excerpt = choice.message.reasoning_content.slice(0, 500);
         }
@@ -433,8 +435,9 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
       break;
     }
 
-    // Guard: continuous tools with no change produced
-    if (consecutiveToolsOnly >= MAX_CONSECUTIVE_TOOLS_ONLY) {
+    // Guard: continuous tools after first change (model needs to explore
+    // before producing the first change; guard kicks in only after that)
+    if (hasProducedChange && consecutiveToolsOnly >= MAX_CONSECUTIVE_TOOLS_ONLY) {
       break;
     }
   }
