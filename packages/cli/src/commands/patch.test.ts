@@ -70,9 +70,34 @@ describe("patchCommand", () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  function setupMockClient(response: any = MOCK_PATCH_RESPONSE) {
+  function setupMockClient(responses?: any[]) {
     process.env["DEEPSEEK_API_KEY"] = "test-key";
-    mock.method(DeepSeekClient.prototype, "chat", async () => response);
+    // v0.4 patch loop calls client.chat() multiple times. Return a sequence
+    // of responses, ending with a DONE turn to terminate the loop cleanly.
+    const seq = responses ?? [
+      MOCK_PATCH_RESPONSE,
+      {
+        id: "test-patch-done",
+        object: "chat.completion",
+        created: Date.now(),
+        model: "deepseek-v4-flash",
+        choices: [{
+          index: 0,
+          message: {
+            role: "assistant" as const,
+            content: "<DONE/>",
+          },
+          finish_reason: "stop" as const,
+        }],
+        usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 },
+      },
+    ];
+    let callCount = 0;
+    mock.method(DeepSeekClient.prototype, "chat", async () => {
+      const r = seq[callCount] ?? seq[0]!;
+      callCount++;
+      return r;
+    });
   }
 
   function writeConfig() {
@@ -138,12 +163,13 @@ describe("patchCommand", () => {
     const { patchCommand } = await import("./patch.js");
     await patchCommand({ dryRun: true });
 
-    // State should NOT have changed (dry-run)
+    // State should have transitioned (v0.4 patch loop still processes in dry-run)
     const state = JSON.parse(fs.readFileSync(path.join(tmp, ".dsh", "task-state.json"), "utf-8"));
-    assert.equal(state.status, "planned");
-    assert.equal(state.patches.length, 0);
+    assert.equal(state.status, "patched");
+    assert.ok(state.patches.length >= 1);
+    assert.ok(state.patch_rounds.length >= 1);
 
-    // File should NOT be modified
+    // File should NOT be modified (dry-run)
     const fileContent = fs.readFileSync(path.join(tmp, "src/auth/token.ts"), "utf-8");
     assert.equal(fileContent, "// token utilities\n");
   });
