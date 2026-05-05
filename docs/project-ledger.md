@@ -48,8 +48,8 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 
 | 事项 | 当前状态 | 阻塞点 | 下一步 |
 |------|---------|--------|--------|
-| 工具采纳率修复 | 实现中 | — | 改完跑 benchmark 验证 |
-| 修复循环成功率提升 | 待验证 | 依赖工具采纳率修复 | benchmark 重跑后用数据驱动 |
+| 工具采纳率修复 | 已实现，待 benchmark 验证（commit `da7c554`） | 需要一次 ≥1 fixture 的 benchmark 跑出非空 `tool_rounds` | 跑 `pnpm exec tsx run-benchmark.ts --filter=loam-` 与 260504-140432 对照 |
+| 修复循环成功率提升 | 待验证 | 依赖工具采纳率修复 benchmark 数据 | 上一项验证后用数据驱动 |
 
 ## 5. 已废弃事项
 
@@ -61,9 +61,9 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|---------|
-| P0 | 工具采纳率修复 | 工具零调用 → 跑 benchmark 对比 | tool_rounds 不为空 |
-| P1 | 修复循环成功率提升 | 0% → ≥33% | benchmark 数据 |
-| P2 | 多仓库/多语言覆盖 | Phase 2 退出条件 | 3 repo × ≥5 fixtures |
+| P0 | 跑 benchmark 验证工具采纳率修复（da7c554） | 代码已落地，行为数据缺失，最新报告 260504-140432 跑在修复前 commit `c86e790` 上 | 新 run 的 `metadata.json.dsh_commit` 为 `da7c554` 或之后；至少 1 fixture 的 task-state 含非空 `tool_rounds` |
+| P1 | 多仓库/多语言全量 benchmark | Phase 2 退出条件 5 项依赖（多语言/多仓库/完成率/协议覆盖/对比） | 单 run ≥10 fixture，3 仓库各 ≥3 fixture 通过，完成率 >60% |
+| P2 | 修复循环成功率提升 | 当前 0/2，目标 ≥33% | 上述 benchmark 中 repairSuccess 数据 |
 
 ## 7. 关键证据索引
 
