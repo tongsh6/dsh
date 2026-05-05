@@ -31,6 +31,8 @@ export interface TaskResult {
   actualProtocolOps: ProtocolOp[];
   toolRounds: number;
   toolCalls: { name: string; status: string }[];
+  patchRounds: number;
+  patchRoundActions: { round: number; action: string }[];
 }
 
 // ---- Existing Functions ----
@@ -57,6 +59,8 @@ export function createEmptyResult(fixture: LoadedFixture): TaskResult {
     actualProtocolOps: [],
     toolRounds: 0,
     toolCalls: [],
+    patchRounds: 0,
+    patchRoundActions: [],
   };
 }
 
@@ -258,6 +262,13 @@ export async function runTask(
       tr.calls.map((c) => ({ name: c.name, status: c.status })),
     );
 
+    // Record patch loop stats
+    result.patchRounds = state.patch_rounds?.length ?? 0;
+    result.patchRoundActions = (state.patch_rounds ?? []).map((pr) => ({
+      round: pr.round,
+      action: pr.action,
+    }));
+
     // 5. Verify
     if (fixture.verificationCommands.length > 0) {
       try {
@@ -319,6 +330,11 @@ export async function runTask(
       result.toolCalls = (stateOnDisk.tool_rounds ?? []).flatMap((tr) =>
         tr.calls.map((c) => ({ name: c.name, status: c.status })),
       );
+      result.patchRounds = stateOnDisk.patch_rounds?.length ?? 0;
+      result.patchRoundActions = (stateOnDisk.patch_rounds ?? []).map((pr) => ({
+        round: pr.round,
+        action: pr.action,
+      }));
       const lastPatch = stateOnDisk.patches.at(-1);
       if (lastPatch) {
         result.filesChanged = lastPatch.files_changed;
@@ -436,6 +452,51 @@ export function formatEvaluationReport(results: TaskResult[]): string {
     }
   }
   lines.push("");
+
+  // Patch Loop 行为统计
+  const resultsWithPatchLoop = results.filter((r) => r.patchRounds > 0);
+  const avgPatchRounds = resultsWithPatchLoop.length > 0
+    ? resultsWithPatchLoop.reduce((s, r) => s + r.patchRounds, 0) / resultsWithPatchLoop.length
+    : 0;
+  const allActions = resultsWithPatchLoop.flatMap((r) => r.patchRoundActions.map((a) => a.action));
+  const avgChanges = resultsWithPatchLoop.length > 0
+    ? allActions.filter((a) => a === "change").length / resultsWithPatchLoop.length
+    : 0;
+  const avgInvalid = resultsWithPatchLoop.length > 0
+    ? allActions.filter((a) => a === "invalid").length / resultsWithPatchLoop.length
+    : 0;
+  const doneCount = allActions.filter((a) => a === "done").length;
+  const doneRate = resultsWithPatchLoop.length > 0
+    ? ((resultsWithPatchLoop.filter((r) => r.patchRoundActions.some((a) => a.action === "done")).length / resultsWithPatchLoop.length) * 100).toFixed(0) + "%"
+    : "N/A";
+  const toolActionCount = allActions.filter((a) => a === "tools").length;
+
+  lines.push("## Patch Loop 行为");
+  lines.push("");
+  lines.push("| 指标 | 数值 |");
+  lines.push("|--------|-------|");
+  lines.push(`| 使用 patch loop 的 fixture | ${resultsWithPatchLoop.length}/${total} |`);
+  lines.push(`| 平均 patch round 数 | ${avgPatchRounds.toFixed(1)} |`);
+  lines.push(`| 平均 change 块数 | ${avgChanges.toFixed(1)} |`);
+  lines.push(`| 平均 invalid 轮数 | ${avgInvalid.toFixed(1)} |`);
+  lines.push(`| 工具调用 action 数 | ${toolActionCount} |`);
+  lines.push(`| done 主动终止率 | ${doneRate} |`);
+  lines.push("");
+
+  // Per-fixture breakdown
+  if (resultsWithPatchLoop.length > 0) {
+    lines.push("| Fixture | Rounds | Changes | Invalid | Tools | Done |");
+    lines.push("|----------|--------|---------|---------|-------|------|");
+    for (const r of resultsWithPatchLoop) {
+      const actions = r.patchRoundActions.map((a) => a.action);
+      const c = actions.filter((a) => a === "change").length;
+      const i = actions.filter((a) => a === "invalid").length;
+      const t = actions.filter((a) => a === "tools").length;
+      const d = actions.includes("done") ? "✓" : "✗";
+      lines.push(`| ${r.fixtureId} | ${r.patchRounds} | ${c} | ${i} | ${t} | ${d} |`);
+    }
+    lines.push("");
+  }
 
   // 逐任务详情
   lines.push("## 逐任务详情");

@@ -63,6 +63,23 @@ export interface ApplyChangesResult {
   error?: string;
 }
 
+export interface ChangeBlock {
+  op: ProtocolOp;
+  file: string;
+  raw_block: string;
+  create?: CreateBlock;
+  patchText?: string;
+  searchReplace?: SearchReplaceBlock;
+  insert?: InsertBlock;
+  rename?: RenameBlock;
+}
+
+export type PatchTurnAction =
+  | { kind: "tools" }
+  | { kind: "change"; change: ChangeBlock }
+  | { kind: "done" }
+  | { kind: "invalid"; reason: string };
+
 /**
  * 从 ParsedChanges 中检测实际使用的协议操作类型。
  * 用于 benchmark 结果中记录模型实际选择的协议操作。
@@ -767,6 +784,144 @@ export function parseChanges(response: string): ParsedChanges {
     searchReplaceBlocks,
     insertBlocks,
   };
+}
+
+/**
+ * v0.4 protocol: parse a single turn response into a discriminated action.
+ *
+ * Each turn the model must output EXACTLY ONE of:
+ *   (a) tool calls — no change block in content
+ *   (b) ONE change block — CREATE/PATCH/SEARCH_REPLACE/INSERT/DELETE/RENAME
+ *   (c) <DONE/> — explicit termination
+ *
+ * If the model outputs none of these, or violates the single-change-per-turn
+ * constraint, the turn is `invalid` and the pipeline sends a correction hint.
+ */
+export function parsePatchTurn(content: string, hasToolCalls: boolean): PatchTurnAction {
+  // Strip NOTE blocks — audit only, not counted as change blocks
+  const cleaned = content.replace(/<NOTE>[\s\S]*?<\/NOTE>/gi, "");
+
+  // ---- DONE detection ----
+  const hasDone = /<DONE\/>/i.test(cleaned) || /<DONE>[\s\S]*?<\/DONE>/i.test(cleaned);
+
+  // ---- Extract change blocks ----
+  const creates = extractCreateBlocks(cleaned);
+  const deletes = extractDeleteBlocks(cleaned);
+  const renames = extractRenameBlocks(cleaned);
+  const searchReplaces = extractSearchReplaceBlocks(cleaned);
+  const inserts = extractInsertBlocks(cleaned);
+  const patchText = extractPatchBlock(cleaned);
+
+  const totalBlocks = creates.length + deletes.length + renames.length +
+    searchReplaces.length + inserts.length + (patchText ? 1 : 0);
+
+  // DONE present → terminate regardless of other content
+  if (hasDone) {
+    return { kind: "done" };
+  }
+
+  // Zero blocks: tools or no-op
+  if (totalBlocks === 0) {
+    if (hasToolCalls) {
+      return { kind: "tools" };
+    }
+    return { kind: "invalid", reason: "no action: expected tool calls, one change block, or <DONE/>" };
+  }
+
+  // Multi-block violation
+  if (totalBlocks > 1) {
+    return { kind: "invalid", reason: "multiple change blocks: output exactly one per turn" };
+  }
+
+  // ---- Single block dispatch ----
+  if (creates.length === 1) {
+    const c = creates[0]!;
+    return {
+      kind: "change",
+      change: {
+        op: "CREATE",
+        file: c.path,
+        raw_block: `<CREATE path="${c.path}">\n${c.content}\n</CREATE>`,
+        create: c,
+      },
+    };
+  }
+
+  if (deletes.length === 1) {
+    const d = deletes[0]!;
+    return {
+      kind: "change",
+      change: {
+        op: "DELETE",
+        file: d,
+        raw_block: `<DELETE path="${d}" />`,
+      },
+    };
+  }
+
+  if (renames.length === 1) {
+    const r = renames[0]!;
+    return {
+      kind: "change",
+      change: {
+        op: "RENAME",
+        file: `${r.from} -> ${r.to}`,
+        raw_block: `<RENAME from="${r.from}" to="${r.to}" />`,
+        rename: r,
+      },
+    };
+  }
+
+  if (searchReplaces.length === 1) {
+    const s = searchReplaces[0]!;
+    return {
+      kind: "change",
+      change: {
+        op: "SEARCH_REPLACE",
+        file: s.filePath,
+        raw_block: `<PATCH type="search" file="${s.filePath}">\n<SEARCH>${s.search}</SEARCH>\n<REPLACE>${s.replace}</REPLACE>\n</PATCH>`,
+        searchReplace: s,
+      },
+    };
+  }
+
+  if (inserts.length === 1) {
+    const i = inserts[0]!;
+    return {
+      kind: "change",
+      change: {
+        op: "INSERT",
+        file: i.filePath,
+        raw_block: `<INSERT position="${i.position}" anchor="${i.anchor}" file="${i.filePath}">\n${i.content}\n</INSERT>`,
+        insert: i,
+      },
+    };
+  }
+
+  // Single unified diff PATCH block
+  if (patchText) {
+    const files = parsePatchFiles(patchText);
+    if (files.length > 1) {
+      return { kind: "invalid", reason: "change block must target a single file" };
+    }
+
+    const validation = validateDiff(patchText);
+    if (!validation.valid) {
+      return { kind: "invalid", reason: `unified diff parse failed: ${validation.errors.join("; ")}` };
+    }
+
+    return {
+      kind: "change",
+      change: {
+        op: "PATCH",
+        file: files[0] ?? "unknown",
+        raw_block: `<PATCH>\n${patchText}\n</PATCH>`,
+        patchText,
+      },
+    };
+  }
+
+  return { kind: "invalid", reason: "unknown error parsing turn" };
 }
 
 export function applyChanges(

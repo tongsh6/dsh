@@ -28,9 +28,25 @@ const toolRoundRecordSchema = z.object({
 const patchRecordSchema = z.object({
   round: z.number(),
   patch: z.string(),
-  apply_status: z.enum(["ok", "failed", "skipped"]),
+  apply_status: z.enum(["ok", "failed", "skipped", "partial_ok"]),
   files_changed: z.array(z.string()),
   tool_rounds: z.array(toolRoundRecordSchema).optional(),
+});
+
+const patchRoundSchema = z.object({
+  round: z.number(),
+  action: z.enum(["tools", "change", "done", "invalid"]),
+  tool_calls: z.array(toolCallRecordSchema).optional(),
+  change: z.object({
+    op: z.enum(["CREATE", "PATCH", "SEARCH_REPLACE", "INSERT", "DELETE", "RENAME"]),
+    file: z.string(),
+    apply_status: z.enum(["ok", "failed"]),
+    apply_error: z.string().optional(),
+    raw_block: z.string(),
+  }).optional(),
+  invalid_reason: z.string().optional(),
+  reasoning_excerpt: z.string().optional(),
+  duration_ms: z.number(),
 });
 
 const planSchema = z.object({
@@ -98,6 +114,7 @@ export const taskStateSchema = z.object({
     "verification_failed",
     "repairing",
     "repair_exhausted",
+    "patch_failed",
     "done",
   ]),
   task: z.object({
@@ -107,6 +124,7 @@ export const taskStateSchema = z.object({
   }),
   plan: planSchema.optional(),
   patches: z.array(patchRecordSchema).default([]),
+  patch_rounds: z.array(patchRoundSchema).default([]),
   tool_rounds: z.array(toolRoundRecordSchema).default([]),
   verify_results: z.array(verifyRoundSchema).default([]),
   static_scan_runs: z.array(staticScanRunSchema).default([]),
@@ -118,6 +136,7 @@ export const taskStateSchema = z.object({
 export type TaskState = z.infer<typeof taskStateSchema>;
 export type VerifyResult = z.infer<typeof verifyResultSchema>;
 export type PatchRecord = z.infer<typeof patchRecordSchema>;
+export type PatchRoundRecord = z.infer<typeof patchRoundSchema>;
 export type ToolCallRecord = z.infer<typeof toolCallRecordSchema>;
 export type ToolRoundRecord = z.infer<typeof toolRoundRecordSchema>;
 export type StaticScanFinding = z.infer<typeof staticScanFindingSchema>;
@@ -130,12 +149,13 @@ export type TaskStatus = TaskState["status"];
 
 const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   "init": ["planned"],
-  "planned": ["patched"],
+  "planned": ["patched", "patch_failed"],
   "patched": ["verified", "verification_failed"],
   "verified": ["done"],
   "verification_failed": ["repairing", "repair_exhausted"],
   "repairing": ["patched", "repair_exhausted"],
   "repair_exhausted": ["done"],
+  "patch_failed": ["repairing", "repair_exhausted"],
   "done": [],
 };
 
@@ -193,6 +213,7 @@ export function createTaskState(
       created_at: new Date().toISOString(),
     },
     patches: [],
+    patch_rounds: [],
     tool_rounds: [],
     verify_results: [],
     static_scan_runs: [],

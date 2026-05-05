@@ -11,10 +11,15 @@ import {
   extractFilesBlock,
   extractRisksBlock,
   extractVerifyBlock,
-  parseChanges,
-  applyChanges,
+  parsePatchTurn,
+  applyCreates,
+  applyDeletes,
+  applyRenames,
+  applySearchReplace,
+  applyInserts,
+  applyPatch,
 } from "./patch-parser.js";
-import { detectFailures, buildRepairHints } from "./failure-detector.js";
+import type { ChangeBlock } from "./patch-parser.js";
 import { runVerify as runVerifyCommands, isAllPassed } from "./verifier.js";
 import { runRepairLoop } from "./repair-loop.js";
 import type { RepairRoundResult } from "./repair-loop.js";
@@ -29,7 +34,7 @@ import {
   writeTaskState,
   transition,
 } from "./task-state.js";
-import type { TaskState } from "./task-state.js";
+import type { TaskState, PatchRoundRecord } from "./task-state.js";
 import { writeHandoff } from "./handoff-writer.js";
 import {
   loadRuleContents,
@@ -45,11 +50,56 @@ import type { ToolName } from "./tool-definitions.js";
 
 // ---- Helpers ----
 
-const MAX_TOOL_ROUNDS = 5;
-const PATCH_BLOCK_PATTERN = /<\/?(?:CREATE|PATCH|INSERT|DELETE|RENAME|SEARCH|REPLACE)[>\s]/i;
+const MAX_PATCH_ROUNDS = 30;
+const MAX_CONSECUTIVE_INVALID = 3;
 
-function hasPatchBlocks(content: string): boolean {
-  return PATCH_BLOCK_PATTERN.test(content);
+function totalCharCount(messages: DeepSeekMessage[]): number {
+  let chars = 0;
+  for (const m of messages) {
+    if (m.content) chars += m.content.length;
+    if (m.reasoning_content) chars += m.reasoning_content.length;
+  }
+  return chars;
+}
+
+function applySingleChange(
+  cwd: string,
+  change: ChangeBlock,
+  dryRun: boolean,
+): { ok: boolean; files_changed: string[]; error?: string } {
+  switch (change.op) {
+    case "CREATE": {
+      if (!change.create) return { ok: false, files_changed: [], error: "missing create payload" };
+      const r = applyCreates(cwd, [change.create], dryRun);
+      return { ok: r.success, files_changed: r.files, error: r.error };
+    }
+    case "DELETE": {
+      const r = applyDeletes(cwd, [change.file], dryRun);
+      return { ok: r.success, files_changed: r.files, error: r.error };
+    }
+    case "RENAME": {
+      if (!change.rename) return { ok: false, files_changed: [], error: "missing rename payload" };
+      const r = applyRenames(cwd, [change.rename], dryRun);
+      return { ok: r.success, files_changed: r.files, error: r.error };
+    }
+    case "SEARCH_REPLACE": {
+      if (!change.searchReplace) return { ok: false, files_changed: [], error: "missing search_replace payload" };
+      const r = applySearchReplace(cwd, [change.searchReplace], dryRun);
+      return { ok: r.success, files_changed: r.files, error: r.error };
+    }
+    case "INSERT": {
+      if (!change.insert) return { ok: false, files_changed: [], error: "missing insert payload" };
+      const r = applyInserts(cwd, [change.insert], dryRun);
+      return { ok: r.success, files_changed: r.files, error: r.error };
+    }
+    case "PATCH": {
+      if (!change.patchText) return { ok: false, files_changed: [], error: "missing patch text" };
+      const r = applyPatch(cwd, change.patchText, dryRun);
+      return { ok: r.success, files_changed: r.files, error: r.error };
+    }
+    default:
+      return { ok: false, files_changed: [], error: `unknown op: ${change.op}` };
+  }
 }
 
 // ---- Types ----
@@ -236,45 +286,23 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   const fullLayers = { ...layers, dynamic };
 
   const fileCount = state.plan?.files?.length ?? 0;
-
-  // Preemptively detect large file edits and inject two-step hint
-  let taskDescription = state.task.description;
-  const planFiles = state.plan?.files ?? [];
-  const LARGE_FILE_THRESHOLD = 200; // lines
-  let hasLargeFile = false;
-  for (const f of planFiles) {
-    try {
-      const filePath = path.join(cwd, f);
-      if (fs.existsSync(filePath)) {
-        const content = fs.readFileSync(filePath, "utf-8");
-        const lineCount = content.split("\n").length;
-        if (lineCount > LARGE_FILE_THRESHOLD) {
-          hasLargeFile = true;
-          break;
-        }
-      }
-    } catch { /* skip */ }
-  }
-
-  if (hasLargeFile) {
-    taskDescription = [
-      taskDescription,
-      "",
-      "LARGE FILE DETECTED. Use two-step CREATE + INSERT approach:",
-      "1. Write the new/modified content to a temp file using <CREATE path=\"...\">",
-      "2. Insert it with <INSERT position=\"before|after\" anchor=\"section heading\" file=\"target\" from=\"temp-file\" />",
-      "DO NOT use unified diff — it will fail on large files.",
-    ].join("\n");
-  }
-
   const target = classify({ command: "patch", fileCount });
 
-  const messages: DeepSeekMessage[] = buildMessages({ context: fullLayers, taskDescription, phase: "patch" });
-  let content = "";
-  let toolRounds = 0;
-  const toolRoundRecords: import("./task-state.js").ToolRoundRecord[] = [];
+  const messages: DeepSeekMessage[] = buildMessages({
+    context: fullLayers,
+    taskDescription: state.task.description,
+    phase: "patch",
+  });
 
-  while (toolRounds < MAX_TOOL_ROUNDS) {
+  // ---- Patch Loop Main ----
+
+  const allChangedFiles: string[] = [];
+  let consecutiveInvalid = 0;
+  let round = 0;
+
+  while (round < MAX_PATCH_ROUNDS) {
+    round++;
+
     const response = await client.chat({
       model: target.model,
       messages,
@@ -285,241 +313,156 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
     const choice = response.choices[0];
     if (!choice) throw new Error("DeepSeek API 返回空响应");
 
-    content = choice.message.content;
+    const content = choice.message.content ?? "";
     const toolCalls = choice.message.tool_calls;
+    const hasToolCalls = (toolCalls?.length ?? 0) > 0;
 
-    if (toolCalls && toolCalls.length > 0) {
-      const roundNum = toolRounds + 1;
-      // Execute tools once, collect both results and records
-      const callRecords: import("./task-state.js").ToolCallRecord[] = [];
-      const assistantMsg: DeepSeekMessage = { role: "assistant", content, tool_calls: toolCalls };
-      if (choice.message.reasoning_content) assistantMsg.reasoning_content = choice.message.reasoning_content;
-      messages.push(assistantMsg);
-
-      for (const tc of toolCalls) {
-        let rawArgs: Record<string, unknown> = {};
-        try { rawArgs = JSON.parse(tc.function.arguments) as Record<string, unknown>; } catch { /* keep empty */ }
-        // Models sometimes pass non-string values (e.g. read_file({offset: 580})). The state-state
-        // schema requires Record<string, string>; coerce here so writeTaskState round-trips through readTaskState.
-        const args: Record<string, string> = {};
-        for (const [k, v] of Object.entries(rawArgs)) {
-          args[k] = typeof v === "string" ? v : JSON.stringify(v);
-        }
-        const result = executeTool(tc.function.name as ToolName, args, cwd, tc.id);
-        const formatted = formatToolResult(tc.function.name as ToolName, args, result);
-        messages.push({ role: "tool", content: formatted, tool_call_id: tc.id });
-        callRecords.push({
-          name: tc.function.name,
-          arguments: args,
-          status: result.status,
-          summary: result.status === "success" ? result.content.slice(0, 200) : (result.error ?? "").slice(0, 200),
-        });
-      }
-      toolRoundRecords.push({ round: roundNum, calls: callRecords });
-      toolRounds++;
-      continue;
+    // If model returned tool_calls but content also parses as invalid,
+    // prioritize tool execution (spec note: avoid spurious invalid counts)
+    let action = parsePatchTurn(content, hasToolCalls);
+    if (action.kind === "invalid" && hasToolCalls) {
+      action = { kind: "tools" };
     }
 
-    break;
-  }
+    const record: PatchRoundRecord = {
+      round,
+      action: action.kind,
+      duration_ms: 0,
+    };
 
-  // Record tool calls in state
-  if (toolRoundRecords.length > 0) {
-    state.tool_rounds.push(...toolRoundRecords);
-    writeTaskState(cwd, state);
-  }
+    switch (action.kind) {
+      case "tools": {
+        // Execute tool calls, push results back
+        const callRecords: PatchRoundRecord["tool_calls"] = [];
+        const assistantMsg: DeepSeekMessage = {
+          role: "assistant",
+          content,
+          tool_calls: toolCalls ?? undefined,
+        };
+        if (choice.message.reasoning_content) {
+          assistantMsg.reasoning_content = choice.message.reasoning_content;
+        }
+        messages.push(assistantMsg);
 
-  // Force output if max tool rounds reached without patch blocks
-  if (toolRounds >= MAX_TOOL_ROUNDS && !hasPatchBlocks(content)) {
-    messages.push({
-      role: "user",
-      content: "MAX TOOL ROUNDS REACHED. You MUST now output your patch using CREATE/PATCH/INSERT/DELETE/RENAME XML blocks. Do not call any more tools.",
-    });
-    const finalResponse = await client.chat({
-      model: "deepseek-v4-pro",
-      messages,
-      thinking: true,
-    });
-    content = finalResponse.choices[0]?.message.content ?? "";
-  }
-
-  // Try to parse changes; if unified diff fails, retry with SEARCH/REPLACE hint
-  let changes: ReturnType<typeof parseChanges>;
-  let applyResult = dryRun
-    ? { success: true as const, createdFiles: [] as string[], renamedFiles: [] as string[], patchedFiles: [] as string[], deletedFiles: [] as string[] }
-    : undefined as { success: boolean; createdFiles: string[]; renamedFiles: string[]; patchedFiles: string[]; deletedFiles: string[]; error?: string } | undefined;
-  try {
-    changes = parseChanges(content);
-  } catch (parseErr) {
-    changes = { creates: [], renames: [], patchText: null, patchFiles: [], hunks: [], deletePaths: [], searchReplaceBlocks: [], insertBlocks: [] };
-    applyResult = { success: false, createdFiles: [], renamedFiles: [], patchedFiles: [], deletedFiles: [], error: parseErr instanceof Error ? parseErr.message : "parse failed" };
-  }
-  applyResult ??= applyChanges(cwd, changes, false);
-
-  // Retry on parse failure or patch apply failure
-  const MAX_APPLY_RETRIES = 2;
-  for (let retry = 0; !dryRun && !applyResult.success && retry < MAX_APPLY_RETRIES; retry++) {
-    const parseOrApplyError = applyResult.error ?? "patch apply failed";
-    const isParseError = parseOrApplyError.includes("validation failed") || parseOrApplyError.includes("No hunk headers") || parseOrApplyError.includes("No <CREATE>");
-    const isSearchMismatch = parseOrApplyError.includes("Search block not found");
-    const isCreateRejected = parseOrApplyError.includes("CREATE rejected") || parseOrApplyError.includes("already exists");
-
-    const detections = detectFailures({
-      response: content,
-      planFiles: state.plan?.files ?? [],
-      actualChangedFiles: [],
-      verifyOutput: null,
-      patchApplyError: parseOrApplyError,
-    });
-
-    const hints = buildRepairHints(detections);
-
-    const retryHintParts = [
-      "PATCH FORMAT FAILED — the previous attempt had format errors. Fix and retry.",
-      "",
-      "Error: " + parseOrApplyError,
-    ];
-    if (isCreateRejected) {
-      retryHintParts.push("CREATE REJECTED — the file already exists (possibly created in a previous attempt).");
-      retryHintParts.push("");
-      retryHintParts.push("Use <PATCH> or <PATCH type=\"search\"> to modify the existing file instead of CREATE.");
-      retryHintParts.push("");
-      retryHintParts.push("For REPLACING existing text:");
-      retryHintParts.push("<PATCH type=\"search\" file=\"path/to/file\">");
-      retryHintParts.push("<SEARCH>existing code to replace</SEARCH>");
-      retryHintParts.push("<REPLACE>new code</REPLACE>");
-      retryHintParts.push("</PATCH>");
-      retryHintParts.push("");
-      retryHintParts.push("For small changes, unified diff:");
-      retryHintParts.push("<PATCH>");
-      retryHintParts.push("--- a/file");
-      retryHintParts.push("+++ b/file");
-      retryHintParts.push("@@ -line,count +line,count @@");
-      retryHintParts.push(" context");
-      retryHintParts.push("+added");
-      retryHintParts.push("</PATCH>");
-    } else if (isSearchMismatch) {
-      retryHintParts.push("SEARCH TEXT MISMATCH — the <SEARCH> block did not match any text in the file.");
-      retryHintParts.push("");
-      retryHintParts.push("Here is the ACTUAL file content. COPY text DIRECTLY from here into <SEARCH>:");
-
-      // Read the target file(s) and extract headings as anchor candidates
-      const targetFiles = state.plan?.files ?? [];
-      for (const f of targetFiles) {
-        try {
-          const fileContent = fs.readFileSync(path.join(cwd, f), "utf-8");
-
-          // Extract markdown headings and section markers as anchor candidates
-          const headings = fileContent.match(/^#{1,4}\s+.+$/gm) ?? [];
-          const uniqueHeadings = [...new Set(headings)].slice(0, 20);
-
-          retryHintParts.push("");
-          retryHintParts.push("=== " + f + " — AVAILABLE ANCHORS (use EXACTLY one of these) ===");
-          if (uniqueHeadings.length > 0) {
-            uniqueHeadings.forEach((h: string) => retryHintParts.push("  " + h));
-          } else {
-            // For non-markdown files, show first lines
-            const lines = fileContent.split("\n").slice(0, 10);
-            lines.forEach((l: string) => retryHintParts.push("  " + l));
+        for (const tc of toolCalls ?? []) {
+          let rawArgs: Record<string, unknown> = {};
+          try { rawArgs = JSON.parse(tc.function.arguments) as Record<string, unknown>; } catch { /* keep empty */ }
+          const args: Record<string, string> = {};
+          for (const [k, v] of Object.entries(rawArgs)) {
+            args[k] = typeof v === "string" ? v : JSON.stringify(v);
           }
-          retryHintParts.push("=== END ANCHORS ===");
-        } catch {
-          // file not readable, skip
+          const result = executeTool(tc.function.name as ToolName, args, cwd, tc.id);
+          const formatted = formatToolResult(tc.function.name as ToolName, args, result);
+          messages.push({ role: "tool", content: formatted, tool_call_id: tc.id });
+          callRecords.push({
+            name: tc.function.name,
+            arguments: args,
+            status: result.status,
+            summary: result.status === "success" ? result.content.slice(0, 200) : (result.error ?? "").slice(0, 200),
+          });
         }
+        record.tool_calls = callRecords;
+        consecutiveInvalid = 0;
+        break;
       }
 
-      retryHintParts.push("");
-      retryHintParts.push("=== SIMPLE APPROACH: Write new content to a temp file ===");
-      retryHintParts.push("Don't try to edit the large file. Instead, use CREATE to write your new content to a temp file.");
-      retryHintParts.push("The system will handle inserting it at the right place.");
-      retryHintParts.push("");
-      retryHintParts.push("Step 1 — write the new section to a temp file:");
-      retryHintParts.push("<CREATE path=\"tools/README-new-section.md\">");
-      retryHintParts.push("## 架构检查与门禁");
-      retryHintParts.push("");
-      retryHintParts.push("... your documentation content ...");
-      retryHintParts.push("</CREATE>");
-      retryHintParts.push("");
-      retryHintParts.push("Step 2 — tell the system where to insert it (pick from the anchors list above):");
-      retryHintParts.push("<INSERT position=\"before\" anchor=\"pick from anchor list\" file=\"tools/README.md\" from=\"tools/README-new-section.md\" />");
-      retryHintParts.push("");
-      retryHintParts.push("The system will read the temp file and insert its content at the anchor position.");
-    } else if (isParseError) {
-      retryHintParts.push("The unified diff format failed to parse. Use <INSERT> or <PATCH type=\"search\"> instead:");
-      retryHintParts.push("");
-      retryHintParts.push("For ADDING new content (recommended):");
-      retryHintParts.push("<INSERT position=\"before\" anchor=\"a unique heading or phrase\" file=\"path/to/file\">");
-      retryHintParts.push("new content to insert");
-      retryHintParts.push("</INSERT>");
-      retryHintParts.push("The anchor is any text that EXISTS in the file — just name it, don't copy it exactly.");
-      retryHintParts.push("");
-      retryHintParts.push("For REPLACING existing text:");
-      retryHintParts.push("<PATCH type=\"search\" file=\"path/to/file\">");
-      retryHintParts.push("<SEARCH>exact code from the file content</SEARCH>");
-      retryHintParts.push("<REPLACE>replacement code</REPLACE>");
-      retryHintParts.push("</PATCH>");
+      case "change": {
+        if (choice.message.reasoning_content) {
+          record.reasoning_excerpt = choice.message.reasoning_content.slice(0, 500);
+        }
+        const result = applySingleChange(cwd, action.change, !!dryRun);
+        record.change = {
+          op: action.change.op,
+          file: action.change.file,
+          apply_status: result.ok ? "ok" : "failed",
+          apply_error: result.error,
+          raw_block: action.change.raw_block,
+        };
+        if (result.ok && result.files_changed.length > 0) {
+          allChangedFiles.push(...result.files_changed);
+        }
+        messages.push({
+          role: "user",
+          content: result.ok
+            ? `✓ change applied: ${action.change.file} (op=${action.change.op})`
+            : `✗ change failed: ${result.error ?? "unknown error"}`,
+        });
+        consecutiveInvalid = 0;
+        break;
+      }
+
+      case "done": {
+        record.reasoning_excerpt = choice.message.reasoning_content?.slice(0, 500);
+        state.patch_rounds.push(record);
+        writeTaskState(cwd, state);
+        round = MAX_PATCH_ROUNDS; // exit loop cleanly
+        break;
+      }
+
+      case "invalid": {
+        record.invalid_reason = action.reason;
+        consecutiveInvalid++;
+        messages.push({
+          role: "user",
+          content: `Invalid response: ${action.reason}. You must output EXACTLY ONE of: tool calls, ONE change block, or <DONE/>. Please try again.`,
+        });
+        break;
+      }
     }
-    if (hints) {
-      retryHintParts.push("");
-      retryHintParts.push(hints);
+
+    if (action.kind !== "done") {
+      state.patch_rounds.push(record);
+      writeTaskState(cwd, state);
     }
 
-    const retryMessages = buildMessages({
-      context: { ...fullLayers, dynamic: buildDynamicContext(state.patches, state.verify_results, 1) },
-      taskDescription: [
-        ...retryHintParts,
-        "",
-        "Original task: " + state.task.description,
-      ].join("\n"),
-      phase: "patch",
-    });
-
-    const retryResponse = await client.chat({
-      model: "deepseek-v4-pro", // Always use Pro for retry
-      messages: retryMessages,
-      thinking: true,
-      tools: ALL_TOOL_DEFINITIONS as unknown as Record<string, unknown>[],
-    });
-
-    const retryContent = retryResponse.choices[0]?.message.content ?? "";
-    try {
-      const retryChanges = parseChanges(retryContent);
-      applyResult = applyChanges(cwd, retryChanges, false);
-    } catch {
-      // Continue to next retry
-      applyResult = { success: false, createdFiles: [], renamedFiles: [], patchedFiles: [], deletedFiles: [], error: "parse failed" };
+    // Guard: consecutive invalid threshold
+    if (consecutiveInvalid >= MAX_CONSECUTIVE_INVALID) {
+      break;
     }
   }
 
-  if (!dryRun) {
-    const changedFiles = applyResult.success
-      ? [...applyResult.createdFiles, ...applyResult.renamedFiles, ...applyResult.patchedFiles, ...applyResult.deletedFiles]
-      : [];
+  // ---- Aggregate PatchRecord for backward compat ----
 
-    // Record patch with XML tags preserved so protocol ops can be detected
-    const patchText = [
-      ...changes.creates.map((c) => `<CREATE path="${c.path}">\n${c.content}\n</CREATE>`),
-      ...changes.renames.map((r) => `<RENAME from="${r.from}" to="${r.to}" />`),
-      ...changes.deletePaths.map((p) => `<DELETE path="${p}" />`),
-      ...changes.searchReplaceBlocks.map((s) => `<PATCH type="search" file="${s.filePath}">\n<<<<<<< SEARCH\n${s.search}\n=======\n${s.replace}\n>>>>>>> REPLACE\n</PATCH>`),
-      changes.patchText ? `<PATCH>\n${changes.patchText}\n</PATCH>` : "",
-    ].filter(Boolean).join("\n\n") || "<empty>";
+  const okChanges = state.patch_rounds.filter(
+    (r) => r.action === "change" && r.change?.apply_status === "ok",
+  );
+  const failedChanges = state.patch_rounds.filter(
+    (r) => r.action === "change" && r.change?.apply_status === "failed",
+  );
+  const allOk = okChanges.length > 0 && failedChanges.length === 0;
+  const partialOk = okChanges.length > 0 && failedChanges.length > 0;
+  const allFailed = okChanges.length === 0;
 
-    state.patches.push({
-      round: (state.repair_rounds ?? 0) + 1,
-      patch: patchText,
-      apply_status: applyResult.success ? "ok" : "failed",
-      files_changed: changedFiles,
-    });
+  const dedupedFiles = [...new Set(allChangedFiles)];
 
-    if (!applyResult.success) {
-      writeTaskState(cwd, state);
-      throw new Error(`变更应用失败 — ${applyResult.error}`);
-    }
+  const patchText = state.patch_rounds
+    .filter((r) => r.action === "change" && r.change)
+    .map((r) => r.change!.raw_block)
+    .join("\n\n") || "<empty>";
 
+  let applyStatus: "ok" | "partial_ok" | "failed";
+  if (allOk) applyStatus = "ok";
+  else if (partialOk || (okChanges.length > 0)) applyStatus = "partial_ok";
+  else applyStatus = "failed";
+
+  state.patches.push({
+    round: (state.repair_rounds ?? 0) + 1,
+    patch: patchText,
+    apply_status: applyStatus,
+    files_changed: dedupedFiles,
+  });
+
+  // ---- State transition ----
+
+  if (okChanges.length > 0) {
     state = transition(state, "patched");
-    writeTaskState(cwd, state);
-    state = await runPostImplementationStaticScan({ cwd, client, state, changedFiles });
+  } else {
+    state = transition(state, "patch_failed");
+  }
+  writeTaskState(cwd, state);
+
+  if (!dryRun && okChanges.length > 0) {
+    state = await runPostImplementationStaticScan({ cwd, client, state, changedFiles: dedupedFiles });
   }
 
   return state;
@@ -532,8 +475,39 @@ export async function runVerify(params: VerifyParams): Promise<TaskState> {
 
   let state = readTaskState(cwd);
   if (!state) throw new Error("尚未初始化。请先运行 dsh init");
-  if (state.status !== "patched" && state.status !== "repairing") {
-    throw new Error(`当前状态为 ${state.status}，需要 patched 或 repairing`);
+  if (state.status !== "patched" && state.status !== "repairing" && state.status !== "patch_failed") {
+    throw new Error(`当前状态为 ${state.status}，需要 patched、repairing 或 patch_failed`);
+  }
+
+  // patch_failed: no changes to verify, route directly to repair
+  if (state.status === "patch_failed") {
+    state = transition(state, "verification_failed");
+    writeTaskState(cwd, state);
+    return state;
+  }
+
+  // Scope-completeness check: plan.files must all be covered by patches
+  const planFiles = state.plan?.files ?? [];
+  const lastPatch = state.patches.at(-1);
+  const patchedFiles = lastPatch?.files_changed ?? [];
+  const uncovered = planFiles.filter(
+    (f) => !patchedFiles.some((pf) => pf === f || pf.endsWith(f) || f.endsWith(pf)),
+  );
+  if (uncovered.length > 0 && lastPatch && lastPatch.apply_status !== "ok") {
+    // partial_ok or failed + uncovered plan files → verification_failed
+    state.verify_results.push({
+      round: (state.verify_results?.length ?? 0) + 1,
+      results: [{
+        command: "scope-completeness",
+        status: "failed",
+        exit_code: 1,
+        output: `Plan files not fully covered: ${uncovered.join(", ")}`,
+        duration_ms: 0,
+      }],
+    });
+    state = transition(state, "verification_failed");
+    writeTaskState(cwd, state);
+    return state;
   }
 
   const config = loadDshConfig(cwd);
@@ -572,8 +546,8 @@ export async function runRepair(params: RepairParams): Promise<TaskState> {
 
   const state = readTaskState(cwd);
   if (!state) throw new Error("尚未初始化。请先运行 dsh init");
-  if (state.status !== "verification_failed") {
-    throw new Error(`当前状态为 ${state.status}，需要 verification_failed`);
+  if (state.status !== "verification_failed" && state.status !== "patch_failed") {
+    throw new Error(`当前状态为 ${state.status}，需要 verification_failed 或 patch_failed`);
   }
 
   const layers = await buildLayers(cwd, state.task.description, state.task.type);
@@ -627,16 +601,18 @@ export async function runFullPipeline(params: FullPipelineParams): Promise<TaskS
   await runPlan({ cwd, client, description, taskType });
   let state = await runPatch({ cwd, client, auto });
 
-  try {
-    state = await runVerify({ cwd });
-  } catch (e) {
-    if (e instanceof Error && e.message.includes("没有配置验证命令")) {
-      return state;
+  if (state.status === "patched") {
+    try {
+      state = await runVerify({ cwd });
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("没有配置验证命令")) {
+        return state;
+      }
+      throw e;
     }
-    throw e;
   }
 
-  if (state.status === "verification_failed") {
+  if (state.status === "verification_failed" || state.status === "patch_failed") {
     state = await runRepair({ cwd, client, maxRounds: maxRepairRounds });
   }
 

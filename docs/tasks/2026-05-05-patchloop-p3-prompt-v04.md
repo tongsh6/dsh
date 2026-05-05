@@ -72,4 +72,4 @@ grep -c "Loop Protocol" packages/core/src/prompt-builder.ts
   | 版本 | 字符数 | est tokens |
   |------|-------|-----------|
   | v0.3 | ~6294 | ~1798 |
-  | v0.4 | TBD | TBD |
+  | v0.4 | 5469 | 1563 |

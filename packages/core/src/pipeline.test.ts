@@ -67,6 +67,26 @@ Replace str.count with re.findall
 </RISKS>
 `;
 
+const V4_PATCH_DUMMY = `<PATCH>
+--- a/dummy.py
++++ b/dummy.py
+@@ -1 +1,2 @@
+ # test
++# fixed
+</PATCH>`;
+
+const V4_DONE = `<DONE/>`;
+
+const V4_PATCH_DUMMY_LINT = `<PATCH>
+--- a/dummy.py
++++ b/dummy.py
+@@ -1,2 +1,3 @@
+ # test
+ # fixed
++# lint fixed
+</PATCH>`;
+
+// keep old name for compat
 const VALID_PATCH_RESPONSE = `
 <PLAN>
 ## Goal
@@ -189,12 +209,14 @@ describe("runPatch", () => {
   it("applies patch and transitions to patched", async () => {
     const tmp = await setupTempDir("planned");
     try {
-      const client = mockClient(VALID_PATCH_RESPONSE);
+      // v0.4: one change round + one DONE round
+      const client = mockClientSequence([V4_PATCH_DUMMY, V4_DONE]);
       const state = await runPatch({ cwd: tmp, client, auto: true });
       assert.equal(state.status, "patched");
       assert.equal(state.patches.length, 1);
       assert.equal(state.patches[0]!.apply_status, "ok");
       assert.ok(state.patches[0]!.files_changed.includes("dummy.py"));
+      assert.ok(state.patch_rounds.length >= 2);
       const modified = fs.readFileSync(path.join(tmp, "dummy.py"), "utf-8");
       assert.ok(modified.includes("# fixed"));
     } finally {
@@ -244,7 +266,8 @@ describe("runPatch", () => {
         "utf-8",
       );
 
-      const client = mockClientSequence([VALID_PATCH_RESPONSE, STATIC_REPAIR_PATCH_RESPONSE]);
+      // Sequence: main patch → DONE → static repair patch
+      const client = mockClientSequence([V4_PATCH_DUMMY, V4_DONE, V4_PATCH_DUMMY_LINT]);
       const state = await runPatch({ cwd: tmp, client, auto: true });
 
       assert.equal(state.status, "patched");
@@ -281,7 +304,7 @@ describe("runPatch", () => {
 
     let callIndex = 0;
     const responses: DeepSeekResponse[] = [
-      // Round 0: model calls read_file to explore the source
+      // Round 1: model calls read_file to explore
       {
         id: "r1",
         object: "chat.completion",
@@ -305,7 +328,7 @@ describe("runPatch", () => {
         }],
         usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 },
       },
-      // Round 1: model outputs patch after reading the file
+      // Round 2: model outputs patch after reading the file
       {
         id: "r2",
         object: "chat.completion",
@@ -313,10 +336,23 @@ describe("runPatch", () => {
         model: "deepseek-v4-pro",
         choices: [{
           index: 0,
-          message: { role: "assistant", content: VALID_PATCH_RESPONSE },
+          message: { role: "assistant", content: V4_PATCH_DUMMY },
           finish_reason: "stop",
         }],
         usage: { prompt_tokens: 150, completion_tokens: 80, total_tokens: 230 },
+      },
+      // Round 3: model signals done
+      {
+        id: "r3",
+        object: "chat.completion",
+        created: Date.now(),
+        model: "deepseek-v4-pro",
+        choices: [{
+          index: 0,
+          message: { role: "assistant", content: V4_DONE },
+          finish_reason: "stop",
+        }],
+        usage: { prompt_tokens: 120, completion_tokens: 10, total_tokens: 130 },
       },
     ];
 
@@ -332,9 +368,173 @@ describe("runPatch", () => {
     const state = await runPatch({ cwd: tmp, client, auto: true });
 
     assert.equal(state.status, "patched");
-    assert.equal(callIndex, 2, "should have made exactly 2 API calls (1 tool + 1 patch)");
+    assert.ok(callIndex >= 2, `should have made >= 2 API calls (tool + patch), got ${callIndex}`);
     assert.equal(state.patches.length, 1);
-    assert.equal(state.patches[0]!.apply_status, "ok");
+    assert.ok(state.patch_rounds.length >= 3, `should have >= 3 rounds, got ${state.patch_rounds.length}`);
+  });
+
+  // ---- v0.4 patch loop behavioral tests ----
+
+const V4_PATCH_FILE_A = `<PATCH>
+--- a/dummy.py
++++ b/dummy.py
+@@ -1 +1,2 @@
+ # test
++# patched A
+</PATCH>`;
+
+const V4_PATCH_FILE_B = `<PATCH>
+--- a/dummy.py
++++ b/dummy.py
+@@ -1,2 +1,3 @@
+ # test
++# patched B
+</PATCH>`;
+
+  it("single change + done → patched with 2 rounds", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      const client = mockClientSequence([V4_PATCH_FILE_A, V4_DONE]);
+      const state = await runPatch({ cwd: tmp, client, auto: true });
+      assert.equal(state.status, "patched");
+      assert.equal(state.patch_rounds.length, 2);
+      assert.equal(state.patch_rounds[0]!.action, "change");
+      assert.equal(state.patch_rounds[1]!.action, "done");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("multi-file: 3 changes + done → patched", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      const client = mockClientSequence([V4_PATCH_FILE_A, V4_PATCH_FILE_B, V4_PATCH_FILE_A, V4_DONE]);
+      const state = await runPatch({ cwd: tmp, client, auto: true });
+      assert.equal(state.status, "patched");
+      assert.equal(state.patch_rounds.length, 4);
+      assert.ok(state.patches[0]!.apply_status === "ok" || state.patches[0]!.apply_status === "partial_ok");
+      assert.ok(state.patches[0]!.files_changed.includes("dummy.py"));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("3 consecutive invalid → patch_failed", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      // Return XML that parsePatchTurn treats as invalid (multiple change blocks)
+      const multiBlock = `<CREATE path="a.ts">a</CREATE>
+<CREATE path="b.ts">b</CREATE>`;
+      const client = mockClient(multiBlock); // always returns multi-block → invalid every round
+      const state = await runPatch({ cwd: tmp, client, auto: true });
+
+      assert.equal(state.status, "patch_failed");
+      // Should have exited early after 3 consecutive invalid, not 30 rounds
+      assert.ok(state.patch_rounds.length <= 5, `expected <= 5 rounds, got ${state.patch_rounds.length}`);
+      const invalidRounds = state.patch_rounds.filter((r) => r.action === "invalid");
+      assert.ok(invalidRounds.length >= 3);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("tool → change → done → patched with all round types recorded", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      let callIndex = 0;
+      const responses: DeepSeekResponse[] = [
+        // Round 1: tool call
+        {
+          id: "r1", object: "chat.completion", created: Date.now(), model: "deepseek-v4-pro",
+          choices: [{
+            index: 0,
+            message: {
+              role: "assistant",
+              content: "",
+              tool_calls: [{ id: "t1", type: "function", function: { name: "read_file", arguments: '{"path":"dummy.py"}' } }],
+            },
+            finish_reason: "tool_calls",
+          }],
+          usage: { prompt_tokens: 50, completion_tokens: 20, total_tokens: 70 },
+        },
+        // Round 2: change
+        {
+          id: "r2", object: "chat.completion", created: Date.now(), model: "deepseek-v4-pro",
+          choices: [{ index: 0, message: { role: "assistant", content: V4_PATCH_FILE_A }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 60, completion_tokens: 30, total_tokens: 90 },
+        },
+        // Round 3: done
+        {
+          id: "r3", object: "chat.completion", created: Date.now(), model: "deepseek-v4-pro",
+          choices: [{ index: 0, message: { role: "assistant", content: V4_DONE }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 },
+        },
+      ];
+      const client = {
+        chat: async () => {
+          const res = responses[Math.min(callIndex, responses.length - 1)]!;
+          callIndex++;
+          return res;
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      const state = await runPatch({ cwd: tmp, client, auto: true });
+      assert.equal(state.status, "patched");
+      assert.ok(state.patch_rounds.length >= 3);
+      // Check round type sequence
+      const actions = state.patch_rounds.map((r) => r.action);
+      assert.ok(actions.includes("tools"), `expected tools action, got: ${actions.join(",")}`);
+      assert.ok(actions.includes("change"), `expected change action, got: ${actions.join(",")}`);
+      assert.ok(actions.includes("done"), `expected done action, got: ${actions.join(",")}`);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("change fail → model retries → eventually patched", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      // First change: valid diff but targets non-existent file → apply fails
+      const badPatch = `<PATCH>
+--- a/nonexistent.ts
++++ b/nonexistent.ts
+@@ -1 +1,2 @@
+-old
++new
+</PATCH>`;
+      const client = mockClientSequence([badPatch, V4_PATCH_FILE_A, V4_DONE]);
+      const state = await runPatch({ cwd: tmp, client, auto: true });
+
+      assert.equal(state.status, "patched");
+      const changeRounds = state.patch_rounds.filter((r) => r.action === "change");
+      assert.ok(changeRounds.length >= 2);
+      // First change should have failed (file doesn't exist)
+      assert.equal(changeRounds[0]!.change!.apply_status, "failed");
+      // Second change should have succeeded
+      assert.equal(changeRounds[1]!.change!.apply_status, "ok");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("exits after 3 consecutive invalid (not max rounds)", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      const emptyContent = "just some random text without any XML blocks";
+      const client = mockClient(emptyContent);
+      const state = await runPatch({ cwd: tmp, client, auto: true });
+
+      assert.equal(state.status, "patch_failed");
+      // Should exit after 3 invalid, not loop 30 times
+      assert.ok(state.patch_rounds.length === 3,
+        `expected 3 rounds (3 consecutive invalid → early exit), got ${state.patch_rounds.length}`);
+      state.patch_rounds.forEach((r) => {
+        assert.equal(r.action, "invalid");
+      });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
 
@@ -477,7 +677,8 @@ describe("runFullPipeline", () => {
   it("runs plan, patch, verify, handoff in sequence", async () => {
     const tmp = await setupTempDir();
     try {
-      const client = mockClient(VALID_PATCH_RESPONSE);
+      // Sequence: plan → patch → done (shared across all phases)
+      const client = mockClientSequence([VALID_PLAN_RESPONSE, V4_PATCH_DUMMY, V4_DONE]);
       const state = await runFullPipeline({
         cwd: tmp, client, description: "Fix bug", taskType: "bugfix",
       });

@@ -46,6 +46,22 @@ describe("canTransition", () => {
     assert.equal(canTransition("done", "planned"), false);
     assert.equal(canTransition("planned", "done"), false);
   });
+
+  it("allows planned -> patch_failed", () => {
+    assert.equal(canTransition("planned", "patch_failed"), true);
+  });
+
+  it("allows patch_failed -> repairing", () => {
+    assert.equal(canTransition("patch_failed", "repairing"), true);
+  });
+
+  it("allows patch_failed -> repair_exhausted", () => {
+    assert.equal(canTransition("patch_failed", "repair_exhausted"), true);
+  });
+
+  it("rejects patch_failed -> done directly", () => {
+    assert.equal(canTransition("patch_failed", "done"), false);
+  });
 });
 
 describe("createTaskState", () => {
@@ -119,6 +135,125 @@ describe("taskStateSchema", () => {
     };
     const parsed = taskStateSchema.parse(valid);
     assert.equal(parsed.status, "init");
+  });
+
+  it("parses old JSON without patch_rounds (backward compat)", () => {
+    const oldState = {
+      version: "0.1",
+      status: "patched",
+      task: {
+        description: "test",
+        type: "bugfix",
+        created_at: "2026-01-01T00:00:00Z",
+      },
+      patches: [{
+        round: 1,
+        patch: "--- a/foo.ts\n+++ b/foo.ts\n@@ -1,3 +1,3 @@\n-x\n+y",
+        apply_status: "ok",
+        files_changed: ["foo.ts"],
+      }],
+      tool_rounds: [],
+      verify_results: [],
+      repair_rounds: 0,
+    };
+    const parsed = taskStateSchema.parse(oldState);
+    assert.equal(parsed.status, "patched");
+    assert.deepEqual(parsed.patch_rounds, []);
+    assert.equal(parsed.patches.length, 1);
+  });
+
+  it("parses new JSON with patch_rounds", () => {
+    const newState = {
+      version: "0.1",
+      status: "patched",
+      task: {
+        description: "test",
+        type: "feature",
+        created_at: "2026-01-01T00:00:00Z",
+      },
+      patches: [],
+      patch_rounds: [
+        {
+          round: 1,
+          action: "tools",
+          tool_calls: [{
+            name: "read_file",
+            arguments: { file: "src/foo.ts" },
+            status: "success",
+            summary: "read src/foo.ts",
+          }],
+          duration_ms: 500,
+        },
+        {
+          round: 2,
+          action: "change",
+          change: {
+            op: "PATCH",
+            file: "src/foo.ts",
+            apply_status: "ok",
+            raw_block: "<PATCH>...</PATCH>",
+          },
+          reasoning_excerpt: "修改 foo.ts",
+          duration_ms: 300,
+        },
+        {
+          round: 3,
+          action: "done",
+          duration_ms: 100,
+        },
+      ],
+      tool_rounds: [],
+      verify_results: [],
+      repair_rounds: 0,
+    };
+    const parsed = taskStateSchema.parse(newState);
+    assert.equal(parsed.patch_rounds.length, 3);
+    assert.equal(parsed.patch_rounds[0].action, "tools");
+    assert.equal(parsed.patch_rounds[1].action, "change");
+    assert.equal(parsed.patch_rounds[1].change!.op, "PATCH");
+    assert.equal(parsed.patch_rounds[1].change!.apply_status, "ok");
+    assert.equal(parsed.patch_rounds[2].action, "done");
+  });
+
+  it("accepts partial_ok apply_status on PatchRecord", () => {
+    const state = {
+      version: "0.1",
+      status: "patched",
+      task: {
+        description: "test",
+        type: "bugfix",
+        created_at: "2026-01-01T00:00:00Z",
+      },
+      patches: [{
+        round: 1,
+        patch: "--- a/foo.ts\n+++ b/foo.ts\n@@ -1,3 +1,3 @@\n-x\n+y",
+        apply_status: "partial_ok",
+        files_changed: ["foo.ts", "bar.ts"],
+      }],
+      tool_rounds: [],
+      verify_results: [],
+      repair_rounds: 0,
+    };
+    const parsed = taskStateSchema.parse(state);
+    assert.equal(parsed.patches[0].apply_status, "partial_ok");
+  });
+
+  it("accepts patch_failed status", () => {
+    const state = {
+      version: "0.1",
+      status: "patch_failed",
+      task: {
+        description: "test",
+        type: "bugfix",
+        created_at: "2026-01-01T00:00:00Z",
+      },
+      patches: [],
+      tool_rounds: [],
+      verify_results: [],
+      repair_rounds: 0,
+    };
+    const parsed = taskStateSchema.parse(state);
+    assert.equal(parsed.status, "patch_failed");
   });
 
   it("rejects invalid status", () => {

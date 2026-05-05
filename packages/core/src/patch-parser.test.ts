@@ -17,6 +17,7 @@ import {
   parseHunks,
   parsePatch,
   parseChanges,
+  parsePatchTurn,
   applyCreates,
   applyDeletes,
   applyRenames,
@@ -1274,5 +1275,194 @@ describe("parseChanges conflict detection", () => {
       () => parseChanges(response),
       /DELETE and SEARCH\/REPLACE target same file/,
     );
+  });
+});
+
+// ---- v0.4 parsePatchTurn tests ----
+
+describe("parsePatchTurn", () => {
+  describe("DONE detection", () => {
+    it("recognizes <DONE/> as done", () => {
+      const result = parsePatchTurn("<DONE/>", false);
+      assert.equal(result.kind, "done");
+    });
+
+    it("recognizes <DONE>...</DONE> as done", () => {
+      const result = parsePatchTurn("<DONE>all changes complete</DONE>", false);
+      assert.equal(result.kind, "done");
+    });
+
+    it("returns done even when DONE coexists with change blocks", () => {
+      const content = `<CREATE path="new.ts">content</CREATE>
+<DONE/>`;
+      const result = parsePatchTurn(content, false);
+      assert.equal(result.kind, "done");
+    });
+  });
+
+  describe("tools action", () => {
+    it("returns tools when no blocks and hasToolCalls=true", () => {
+      const result = parsePatchTurn("some reasoning text, no XML blocks", true);
+      assert.equal(result.kind, "tools");
+    });
+  });
+
+  describe("single change blocks", () => {
+    it("parses single CREATE block", () => {
+      const content = `<CREATE path="src/new.ts">
+export const x = 1;
+</CREATE>`;
+      const result = parsePatchTurn(content, false);
+      assert.equal(result.kind, "change");
+      if (result.kind === "change") {
+        assert.equal(result.change.op, "CREATE");
+        assert.equal(result.change.file, "src/new.ts");
+        assert.ok(result.change.create);
+        assert.ok(result.change.raw_block.includes("CREATE"));
+      }
+    });
+
+    it("parses single PATCH block (unified diff)", () => {
+      const content = `<PATCH>
+--- a/src/foo.ts
++++ b/src/foo.ts
+@@ -1,3 +1,3 @@
+-old
++new
+</PATCH>`;
+      const result = parsePatchTurn(content, false);
+      assert.equal(result.kind, "change");
+      if (result.kind === "change") {
+        assert.equal(result.change.op, "PATCH");
+        assert.equal(result.change.file, "src/foo.ts");
+        assert.ok(result.change.patchText);
+      }
+    });
+
+    it("parses single DELETE block", () => {
+      const content = `<DELETE path="deprecated.ts" />`;
+      const result = parsePatchTurn(content, false);
+      assert.equal(result.kind, "change");
+      if (result.kind === "change") {
+        assert.equal(result.change.op, "DELETE");
+        assert.equal(result.change.file, "deprecated.ts");
+      }
+    });
+
+    it("parses single RENAME block", () => {
+      const content = `<RENAME from="old.ts" to="new.ts" />`;
+      const result = parsePatchTurn(content, false);
+      assert.equal(result.kind, "change");
+      if (result.kind === "change") {
+        assert.equal(result.change.op, "RENAME");
+        assert.equal(result.change.file, "old.ts -> new.ts");
+        assert.ok(result.change.rename);
+      }
+    });
+
+    it("parses single SEARCH_REPLACE block", () => {
+      const content = `<PATCH type="search" file="src/utils.ts">
+<SEARCH>function old() {}</SEARCH>
+<REPLACE>function new() {}</REPLACE>
+</PATCH>`;
+      const result = parsePatchTurn(content, false);
+      assert.equal(result.kind, "change");
+      if (result.kind === "change") {
+        assert.equal(result.change.op, "SEARCH_REPLACE");
+        assert.equal(result.change.file, "src/utils.ts");
+        assert.ok(result.change.searchReplace);
+      }
+    });
+
+    it("parses single INSERT block", () => {
+      const content = `<INSERT position="before" anchor="return" file="src/app.ts">
+console.log("debug");
+</INSERT>`;
+      const result = parsePatchTurn(content, false);
+      assert.equal(result.kind, "change");
+      if (result.kind === "change") {
+        assert.equal(result.change.op, "INSERT");
+        assert.equal(result.change.file, "src/app.ts");
+        assert.ok(result.change.insert);
+      }
+    });
+  });
+
+  describe("NOTE block handling", () => {
+    it("ignores NOTE blocks and returns change for the real block", () => {
+      const content = `<NOTE>this is a comment about why</NOTE>
+<CREATE path="src/new.ts">content</CREATE>`;
+      const result = parsePatchTurn(content, false);
+      assert.equal(result.kind, "change");
+      if (result.kind === "change") {
+        assert.equal(result.change.op, "CREATE");
+      }
+    });
+
+    it("ignores NOTE and returns done when DONE present", () => {
+      const content = `<NOTE>all done</NOTE>
+<DONE/>`;
+      const result = parsePatchTurn(content, false);
+      assert.equal(result.kind, "done");
+    });
+  });
+
+  describe("invalid responses", () => {
+    it("returns invalid when no blocks and hasToolCalls=false", () => {
+      const result = parsePatchTurn("just some text", false);
+      assert.equal(result.kind, "invalid");
+      if (result.kind === "invalid") {
+        assert.ok(result.reason.includes("no action"));
+      }
+    });
+
+    it("returns invalid for multiple change blocks", () => {
+      const content = `<CREATE path="a.ts">a</CREATE>
+<CREATE path="b.ts">b</CREATE>`;
+      const result = parsePatchTurn(content, false);
+      assert.equal(result.kind, "invalid");
+      if (result.kind === "invalid") {
+        assert.ok(result.reason.includes("multiple change blocks"));
+      }
+    });
+
+    it("returns invalid for CREATE + DELETE combination", () => {
+      const content = `<CREATE path="a.ts">a</CREATE>
+<DELETE path="b.ts" />`;
+      const result = parsePatchTurn(content, false);
+      assert.equal(result.kind, "invalid");
+      if (result.kind === "invalid") {
+        assert.ok(result.reason.includes("multiple change blocks"));
+      }
+    });
+
+    it("returns invalid for PATCH with multiple files", () => {
+      const content = `<PATCH>
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -1,1 +1,1 @@
+-old
++new
+--- a/src/b.ts
++++ b/src/b.ts
+@@ -1,1 +1,1 @@
+-old
++new
+</PATCH>`;
+      const result = parsePatchTurn(content, false);
+      assert.equal(result.kind, "invalid");
+      if (result.kind === "invalid") {
+        assert.ok(result.reason.includes("single file"));
+      }
+    });
+
+    it("returns invalid for malformed unified diff", () => {
+      const content = `<PATCH>this is not a valid diff</PATCH>`;
+      const result = parsePatchTurn(content, false);
+      assert.equal(result.kind, "invalid");
+      if (result.kind === "invalid") {
+        assert.ok(result.reason.includes("unified diff parse failed"));
+      }
+    });
   });
 });

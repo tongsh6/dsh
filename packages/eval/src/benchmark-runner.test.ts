@@ -31,6 +31,8 @@ function makeResult(overrides: Partial<TaskResult> = {}): TaskResult {
     actualProtocolOps: [],
     toolRounds: 0,
     toolCalls: [],
+    patchRounds: 0,
+    patchRoundActions: [],
     ...overrides,
   };
 }
@@ -103,6 +105,76 @@ describe("formatComparisonReport", () => {
 });
 
 // ---- New tests ----
+
+describe("patch_rounds in TaskResult", () => {
+  it("defaults patchRounds to 0 and patchRoundActions to []", () => {
+    const r = makeResult();
+    assert.equal(r.patchRounds, 0);
+    assert.deepEqual(r.patchRoundActions, []);
+  });
+
+  it("stores patch loop stats", () => {
+    const r = makeResult({
+      patchRounds: 3,
+      patchRoundActions: [
+        { round: 1, action: "tools" },
+        { round: 2, action: "change" },
+        { round: 3, action: "done" },
+      ],
+    });
+    assert.equal(r.patchRounds, 3);
+    assert.equal(r.patchRoundActions.length, 3);
+    assert.equal(r.patchRoundActions[1]!.action, "change");
+  });
+});
+
+describe("formatEvaluationReport with patch loop", () => {
+  it("includes Patch Loop 行为 section when results have patch_rounds", () => {
+    const results: TaskResult[] = [
+      makeResult({
+        fixtureId: "t1", category: "bugfix", completed: true, testsPassed: true,
+        patchRounds: 3,
+        patchRoundActions: [
+          { round: 1, action: "tools" },
+          { round: 2, action: "change" },
+          { round: 3, action: "done" },
+        ],
+      }),
+    ];
+    const report = formatEvaluationReport(results);
+    assert.ok(report.includes("## Patch Loop 行为"));
+    assert.ok(report.includes("done 主动终止率"));
+    assert.ok(report.includes("t1"));
+    assert.ok(report.includes("✓"), "done column should show checkmark");
+  });
+
+  it("shows N/A for done rate when no patch loop data", () => {
+    const results: TaskResult[] = [makeResult({ fixtureId: "t1" })];
+    const report = formatEvaluationReport(results);
+    assert.ok(report.includes("N/A"));
+  });
+
+  it("handles mixed patch loop and non-patch results", () => {
+    const results: TaskResult[] = [
+      makeResult({
+        fixtureId: "t1", completed: true, testsPassed: true,
+        patchRounds: 4,
+        patchRoundActions: [
+          { round: 1, action: "change" },
+          { round: 2, action: "change" },
+          { round: 3, action: "change" },
+          { round: 4, action: "done" },
+        ],
+      }),
+      makeResult({ fixtureId: "t2", patchRounds: 0, patchRoundActions: [] }),
+    ];
+    const report = formatEvaluationReport(results);
+    // Should show 1/2 fixtures with patch loop
+    assert.ok(report.includes("1/2"));
+    // Should show correct averages
+    assert.ok(report.includes("4.0")); // avg rounds for t1 only
+  });
+});
 
 describe("formatEvaluationReport", () => {
   it("generates markdown report from results", () => {
