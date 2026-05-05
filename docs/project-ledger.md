@@ -103,3 +103,6 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 | deferred | patchloop-protocol-negotiation | spec:docs/specs/2026-05-05-patch-loop-architecture.md | 协议自动版本协商（v0.3 / v0.4 共存） | v0.4 上线后若需多版本 prompt 共存（不期望发生） | P3 | waiting | 2026-05-05 |
 | deferred | phase4-agent-loop | spec:docs/specs/2026-05-05-patch-loop-architecture.md | BLUEPRINT Phase 4 完整 Agent Loop（任务自主分解、子 Agent 并行） | BLUEPRINT Phase 2 退出 + Phase 3 工具化退出后启动 | P3 | waiting | 2026-05-05 |
 | evidence | patchloop-vs-batch-baseline | spec:docs/specs/2026-05-05-patch-loop-architecture.md | v0.4 patch loop vs v0.3 batch 协议的对比基线（≥3 fixtures × 3 次） | patch-loop spec G6 实施完成后立即收集 | P1 | waiting | 2026-05-05 |
+| deferred | tracked-items-dashboard | spec:docs/specs/2026-05-05-tracked-items-governance.md | 跟踪事项可视化 / dashboard | 跟踪事项数 > 30 时启动 | P3 | waiting | 2026-05-05 |
+| deferred | tracked-items-auto-promotion | spec:docs/specs/2026-05-05-tracked-items-governance.md | 跟踪事项自动 promotion 推荐（"该 ready 了"提示） | CI 脚本稳定运行 90 天后启动 | P3 | waiting | 2026-05-05 |
+| evidence | governance-overhead-baseline | spec:docs/specs/2026-05-05-tracked-items-governance.md | 治理体系实际维护成本 vs spec §5.3 估算（人工登记 < 30s、CI < 5s、月度复审 < 15min） | G4 完成 30 天后统计实际数据 | P3 | waiting | 2026-05-05 |

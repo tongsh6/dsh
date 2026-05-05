@@ -1,6 +1,6 @@
 ---
 id: "governance-g3-ci-script"
-status: backlog
+status: in_review
 priority: p1
 type: feature
 spec_ref: "docs/specs/2026-05-05-tracked-items-governance.md"
