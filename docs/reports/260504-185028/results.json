@@ -1,0 +1,78 @@
+[
+  {
+    "fixtureId": "loam-bugfix-cli-error-handling",
+    "category": "bugfix",
+    "completed": false,
+    "filesChanged": [],
+    "filesExpected": [
+      "packages/cli/src/capture.ts",
+      "packages/cli/src/distill.ts",
+      "packages/cli/src/daemon.ts"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 0,
+    "durationMs": 182845,
+    "expectedProtocolOps": [
+      "PATCH"
+    ],
+    "actualProtocolOps": [],
+    "toolRounds": 5,
+    "toolCalls": [
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "grep_files",
+        "status": "success"
+      },
+      {
+        "name": "grep_files",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "grep_files",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "grep_files",
+        "status": "success"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "grep_files",
+        "status": "success"
+      }
+    ],
+    "error": "变更应用失败 — parse failed"
+  }
+]
