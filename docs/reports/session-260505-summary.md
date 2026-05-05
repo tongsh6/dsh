@@ -1,13 +1,14 @@
-# 会话总结：2026-05-04 → 2026-05-05（审计 → 治理 → 架构 plan）
+# 会话总结：2026-05-04 → 2026-05-06（审计 → 治理 → 架构 → 全量验证 → 自动终止）
 
-> 类型: session summary | 日期: 2026-05-05 | 涉及 commits: `267c971..7afc3b5`（12 条）
+> 类型: session summary | 日期: 2026-05-06 | 涉及 commits: `267c971..02da580`（22 条）
 >
-> 给新会话 AI / 新人：本文件是上一次会话（约 10 小时跨度）的事实基线。读完后从 §「下次会话起点」直接续接。
+> 注意：本文件覆盖两段连续会话，共约 20+ 小时。前段 12 条 commit（审计→治理→架构 plan）见 §2 阶段 A-D。后段 10 条 commit（全量 benchmark → 报告修复 → 根因分析 → P1+P2 自动终止 → allow-list 扩展 → Phase 2 复审）见 §2 阶段 E。
 >
 > 必读伴生文档：
-> - `docs/project-ledger.md` §8 长期跟踪事项（17 行，4 resolved / 13 waiting）
+> - `docs/project-ledger.md` §8 长期跟踪事项（21 行，5 resolved / 1 cancelled / 1 ready / 14 waiting）
 > - `CONSTITUTION.md` v1.1（含原则 8）
 > - `BLUEPRINT.md` v1.1（含 §3.1 Phase 退出复审协议）
+> - `docs/reports/phase-2-exit-review.md`（2026-05-06 Phase 2 退出复审）
 
 ---
 
@@ -89,7 +90,36 @@
 - v0.3：1 次响应 / 多文件 / unified diff 行号 / parse-or-fail
 - v0.4：N 次响应 / 单文件单 change / SEARCH/REPLACE 优先 / 增量反馈
 
-### 阶段 D：plan + 6 task 拆分（commit 7afc3b5）
+### 阶段 E：全量验证 + 根因分析 + 自动终止 + Phase 2 复审（commits 5661c15..02da580，10 条）
+
+**延续起点**：前一段会话设计的 patch-loop P1-P5 已被另一个 AI 会话实现 + P6.1 e2e 通过。本段从 CLI 测试修复开始，逐步推进到全量 benchmark、报告修复、根因分析、P1+P2 自动终止、allow-list 扩展、Phase 2 退出复审。
+
+**主要成果**：
+
+| 事项 | 状态 |
+|------|------|
+| CLI 测试 v0.4 适配 | ✅ |
+| 报告统计修复（tool 明细不丢失）| ✅ |
+| 13 fixture 全量 benchmark | ✅ docs/reports/260506-004042 |
+| 根因分析（8 角度）| ✅ 会话记录 |
+| 业界方案调研 | ✅ |
+| P1 scope-progress 反馈 | ✅ commit e0d0ab2 |
+| P2 continuous tools guard | ✅ commit eabcba1（rounds -23%）|
+| exec_shell allow-list 扩展 | ✅ commit 02da580 |
+| Phase 2 退出条件复审 | ✅ docs/reports/phase-2-exit-review.md |
+
+**Phase 2 退出条件最终状态**：
+
+| 条件 | 状态 |
+|------|:----:|
+| v0.4 协议操作覆盖率 | ⚠️ 4/6 |
+| 多语言 | ⚠️ Python ✅ TS ❌ |
+| 多仓库 | ✅ |
+| 完成率 13/13 | ✅ |
+| 静态扫描治理 | ✅ |
+| 跨工具对比 | ⚠️ 待重跑 |
+| 对比报告 | ✅ |
+| 长期跟踪事项复审 | ✅ |
 
 **plan**：`docs/plans/2026-05-05-patch-loop-architecture.md`（~390 行）
 
