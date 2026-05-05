@@ -296,6 +296,12 @@ spec/           ← 设计文档：描述"要做什么"和"为什么这样做"
 | `governance-g2-spec-template` | 治理 G2：spec 模板 + 回填 patch-loop spec | in_review | p1 | ai |
 | `governance-g3-ci-script` | 治理 G3：scripts/check-tracked-items.ts | in_review | p1 | ai |
 | `governance-g4-ci-integration` | 治理 G4：CI 集成 + 红绿验证 | in_review | p1 | ai |
+| `patchloop-p1-state-schema` | Patch Loop P1：task-state schema 扩展 | ready | p1 | ai |
+| `patchloop-p2-turn-parser` | Patch Loop P2：parsePatchTurn 新解析器 | backlog | p1 | ai |
+| `patchloop-p3-prompt-v04` | Patch Loop P3：PATCH_PROMPT v0.4 路由切换 | ready | p1 | ai |
+| `patchloop-p4-pipeline-rewrite` | Patch Loop P4：runPatch 循环重写 | backlog | p1 | ai |
+| `patchloop-p5-benchmark-adapt` | Patch Loop P5：benchmark-runner 适配 + scope-completeness | backlog | p1 | ai |
+| `patchloop-p6-e2e-validation` | Patch Loop P6：端到端验证 + ship/回退决策 | backlog | p1 | ai |
 
 ## 7. 修订历史
 
