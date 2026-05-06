@@ -171,7 +171,7 @@ Phase 1 (当前)              Phase 2                     Phase 3
 - [ ] **多仓库** — ≥3 个不同 repo 上有 ≥3 个 fixture 执行通过。数据来源：benchmark 报告
 - [ ] **完成率** — ≥10 个 fixture 完成率 >60%。数据来源：benchmark 报告 Overview
 - [ ] **静态扫描治理 Phase 2-3** — 完整 finding schema（Phase 2 ✅）+ Top N 可解释选择（Phase 3：`static-topn.ts` 存在，支持多维 scoring + 选择理由记录）。数据来源：`packages/core/src/static-topn.ts` 文件存在 + 测试通过
-- [ ] **跨工具对比** — ≥5 个相同 fixture 的 DSH vs OpenCode 对比数据产出。Claude Code 对比为 Phase 3 目标。数据来源：`docs/reports/` 下对比报告
+- [x] **跨工具对比** — ≥5 个相同 fixture 的 DSH vs OpenCode 对比数据产出。Claude Code 对比为 Phase 3 目标。数据来源：`docs/reports/oc-motf4q7b/dsh-vs-opencode-comparison.md`
 - [ ] **对比报告** — 首份正式 DSH Evaluation Report v1.0，含协议操作分类统计。数据来源：`docs/reports/` 下归档报告
 - [ ] **长期跟踪事项复审** — 遍历 `docs/project-ledger.md` §8 全部条目，对每个 status=waiting 的事项做出决策（promote 为 ready task / 继续延后 / cancel）；复审记录归档到 `docs/reports/phase-2-exit-review.md`。详见 §3.1 Phase 退出复审协议。数据来源：`docs/project-ledger.md` §8 + 归档复审报告
 

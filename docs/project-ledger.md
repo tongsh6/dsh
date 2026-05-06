@@ -16,7 +16,7 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 - [x] 对比报告（`docs/reports/260506-004042`）
 - [ ] v0.4 协议操作覆盖率（6 种操作中 4/6 已达标，PATCH/DELETE/RENAME 待覆盖）
 - [ ] 多语言（Python 5/5 ✅，TypeScript 3/8 ⚠️ 需提升）
-- [ ] 跨工具对比（DSH vs OpenCode，13 fixture 数据待用 OpenCode 重跑）
+- [x] 跨工具对比（DSH vs OpenCode，13 fixture 对比完成）
 - [ ] 长期跟踪事项复审（2026-05-06 已执行，含 21 条复核 + 3 条状态变更）
 
 ## 2. 已完成事项
@@ -102,7 +102,7 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 | bug | multi-file-patch-output-incomplete | report:docs/reports/260504-183633 | patch 阶段多文件任务输出不完整 | P1+P2 部分解决（rounds -23%），但多文件输出仍不稳定 | P1 | waiting | 2026-05-06 |
 | debt | tool-args-coerce | code:packages/core/src/pipeline.ts:300 | tool args 写 state 前 string-coerce 临时方案 | schema 放宽为 z.record(z.unknown()) + 全链路改 unknown | P3 | waiting | 2026-05-06 |
 | debt | history-spec-backfill | spec:docs/specs/2026-05-05-tracked-items-governance.md | 历史 spec 未按原则 8 回填跟踪事项 | best-effort：日常审阅时遇到主要 spec 顺手补 | P3 | waiting | 2026-05-06 |
-| evidence | dsh-vs-oc-resample | report:docs/reports/compare-20260502-120419 | DSH vs OpenCode 对比样本不足 | 触发条件已满足（≥10 fixture）；需用 OpenCode 重跑 | P2 | ready | 2026-05-06 |
+| evidence | dsh-vs-oc-resample | report:docs/reports/oc-motf4q7b/dsh-vs-opencode-comparison.md | DSH vs OpenCode 对比（13 fixture） | 对比完成：通过率持平（62%），DSH 完成率更高（100% vs 77%）| P2 | resolved | 2026-05-06 |
 | deferred | patchloop-protocol-negotiation | spec:docs/specs/2026-05-05-patch-loop-architecture.md | 协议自动版本协商 | cancelled：被 P2 guard 替代 | P3 | cancelled | 2026-05-06 |
 | deferred | phase4-agent-loop | spec:docs/specs/2026-05-05-patch-loop-architecture.md | BLUEPRINT Phase 4 Agent Loop | Phase 2 退出 + Phase 3 退出后启动 | P3 | waiting | 2026-05-06 |
 | evidence | patchloop-vs-batch-baseline | spec:docs/specs/2026-05-05-patch-loop-architecture.md | v0.4 vs v0.3 对比基线（≥3 fixtures × 3 次） | 数据已收集但未做正式对比报告 | P1 | waiting | 2026-05-06 |
