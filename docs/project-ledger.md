@@ -17,7 +17,7 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 - [ ] v0.4 协议操作覆盖率（6 种操作中 4/6 已达标，PATCH/DELETE/RENAME 待覆盖）
 - [ ] 多语言（Python 5/5 ✅，TypeScript 3/8 ⚠️ 需提升）
 - [x] 跨工具对比（DSH vs OpenCode，13 fixture 对比完成）
-- [ ] 长期跟踪事项复审（2026-05-06 已执行，含 21 条复核 + 3 条状态变更）
+- [x] 长期跟踪事项复审（已执行，含 21 条复核 + 3 条状态变更）
 
 ## 2. 已完成事项
 
