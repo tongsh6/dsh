@@ -1,0 +1,15 @@
+{
+  "run_id": "260506-015023",
+  "started_at": "2026-05-05T17:50:23.912Z",
+  "completed_at": "2026-05-05T17:51:48.457Z",
+  "elapsed_seconds": 85,
+  "dsh_commit": "52c0b6d",
+  "fixture_count": 1,
+  "fixtures": [
+    {
+      "id": "pi-docs-check-tools",
+      "category": "docs",
+      "repo": "/Users/loong/dsh-bench/repos/pi-proof-forge"
+    }
+  ]
+}

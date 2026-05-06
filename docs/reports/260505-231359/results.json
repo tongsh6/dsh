@@ -1,0 +1,42 @@
+[
+  {
+    "fixtureId": "pi-bugfix-count-defs",
+    "category": "bugfix",
+    "completed": true,
+    "filesChanged": [],
+    "filesExpected": [
+      "tools/check_v2_constraints.py"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 2,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 119968,
+    "expectedProtocolOps": [
+      "PATCH",
+      "SEARCH_REPLACE"
+    ],
+    "actualProtocolOps": [],
+    "toolRounds": 0,
+    "toolCalls": [],
+    "patchRounds": 3,
+    "patchRoundActions": [
+      {
+        "round": 1,
+        "action": "tools"
+      },
+      {
+        "round": 2,
+        "action": "tools"
+      },
+      {
+        "round": 3,
+        "action": "done"
+      }
+    ]
+  }
+]

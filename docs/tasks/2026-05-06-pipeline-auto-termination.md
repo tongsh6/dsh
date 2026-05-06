@@ -1,6 +1,6 @@
 ---
 id: "patchloop-auto-termination"
-status: in_progress
+status: in_review
 priority: p1
 type: feature
 plan_ref: "docs/plans/2026-05-06-pipeline-auto-termination.md"

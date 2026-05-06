@@ -1,0 +1,35 @@
+{
+  "run_id": "260505-223941",
+  "started_at": "2026-05-05T14:39:41.401Z",
+  "completed_at": "2026-05-05T15:13:16.490Z",
+  "elapsed_seconds": 2015,
+  "dsh_commit": "f5fcc47",
+  "fixture_count": 5,
+  "fixtures": [
+    {
+      "id": "loam-bugfix-cli-error-handling",
+      "category": "bugfix",
+      "repo": "/Users/loong/dsh-bench/repos/loamlog"
+    },
+    {
+      "id": "loam-docs-provider-readme",
+      "category": "docs",
+      "repo": "/Users/loong/dsh-bench/repos/loamlog"
+    },
+    {
+      "id": "loam-refactor-provider-dedup",
+      "category": "refactor",
+      "repo": "/Users/loong/dsh-bench/repos/loamlog"
+    },
+    {
+      "id": "loam-test-distill-engine",
+      "category": "test",
+      "repo": "/Users/loong/dsh-bench/repos/loamlog"
+    },
+    {
+      "id": "loam-test-distill-state",
+      "category": "test",
+      "repo": "/Users/loong/dsh-bench/repos/loamlog"
+    }
+  ]
+}

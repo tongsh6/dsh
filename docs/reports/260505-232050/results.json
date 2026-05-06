@@ -1,0 +1,736 @@
+[
+  {
+    "fixtureId": "loam-bugfix-cli-error-handling",
+    "category": "bugfix",
+    "completed": true,
+    "filesChanged": [
+      "packages/cli/src/capture.ts"
+    ],
+    "filesExpected": [
+      "packages/cli/src/capture.ts",
+      "packages/cli/src/distill.ts",
+      "packages/cli/src/daemon.ts"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 2,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 482359,
+    "expectedProtocolOps": [
+      "PATCH"
+    ],
+    "actualProtocolOps": [
+      "PATCH",
+      "SEARCH_REPLACE"
+    ],
+    "toolRounds": 0,
+    "toolCalls": [],
+    "patchRounds": 30,
+    "patchRoundActions": [
+      {
+        "round": 1,
+        "action": "tools"
+      },
+      {
+        "round": 2,
+        "action": "tools"
+      },
+      {
+        "round": 3,
+        "action": "tools"
+      },
+      {
+        "round": 4,
+        "action": "tools"
+      },
+      {
+        "round": 5,
+        "action": "tools"
+      },
+      {
+        "round": 6,
+        "action": "tools"
+      },
+      {
+        "round": 7,
+        "action": "tools"
+      },
+      {
+        "round": 8,
+        "action": "tools"
+      },
+      {
+        "round": 9,
+        "action": "tools"
+      },
+      {
+        "round": 10,
+        "action": "tools"
+      },
+      {
+        "round": 11,
+        "action": "tools"
+      },
+      {
+        "round": 12,
+        "action": "tools"
+      },
+      {
+        "round": 13,
+        "action": "tools"
+      },
+      {
+        "round": 14,
+        "action": "tools"
+      },
+      {
+        "round": 15,
+        "action": "tools"
+      },
+      {
+        "round": 16,
+        "action": "tools"
+      },
+      {
+        "round": 17,
+        "action": "change"
+      },
+      {
+        "round": 18,
+        "action": "tools"
+      },
+      {
+        "round": 19,
+        "action": "tools"
+      },
+      {
+        "round": 20,
+        "action": "tools"
+      },
+      {
+        "round": 21,
+        "action": "tools"
+      },
+      {
+        "round": 22,
+        "action": "change"
+      },
+      {
+        "round": 23,
+        "action": "tools"
+      },
+      {
+        "round": 24,
+        "action": "tools"
+      },
+      {
+        "round": 25,
+        "action": "tools"
+      },
+      {
+        "round": 26,
+        "action": "tools"
+      },
+      {
+        "round": 27,
+        "action": "tools"
+      },
+      {
+        "round": 28,
+        "action": "tools"
+      },
+      {
+        "round": 29,
+        "action": "tools"
+      },
+      {
+        "round": 30,
+        "action": "tools"
+      }
+    ]
+  },
+  {
+    "fixtureId": "loam-docs-provider-readme",
+    "category": "docs",
+    "completed": true,
+    "filesChanged": [
+      "docs/providers.md"
+    ],
+    "filesExpected": [
+      "docs/providers.md"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": true,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 404967,
+    "expectedProtocolOps": [
+      "PATCH"
+    ],
+    "actualProtocolOps": [
+      "SEARCH_REPLACE"
+    ],
+    "toolRounds": 0,
+    "toolCalls": [],
+    "patchRounds": 30,
+    "patchRoundActions": [
+      {
+        "round": 1,
+        "action": "tools"
+      },
+      {
+        "round": 2,
+        "action": "tools"
+      },
+      {
+        "round": 3,
+        "action": "tools"
+      },
+      {
+        "round": 4,
+        "action": "tools"
+      },
+      {
+        "round": 5,
+        "action": "tools"
+      },
+      {
+        "round": 6,
+        "action": "tools"
+      },
+      {
+        "round": 7,
+        "action": "tools"
+      },
+      {
+        "round": 8,
+        "action": "tools"
+      },
+      {
+        "round": 9,
+        "action": "tools"
+      },
+      {
+        "round": 10,
+        "action": "tools"
+      },
+      {
+        "round": 11,
+        "action": "tools"
+      },
+      {
+        "round": 12,
+        "action": "tools"
+      },
+      {
+        "round": 13,
+        "action": "tools"
+      },
+      {
+        "round": 14,
+        "action": "change"
+      },
+      {
+        "round": 15,
+        "action": "tools"
+      },
+      {
+        "round": 16,
+        "action": "tools"
+      },
+      {
+        "round": 17,
+        "action": "tools"
+      },
+      {
+        "round": 18,
+        "action": "tools"
+      },
+      {
+        "round": 19,
+        "action": "tools"
+      },
+      {
+        "round": 20,
+        "action": "tools"
+      },
+      {
+        "round": 21,
+        "action": "tools"
+      },
+      {
+        "round": 22,
+        "action": "tools"
+      },
+      {
+        "round": 23,
+        "action": "tools"
+      },
+      {
+        "round": 24,
+        "action": "tools"
+      },
+      {
+        "round": 25,
+        "action": "tools"
+      },
+      {
+        "round": 26,
+        "action": "tools"
+      },
+      {
+        "round": 27,
+        "action": "tools"
+      },
+      {
+        "round": 28,
+        "action": "tools"
+      },
+      {
+        "round": 29,
+        "action": "tools"
+      },
+      {
+        "round": 30,
+        "action": "tools"
+      }
+    ]
+  },
+  {
+    "fixtureId": "loam-refactor-provider-dedup",
+    "category": "refactor",
+    "completed": true,
+    "filesChanged": [
+      "packages/distill/src/providers/shared.ts",
+      "packages/distill/src/providers/openai-compatible.ts"
+    ],
+    "filesExpected": [
+      "packages/distill/src/providers/shared.ts",
+      "packages/distill/src/providers/openai.ts",
+      "packages/distill/src/providers/deepseek.ts",
+      "packages/distill/src/providers/anthropic.ts"
+    ],
+    "extraFiles": [
+      "packages/distill/src/providers/openai-compatible.ts"
+    ],
+    "scopeViolation": true,
+    "testsPassed": false,
+    "repairRounds": 2,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 537847,
+    "expectedProtocolOps": [
+      "CREATE",
+      "PATCH"
+    ],
+    "actualProtocolOps": [
+      "PATCH",
+      "SEARCH_REPLACE"
+    ],
+    "toolRounds": 0,
+    "toolCalls": [],
+    "patchRounds": 30,
+    "patchRoundActions": [
+      {
+        "round": 1,
+        "action": "tools"
+      },
+      {
+        "round": 2,
+        "action": "tools"
+      },
+      {
+        "round": 3,
+        "action": "tools"
+      },
+      {
+        "round": 4,
+        "action": "tools"
+      },
+      {
+        "round": 5,
+        "action": "tools"
+      },
+      {
+        "round": 6,
+        "action": "tools"
+      },
+      {
+        "round": 7,
+        "action": "change"
+      },
+      {
+        "round": 8,
+        "action": "tools"
+      },
+      {
+        "round": 9,
+        "action": "tools"
+      },
+      {
+        "round": 10,
+        "action": "tools"
+      },
+      {
+        "round": 11,
+        "action": "tools"
+      },
+      {
+        "round": 12,
+        "action": "tools"
+      },
+      {
+        "round": 13,
+        "action": "change"
+      },
+      {
+        "round": 14,
+        "action": "tools"
+      },
+      {
+        "round": 15,
+        "action": "tools"
+      },
+      {
+        "round": 16,
+        "action": "tools"
+      },
+      {
+        "round": 17,
+        "action": "tools"
+      },
+      {
+        "round": 18,
+        "action": "tools"
+      },
+      {
+        "round": 19,
+        "action": "tools"
+      },
+      {
+        "round": 20,
+        "action": "tools"
+      },
+      {
+        "round": 21,
+        "action": "tools"
+      },
+      {
+        "round": 22,
+        "action": "tools"
+      },
+      {
+        "round": 23,
+        "action": "tools"
+      },
+      {
+        "round": 24,
+        "action": "tools"
+      },
+      {
+        "round": 25,
+        "action": "tools"
+      },
+      {
+        "round": 26,
+        "action": "tools"
+      },
+      {
+        "round": 27,
+        "action": "tools"
+      },
+      {
+        "round": 28,
+        "action": "tools"
+      },
+      {
+        "round": 29,
+        "action": "change"
+      },
+      {
+        "round": 30,
+        "action": "tools"
+      }
+    ]
+  },
+  {
+    "fixtureId": "loam-test-distill-engine",
+    "category": "test",
+    "completed": true,
+    "filesChanged": [],
+    "filesExpected": [
+      "packages/distill/src/engine.test.ts"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 2,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 261063,
+    "expectedProtocolOps": [
+      "CREATE"
+    ],
+    "actualProtocolOps": [],
+    "toolRounds": 0,
+    "toolCalls": [],
+    "patchRounds": 24,
+    "patchRoundActions": [
+      {
+        "round": 1,
+        "action": "tools"
+      },
+      {
+        "round": 2,
+        "action": "tools"
+      },
+      {
+        "round": 3,
+        "action": "tools"
+      },
+      {
+        "round": 4,
+        "action": "tools"
+      },
+      {
+        "round": 5,
+        "action": "tools"
+      },
+      {
+        "round": 6,
+        "action": "tools"
+      },
+      {
+        "round": 7,
+        "action": "tools"
+      },
+      {
+        "round": 8,
+        "action": "tools"
+      },
+      {
+        "round": 9,
+        "action": "tools"
+      },
+      {
+        "round": 10,
+        "action": "tools"
+      },
+      {
+        "round": 11,
+        "action": "tools"
+      },
+      {
+        "round": 12,
+        "action": "tools"
+      },
+      {
+        "round": 13,
+        "action": "tools"
+      },
+      {
+        "round": 14,
+        "action": "tools"
+      },
+      {
+        "round": 15,
+        "action": "tools"
+      },
+      {
+        "round": 16,
+        "action": "tools"
+      },
+      {
+        "round": 17,
+        "action": "tools"
+      },
+      {
+        "round": 18,
+        "action": "tools"
+      },
+      {
+        "round": 19,
+        "action": "tools"
+      },
+      {
+        "round": 20,
+        "action": "tools"
+      },
+      {
+        "round": 21,
+        "action": "tools"
+      },
+      {
+        "round": 22,
+        "action": "tools"
+      },
+      {
+        "round": 23,
+        "action": "tools"
+      },
+      {
+        "round": 24,
+        "action": "done"
+      }
+    ]
+  },
+  {
+    "fixtureId": "loam-test-distill-state",
+    "category": "test",
+    "completed": true,
+    "filesChanged": [],
+    "filesExpected": [
+      "packages/distill/src/state.test.ts"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 2,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 232240,
+    "expectedProtocolOps": [
+      "CREATE"
+    ],
+    "actualProtocolOps": [],
+    "toolRounds": 0,
+    "toolCalls": [],
+    "patchRounds": 30,
+    "patchRoundActions": [
+      {
+        "round": 1,
+        "action": "tools"
+      },
+      {
+        "round": 2,
+        "action": "tools"
+      },
+      {
+        "round": 3,
+        "action": "tools"
+      },
+      {
+        "round": 4,
+        "action": "tools"
+      },
+      {
+        "round": 5,
+        "action": "tools"
+      },
+      {
+        "round": 6,
+        "action": "tools"
+      },
+      {
+        "round": 7,
+        "action": "tools"
+      },
+      {
+        "round": 8,
+        "action": "tools"
+      },
+      {
+        "round": 9,
+        "action": "tools"
+      },
+      {
+        "round": 10,
+        "action": "tools"
+      },
+      {
+        "round": 11,
+        "action": "tools"
+      },
+      {
+        "round": 12,
+        "action": "tools"
+      },
+      {
+        "round": 13,
+        "action": "tools"
+      },
+      {
+        "round": 14,
+        "action": "tools"
+      },
+      {
+        "round": 15,
+        "action": "tools"
+      },
+      {
+        "round": 16,
+        "action": "tools"
+      },
+      {
+        "round": 17,
+        "action": "tools"
+      },
+      {
+        "round": 18,
+        "action": "tools"
+      },
+      {
+        "round": 19,
+        "action": "tools"
+      },
+      {
+        "round": 20,
+        "action": "tools"
+      },
+      {
+        "round": 21,
+        "action": "tools"
+      },
+      {
+        "round": 22,
+        "action": "tools"
+      },
+      {
+        "round": 23,
+        "action": "tools"
+      },
+      {
+        "round": 24,
+        "action": "tools"
+      },
+      {
+        "round": 25,
+        "action": "tools"
+      },
+      {
+        "round": 26,
+        "action": "tools"
+      },
+      {
+        "round": 27,
+        "action": "tools"
+      },
+      {
+        "round": 28,
+        "action": "tools"
+      },
+      {
+        "round": 29,
+        "action": "tools"
+      },
+      {
+        "round": 30,
+        "action": "tools"
+      }
+    ]
+  }
+]

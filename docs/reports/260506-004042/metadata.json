@@ -1,0 +1,75 @@
+{
+  "run_id": "260506-004042",
+  "started_at": "2026-05-05T16:40:42.966Z",
+  "completed_at": "2026-05-05T17:43:39.786Z",
+  "elapsed_seconds": 3777,
+  "dsh_commit": "52c0b6d",
+  "fixture_count": 13,
+  "fixtures": [
+    {
+      "id": "loam-bugfix-cli-error-handling",
+      "category": "bugfix",
+      "repo": "/Users/loong/dsh-bench/repos/loamlog"
+    },
+    {
+      "id": "loam-docs-provider-readme",
+      "category": "docs",
+      "repo": "/Users/loong/dsh-bench/repos/loamlog"
+    },
+    {
+      "id": "loam-refactor-provider-dedup",
+      "category": "refactor",
+      "repo": "/Users/loong/dsh-bench/repos/loamlog"
+    },
+    {
+      "id": "loam-test-distill-engine",
+      "category": "test",
+      "repo": "/Users/loong/dsh-bench/repos/loamlog"
+    },
+    {
+      "id": "loam-test-distill-state",
+      "category": "test",
+      "repo": "/Users/loong/dsh-bench/repos/loamlog"
+    },
+    {
+      "id": "pi-bugfix-count-defs",
+      "category": "bugfix",
+      "repo": "/Users/loong/dsh-bench/repos/pi-proof-forge"
+    },
+    {
+      "id": "pi-docs-check-tools",
+      "category": "docs",
+      "repo": "/Users/loong/dsh-bench/repos/pi-proof-forge"
+    },
+    {
+      "id": "pi-refactor-read-text",
+      "category": "refactor",
+      "repo": "/Users/loong/dsh-bench/repos/pi-proof-forge"
+    },
+    {
+      "id": "pi-test-aief-l3",
+      "category": "test",
+      "repo": "/Users/loong/dsh-bench/repos/pi-proof-forge"
+    },
+    {
+      "id": "pi-test-error-handler",
+      "category": "test",
+      "repo": "/Users/loong/dsh-bench/repos/pi-proof-forge"
+    },
+    {
+      "id": "rh-bugfix-csv-export",
+      "category": "bugfix",
+      "repo": "/Users/loong/dsh-bench/repos/release-hub"
+    },
+    {
+      "id": "rh-refactor-branch-orchestrator",
+      "category": "refactor",
+      "repo": "/Users/loong/dsh-bench/repos/release-hub"
+    },
+    {
+      "id": "rh-test-dashboard-version",
+      "category": "test",
+      "repo": "/Users/loong/dsh-bench/repos/release-hub"
+    }
+  ]
+}
