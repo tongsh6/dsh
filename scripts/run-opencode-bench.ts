@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { spawnSync, execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -15,12 +15,36 @@ const REPOS: Record<string, string> = {
   "loam-": path.join(REPOS_DIR, "loamlog"),
   "rh-": path.join(REPOS_DIR, "release-hub"),
 };
-
 const filter = (process.argv.find((a) => a.startsWith("--filter=")) ?? "").slice("--filter=".length) || null;
+const TIMEOUT_MS = 600_000;
 
 function git(cwd: string, args: string) {
   try { execSync(`git ${args}`, { cwd, stdio: "pipe", timeout: 15000, encoding: "utf-8" }); }
   catch {}
+}
+
+/** Run opencode with proper process lifecycle management.
+ *  Uses spawnSync (not execSync) to avoid shell wrapping that leaves
+ *  orphaned opencode processes on timeout. */
+function runOpenCode(cwd: string, prompt: string): { ok: boolean; error?: string } {
+  const result = spawnSync("opencode", [
+    "run", "-m", "deepseek/deepseek-v4-pro", "--variant", "high",
+    "--print-logs", prompt,
+  ], {
+    cwd,
+    timeout: TIMEOUT_MS,
+    maxBuffer: 50 * 1024 * 1024,
+    encoding: "utf-8",
+    // stdio: "pipe" is default — captures stdout/stderr
+  });
+
+  const ok = result.status === 0;
+  const errSig = result.signal ? `signal=${result.signal}` : "";
+  const errMsg = result.error?.message ?? "";
+  return {
+    ok,
+    error: ok ? undefined : (errSig || errMsg || `exit=${result.status}`),
+  };
 }
 
 (async () => {
@@ -40,21 +64,10 @@ function git(cwd: string, args: string) {
     const start = Date.now();
 
     git(repo, `checkout main`);
-    git(repo, `branch -D ${branch}`); // ok if fails (first time)
+    git(repo, `branch -D ${branch}`);
     git(repo, `checkout -b ${branch}`);
 
-    let completed = false;
-    let error = "";
-    try {
-      const tmp = path.join(os.tmpdir(), `oc-${f.id}.txt`);
-      fs.writeFileSync(tmp, f.taskPrompt, "utf-8");
-      const r = execSync(
-        `opencode run -m deepseek/deepseek-v4-pro --variant high --print-logs "$(cat ${tmp})" 2>&1`,
-        { cwd: repo, encoding: "utf-8", timeout: 600_000, maxBuffer: 50 * 1024 * 1024 },
-      );
-      fs.unlinkSync(tmp);
-      completed = true;
-    } catch (e: any) { error = e.message ?? String(e); }
+    const { ok, error } = runOpenCode(repo, f.taskPrompt);
 
     let files: string[] = [];
     try {
@@ -63,19 +76,19 @@ function git(cwd: string, args: string) {
     } catch {}
 
     let passed = false;
-    if (completed && f.verificationCommands?.length > 0) {
+    if (ok && f.verificationCommands?.length > 0) {
       passed = f.verificationCommands.every((cmd: string) => {
         try { execSync(cmd, { cwd: repo, stdio: "pipe", timeout: 60_000 }); return true; }
         catch { return false; }
       });
     }
 
-    process.stdout.write(`  ${f.id}: `);
-    process.stdout.write(passed ? "PASS" : completed ? "FAIL" : "ERR");
-    console.log(` (${((Date.now() - start) / 1000).toFixed(0)}s)`);
+    const secs = ((Date.now() - start) / 1000).toFixed(0);
+    console.log(`  ${f.id}: ${passed ? "PASS" : ok ? "FAIL" : "ERR"} (${secs}s)`);
 
     results.push({
-      fixtureId: f.id, category: f.category, completed, testsPassed: passed,
+      fixtureId: f.id, category: f.category,
+      completed: ok, testsPassed: passed,
       filesChanged: files, error, durationMs: Date.now() - start,
     });
 
