@@ -32,7 +32,7 @@ import {
   writeTaskState,
   transition,
 } from "./task-state.js";
-import type { TaskState, PatchRoundRecord } from "./task-state.js";
+import type { TaskState, PatchRoundRecord, PatchRecord } from "./task-state.js";
 import { writeHandoff } from "./handoff-writer.js";
 import {
   loadRuleContents,
@@ -51,6 +51,61 @@ import type { ToolName } from "./tool-definitions.js";
 const MAX_PATCH_ROUNDS = 30;
 const MAX_CONSECUTIVE_INVALID = 3;
 const MAX_CONSECUTIVE_TOOLS_ONLY = 5;
+
+interface VerifySlotSelection {
+  test?: boolean;
+  lint?: boolean;
+  typecheck?: boolean;
+}
+
+// Returns plan files that are NOT covered by the actual changed-files set.
+// Uses endsWith fuzzy matching so absolute-vs-relative path differences
+// don't false-positive (mirrors the original inline matcher in runVerify).
+export function computeUncoveredPlanFiles(
+  planFiles: string[],
+  changedFiles: string[],
+): string[] {
+  return planFiles.filter(
+    (planF) => !changedFiles.some(
+      (actF) => actF === planF || actF.endsWith(planF) || planF.endsWith(actF),
+    ),
+  );
+}
+
+// `verify.commands` (a list, executed independently) takes precedence over the
+// legacy `test/lint/typecheck` slots so a fixture / config can express N
+// verification steps without `&&`-chaining them into one shell command.
+export function resolveVerifyCommands(
+  verifyConfig: Record<string, unknown> | undefined,
+  selection: VerifySlotSelection,
+): string[] {
+  if (!verifyConfig) return [];
+
+  const commandsField = verifyConfig["commands"];
+  if (Array.isArray(commandsField)) {
+    const list = commandsField
+      .filter((c): c is string => typeof c === "string")
+      .map((c) => c.trim())
+      .filter((c) => c.length > 0);
+    if (list.length > 0) return list;
+  }
+
+  const slots: string[] = [];
+  const { test, lint, typecheck } = selection;
+  const anySelected = Boolean(test || lint || typecheck);
+  const pickAll = !anySelected;
+
+  const get = (key: "test" | "lint" | "typecheck"): string => {
+    const v = verifyConfig[key];
+    return typeof v === "string" ? v : "";
+  };
+
+  if (pickAll || test) slots.push(get("test"));
+  if (pickAll || lint) slots.push(get("lint"));
+  if (pickAll || typecheck) slots.push(get("typecheck"));
+
+  return slots.map((c) => c.trim()).filter((c) => c.length > 0);
+}
 
 function _totalCharCount(messages: DeepSeekMessage[]): number {
   let chars = 0;
@@ -407,10 +462,31 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
       }
 
       case "done": {
-        record.reasoning_excerpt = choice.message.reasoning_content?.slice(0, 500);
-        state.patch_rounds.push(record);
-        writeTaskState(cwd, state);
-        round = MAX_PATCH_ROUNDS; // exit loop cleanly
+        const planFiles = state.plan?.files ?? [];
+        const dedupedSoFar = [...new Set(allChangedFiles)];
+        const uncovered = computeUncoveredPlanFiles(planFiles, dedupedSoFar);
+
+        if (uncovered.length === 0) {
+          record.reasoning_excerpt = choice.message.reasoning_content?.slice(0, 500);
+          state.patch_rounds.push(record);
+          writeTaskState(cwd, state);
+          round = MAX_PATCH_ROUNDS; // exit loop cleanly
+        } else {
+          // Reject DONE: plan.files not fully covered. Reclassify this round
+          // as invalid and feed the uncovered list back so the model can
+          // continue patching. (spec §3.2 path A)
+          record.action = "invalid";
+          record.invalid_reason = "done_with_uncovered_plan_files";
+          state.patch_rounds.push(record);
+          writeTaskState(cwd, state);
+          consecutiveInvalid++;
+          messages.push({
+            role: "user",
+            content:
+              `<DONE/> rejected: plan.files 还有未覆盖文件: [${uncovered.join(", ")}].\n` +
+              `继续输出对应的 change block；已修改文件 [${dedupedSoFar.join(", ")}] 不要重复修改。`,
+          });
+        }
         break;
       }
 
@@ -466,19 +542,32 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   else if (partialOk || (okChanges.length > 0)) applyStatus = "partial_ok";
   else applyStatus = "failed";
 
-  state.patches.push({
+  // ---- Scope completeness: plan.files must all be covered ----
+  // (spec §3.3) When ≥1 change applied successfully but plan.files were not
+  // fully covered, treat patch as incomplete and route to repair with the
+  // structured "missing files" signal in patch_incomplete_reason.
+  const planFilesForPatch = state.plan?.files ?? [];
+  const uncoveredAfterPatch = computeUncoveredPlanFiles(planFilesForPatch, dedupedFiles);
+
+  const newPatch: PatchRecord = {
     round: (state.repair_rounds ?? 0) + 1,
     patch: patchText,
     apply_status: applyStatus,
     files_changed: dedupedFiles,
-  });
+  };
+  if (okChanges.length > 0 && uncoveredAfterPatch.length > 0) {
+    newPatch.patch_incomplete_reason = `uncovered plan files: ${uncoveredAfterPatch.join(", ")}`;
+  }
+  state.patches.push(newPatch);
 
   // ---- State transition ----
 
-  if (okChanges.length > 0) {
-    state = transition(state, "patched");
-  } else {
+  if (okChanges.length === 0) {
     state = transition(state, "patch_failed");
+  } else if (uncoveredAfterPatch.length > 0) {
+    state = transition(state, "patch_failed");
+  } else {
+    state = transition(state, "patched");
   }
   writeTaskState(cwd, state);
 
@@ -507,14 +596,15 @@ export async function runVerify(params: VerifyParams): Promise<TaskState> {
     return state;
   }
 
-  // Scope-completeness check: plan.files must all be covered by patches
+  // Scope-completeness check: plan.files must all be covered by patches.
+  // (spec 2026-05-07-patch-completeness §3.5) Last-line defense — runPatch
+  // already routes uncovered cases to patch_failed, but keep this guard for
+  // any path that bypasses the patch stage.
   const planFiles = state.plan?.files ?? [];
   const lastPatch = state.patches.at(-1);
   const patchedFiles = lastPatch?.files_changed ?? [];
-  const uncovered = planFiles.filter(
-    (f) => !patchedFiles.some((pf) => pf === f || pf.endsWith(f) || f.endsWith(pf)),
-  );
-  if (uncovered.length > 0 && lastPatch && lastPatch.apply_status !== "ok") {
+  const uncovered = computeUncoveredPlanFiles(planFiles, patchedFiles);
+  if (uncovered.length > 0 && lastPatch) {
     // partial_ok or failed + uncovered plan files → verification_failed
     state.verify_results.push({
       round: (state.verify_results?.length ?? 0) + 1,
@@ -532,20 +622,7 @@ export async function runVerify(params: VerifyParams): Promise<TaskState> {
   }
 
   const config = loadDshConfig(cwd);
-  const verifyConfig = config.verify as Record<string, string> | undefined;
-  const commands: string[] = [];
-
-  if (test) commands.push(verifyConfig?.test ?? "");
-  if (lint) commands.push(verifyConfig?.lint ?? "");
-  if (typecheck) commands.push(verifyConfig?.typecheck ?? "");
-
-  if (!test && !lint && !typecheck) {
-    if (verifyConfig?.test) commands.push(verifyConfig.test);
-    if (verifyConfig?.lint) commands.push(verifyConfig.lint);
-    if (verifyConfig?.typecheck) commands.push(verifyConfig.typecheck);
-  }
-
-  const validCommands = commands.filter((c) => c && c.trim());
+  const validCommands = resolveVerifyCommands(config.verify, { test, lint, typecheck });
   if (validCommands.length === 0) {
     throw new Error("没有配置验证命令。请检查 .dsh/config.yml");
   }
@@ -574,10 +651,8 @@ export async function runRepair(params: RepairParams): Promise<TaskState> {
   const layers = await buildLayers(cwd, state.task.description, state.task.type);
 
   const config = loadDshConfig(cwd);
-  const verifyConfig = config.verify as Record<string, string> | undefined;
-  if (verifyConfig && state.plan) {
-    const commands = [verifyConfig.test, verifyConfig.lint, verifyConfig.typecheck]
-      .filter((c): c is string => typeof c === "string" && c.length > 0);
+  if (config.verify && state.plan) {
+    const commands = resolveVerifyCommands(config.verify, { test: true, lint: true, typecheck: true });
     state.plan = { ...state.plan, verify_commands: commands };
   }
 

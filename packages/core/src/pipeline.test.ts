@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as yaml from "js-yaml";
-import { runPlan, runPatch, runVerify, runRepair, runHandoff, runFullPipeline } from "./pipeline.js";
+import { runPlan, runPatch, runVerify, runRepair, runHandoff, runFullPipeline, resolveVerifyCommands, computeUncoveredPlanFiles } from "./pipeline.js";
 import type { DeepSeekClient, DeepSeekResponse } from "@dsh/provider";
 
 // Helper: create a mock DeepSeekClient that returns the given content
@@ -297,9 +297,11 @@ describe("runPatch", () => {
       "utf-8",
     );
 
-    // Update task plan to reference the source file
+    // plan.files aligns with what V4_PATCH_DUMMY patches (dummy.py); the
+    // src/utils.ts file is a read-only exploration target for the read_file
+    // tool, not in the change scope.
     const taskState = JSON.parse(fs.readFileSync(path.join(tmp, ".dsh", "task-state.json"), "utf-8"));
-    taskState.plan.files = ["src/utils.ts"];
+    taskState.plan.files = ["dummy.py"];
     fs.writeFileSync(path.join(tmp, ".dsh", "task-state.json"), JSON.stringify(taskState, null, 2), "utf-8");
 
     let callIndex = 0;
@@ -536,9 +538,207 @@ const V4_PATCH_FILE_B = `<PATCH>
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  // ---- P2 spec 2026-05-07-patch-completeness behavioral tests ----
+
+  // Helper: stamp plan.files with a multi-file plan after setupTempDir.
+  function setMultiFilePlan(tmp: string, files: string[]): void {
+    const ts = JSON.parse(fs.readFileSync(path.join(tmp, ".dsh", "task-state.json"), "utf-8"));
+    ts.plan.files = files;
+    fs.writeFileSync(path.join(tmp, ".dsh", "task-state.json"), JSON.stringify(ts, null, 2), "utf-8");
+  }
+
+  it("rejects DONE when plan.files not fully covered, then accepts after second change", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      // plan declares 2 files; first round only patches dummy.py
+      setMultiFilePlan(tmp, ["dummy.py", "other.py"]);
+      fs.writeFileSync(path.join(tmp, "other.py"), "# other\n", "utf-8");
+
+      const PATCH_OTHER = `<PATCH>
+--- a/other.py
++++ b/other.py
+@@ -1 +1,2 @@
+ # other
++# touched
+</PATCH>`;
+      // Sequence: change A → DONE (rejected) → change B → DONE (accepted)
+      const client = mockClientSequence([V4_PATCH_FILE_A, V4_DONE, PATCH_OTHER, V4_DONE]);
+      const state = await runPatch({ cwd: tmp, client, auto: true });
+
+      assert.equal(state.status, "patched", `expected patched after both files covered, got ${state.status}`);
+
+      // First DONE should have been reclassified as invalid with structured reason
+      const invalidRounds = state.patch_rounds.filter((r) => r.action === "invalid");
+      assert.equal(invalidRounds.length, 1);
+      assert.equal(invalidRounds[0]!.invalid_reason, "done_with_uncovered_plan_files");
+
+      // Final patch record covers both files, no incomplete reason
+      const lastPatch = state.patches.at(-1)!;
+      assert.ok(lastPatch.files_changed.includes("dummy.py"));
+      assert.ok(lastPatch.files_changed.includes("other.py"));
+      assert.equal(lastPatch.patch_incomplete_reason, undefined);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("aggregate: ≥1 change ok + plan.files uncovered → patch_failed with patch_incomplete_reason", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      setMultiFilePlan(tmp, ["dummy.py", "missing.py"]);
+
+      // Model patches dummy.py then keeps emitting invalid → 3 invalid → exit
+      const junk = "no xml blocks here";
+      const client = mockClientSequence([V4_PATCH_FILE_A, junk, junk, junk]);
+      const state = await runPatch({ cwd: tmp, client, auto: true });
+
+      assert.equal(state.status, "patch_failed", `expected patch_failed when plan.files uncovered, got ${state.status}`);
+
+      const lastPatch = state.patches.at(-1)!;
+      assert.ok(lastPatch.files_changed.includes("dummy.py"));
+      assert.ok(
+        lastPatch.patch_incomplete_reason?.includes("missing.py"),
+        `expected patch_incomplete_reason to mention missing.py, got: ${lastPatch.patch_incomplete_reason}`,
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("aggregate: ≥1 change ok + plan.files fully covered → patched (no incomplete reason)", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      // setupTempDir defaults plan.files=["dummy.py"]; V4_PATCH_FILE_A targets dummy.py
+      const client = mockClientSequence([V4_PATCH_FILE_A, V4_DONE]);
+      const state = await runPatch({ cwd: tmp, client, auto: true });
+
+      assert.equal(state.status, "patched");
+      const lastPatch = state.patches.at(-1)!;
+      assert.equal(lastPatch.patch_incomplete_reason, undefined);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("3 consecutive DONE-rejects exit via consecutiveInvalid guard → patch_failed", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      setMultiFilePlan(tmp, ["dummy.py", "missing.py"]);
+
+      // Patch one file, then refuse to do anything but DONE 3 times
+      const client = mockClientSequence([V4_PATCH_FILE_A, V4_DONE, V4_DONE, V4_DONE]);
+      const state = await runPatch({ cwd: tmp, client, auto: true });
+
+      assert.equal(state.status, "patch_failed");
+      const invalidRounds = state.patch_rounds.filter((r) => r.action === "invalid");
+      assert.ok(invalidRounds.length >= 3, `expected ≥3 invalid rounds, got ${invalidRounds.length}`);
+      assert.ok(invalidRounds.every((r) => r.invalid_reason === "done_with_uncovered_plan_files"));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---- runVerify Tests ----
+
+describe("computeUncoveredPlanFiles", () => {
+  it("returns empty when every plan file matches a changed file exactly", () => {
+    assert.deepEqual(
+      computeUncoveredPlanFiles(["src/a.ts", "src/b.ts"], ["src/a.ts", "src/b.ts"]),
+      [],
+    );
+  });
+
+  it("returns the missing plan files when only some are covered", () => {
+    assert.deepEqual(
+      computeUncoveredPlanFiles(
+        ["backend/Foo.java", "backend/Bar.java"],
+        ["backend/Foo.java"],
+      ),
+      ["backend/Bar.java"],
+    );
+  });
+
+  it("uses endsWith matching so relative vs absolute paths match", () => {
+    assert.deepEqual(
+      computeUncoveredPlanFiles(["src/a.ts"], ["/repo/src/a.ts"]),
+      [],
+    );
+    assert.deepEqual(
+      computeUncoveredPlanFiles(["/repo/src/a.ts"], ["src/a.ts"]),
+      [],
+    );
+  });
+
+  it("returns all plan files when nothing was changed", () => {
+    assert.deepEqual(
+      computeUncoveredPlanFiles(["src/a.ts", "src/b.ts"], []),
+      ["src/a.ts", "src/b.ts"],
+    );
+  });
+
+  it("returns empty when plan files is empty", () => {
+    assert.deepEqual(
+      computeUncoveredPlanFiles([], ["src/a.ts"]),
+      [],
+    );
+  });
+});
+
+describe("resolveVerifyCommands", () => {
+  it("returns the commands array when set, ignoring legacy slots", () => {
+    const result = resolveVerifyCommands(
+      { commands: ["grep -q foo bar.txt", "pnpm test"], test: "old joined && cmd" },
+      { test: true, lint: true, typecheck: true },
+    );
+    assert.deepEqual(result, ["grep -q foo bar.txt", "pnpm test"]);
+  });
+
+  it("falls back to test/lint/typecheck slots when commands is missing", () => {
+    const result = resolveVerifyCommands(
+      { test: "pnpm test", lint: "pnpm lint", typecheck: "pnpm typecheck" },
+      { test: true, lint: true, typecheck: true },
+    );
+    assert.deepEqual(result, ["pnpm test", "pnpm lint", "pnpm typecheck"]);
+  });
+
+  it("falls back when commands is an empty array", () => {
+    const result = resolveVerifyCommands(
+      { commands: [], test: "pnpm test" },
+      { test: true, lint: false, typecheck: false },
+    );
+    assert.deepEqual(result, ["pnpm test"]);
+  });
+
+  it("returns the selected legacy slots only when explicit selection is given", () => {
+    const result = resolveVerifyCommands(
+      { test: "pnpm test", lint: "pnpm lint", typecheck: "pnpm typecheck" },
+      { lint: true },
+    );
+    assert.deepEqual(result, ["pnpm lint"]);
+  });
+
+  it("returns all non-empty legacy slots when no selection is given", () => {
+    const result = resolveVerifyCommands(
+      { test: "pnpm test", lint: "", typecheck: "pnpm typecheck" },
+      {},
+    );
+    assert.deepEqual(result, ["pnpm test", "pnpm typecheck"]);
+  });
+
+  it("trims whitespace and drops blank entries from commands array", () => {
+    const result = resolveVerifyCommands(
+      { commands: ["  pnpm test  ", "", "   ", "pnpm lint"] },
+      {},
+    );
+    assert.deepEqual(result, ["pnpm test", "pnpm lint"]);
+  });
+
+  it("returns [] for undefined verify config", () => {
+    assert.deepEqual(resolveVerifyCommands(undefined, {}), []);
+  });
+});
 
 describe("runVerify", () => {
   it("transitions to verified when all checks pass", async () => {
@@ -580,6 +780,46 @@ describe("runVerify", () => {
       );
       const state = await runVerify({ cwd: tmp });
       assert.equal(state.status, "verification_failed");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("scope-completeness guard fires even when last patch apply_status === 'ok' but plan.files uncovered", async () => {
+    // (spec 2026-05-07-patch-completeness §3.5) — last line of defense for any
+    // path that bypasses the patch-stage routing (e.g. pre-existing state on
+    // disk written by an older codebase).
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
+    try {
+      fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "python" },
+          verify: { test: "echo ok" }, // verify itself would pass
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "task-state.json"),
+        JSON.stringify({
+          version: "0.1",
+          status: "patched",
+          task: { description: "fix two", type: "bugfix", created_at: new Date().toISOString() },
+          plan: { summary: "fix", files: ["dummy.py", "missing.py"], risks: [], raw_xml: "<PLAN>fix</PLAN>" },
+          patches: [{ round: 1, patch: "", apply_status: "ok", files_changed: ["dummy.py"] }],
+          verify_results: [],
+          repair_rounds: 0,
+        }, null, 2),
+        "utf-8",
+      );
+      const state = await runVerify({ cwd: tmp });
+      assert.equal(state.status, "verification_failed");
+      const lastVerify = state.verify_results.at(-1)!;
+      assert.equal(lastVerify.results[0]!.command, "scope-completeness");
+      assert.ok(lastVerify.results[0]!.output.includes("missing.py"));
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -640,6 +880,81 @@ describe("runRepair", () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it("injects patch_incomplete_reason hint into repair task description", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
+    try {
+      fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "python" },
+          verify: { test: "echo ok" },
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      // patch_failed state: dummy.py changed but missing.py uncovered
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "task-state.json"),
+        JSON.stringify({
+          version: "0.1",
+          status: "patch_failed",
+          task: { description: "fix two files", type: "bugfix", created_at: new Date().toISOString() },
+          plan: { summary: "fix", files: ["dummy.py", "missing.py"], risks: [], raw_xml: "<PLAN>fix</PLAN>" },
+          patches: [{
+            round: 1,
+            patch: "",
+            apply_status: "ok",
+            files_changed: ["dummy.py"],
+            patch_incomplete_reason: "uncovered plan files: missing.py",
+          }],
+          verify_results: [],
+          repair_rounds: 0,
+        }, null, 2),
+        "utf-8",
+      );
+      fs.writeFileSync(path.join(tmp, "dummy.py"), "# test", "utf-8");
+      fs.writeFileSync(path.join(tmp, "missing.py"), "# missing\n", "utf-8");
+
+      const captured: string[] = [];
+      const captureClient = {
+        chat: async (req: any) => {
+          for (const m of req.messages ?? []) {
+            if (m.role === "user" && typeof m.content === "string") {
+              captured.push(m.content);
+            }
+          }
+          // Return a simple no-op response so the repair loop can complete
+          return {
+            id: "r1", object: "chat.completion", created: Date.now(), model: "deepseek-v4-pro",
+            choices: [{ index: 0, message: { role: "assistant" as const, content: "<DONE/>" }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      await runRepair({ cwd: tmp, client: captureClient, maxRounds: 1 });
+
+      const allUserContent = captured.join("\n---\n");
+      assert.ok(
+        allUserContent.includes("PATCH INCOMPLETE"),
+        "repair task description should include 'PATCH INCOMPLETE' header",
+      );
+      assert.ok(
+        allUserContent.includes("missing.py"),
+        "repair task description should mention the uncovered file 'missing.py'",
+      );
+      assert.ok(
+        allUserContent.includes("dummy.py"),
+        "repair task description should list the already-modified file so the model does not duplicate edits",
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---- runHandoff Tests ----
@@ -677,8 +992,25 @@ describe("runFullPipeline", () => {
   it("runs plan, patch, verify, handoff in sequence", async () => {
     const tmp = await setupTempDir();
     try {
-      // Sequence: plan → patch → done (shared across all phases)
-      const client = mockClientSequence([VALID_PLAN_RESPONSE, V4_PATCH_DUMMY, V4_DONE]);
+      // Plan response aligns with V4_PATCH_DUMMY (both target dummy.py) so the
+      // patch fully covers plan.files (spec 2026-05-07-patch-completeness §3.3).
+      const planResponse = `
+<PLAN>
+## Goal
+Fix dummy file
+## Files Involved
+- dummy.py
+## Strategy
+Append a comment line
+</PLAN>
+<FILES>
+- dummy.py
+</FILES>
+<RISKS>
+- Trivial
+</RISKS>
+`;
+      const client = mockClientSequence([planResponse, V4_PATCH_DUMMY, V4_DONE]);
       const state = await runFullPipeline({
         cwd: tmp, client, description: "Fix bug", taskType: "bugfix",
       });

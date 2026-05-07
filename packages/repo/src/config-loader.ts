@@ -16,6 +16,7 @@ export interface DshConfig extends Record<string, unknown> {
     lint?: string;
     typecheck?: string;
     build?: string;
+    commands?: string[];
   };
   static_scan?: {
     enabled?: boolean;

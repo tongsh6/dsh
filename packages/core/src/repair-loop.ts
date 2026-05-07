@@ -187,8 +187,23 @@ export async function runRepairLoop(
       "9. If you changed a function signature (parameters or return type), check ALL callers — they likely need updating, or you should revert the signature change.",
     ].join("\n");
 
+    // Structured signal from patch stage: if patch was marked incomplete
+    // (plan.files not fully covered), surface the missing file list at the
+    // top of repair task so the model treats "补全缺失文件" as the primary task.
+    // (spec docs/specs/2026-05-07-patch-completeness.md §3.4)
+    const incompleteHint = prevPatch?.patch_incomplete_reason
+      ? [
+          "## PATCH INCOMPLETE",
+          `Previous patch round did not cover all plan.files. Detail: ${prevPatch.patch_incomplete_reason}`,
+          `Files already modified (do NOT re-modify): ${prevPatch.files_changed.join(", ") || "(none)"}`,
+          "PRIMARY REPAIR TASK: emit change blocks for the uncovered files. Do not duplicate edits to already-modified files.",
+        ].join("\n")
+      : null;
+
     const taskDescription = [
       repairConstraints,
+      "",
+      incompleteHint ?? "",
       "",
       failureHints ?? "The previous patch failed verification. Analyze the errors and fix the code.",
       "",

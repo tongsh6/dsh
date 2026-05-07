@@ -31,6 +31,10 @@ const patchRecordSchema = z.object({
   apply_status: z.enum(["ok", "failed", "skipped", "partial_ok"]),
   files_changed: z.array(z.string()),
   tool_rounds: z.array(toolRoundRecordSchema).optional(),
+  // Set when patch loop produced ≥1 successful change but plan.files were not
+  // fully covered. Carries the structured "missing files" signal forward to
+  // repair (see spec docs/specs/2026-05-07-patch-completeness.md §3.4).
+  patch_incomplete_reason: z.string().optional(),
 });
 
 const patchRoundSchema = z.object({

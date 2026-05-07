@@ -1,6 +1,6 @@
 # DSH 项目事实台账
 
-> 状态: active | 最后更新: 2026-05-06
+> 状态: active | 最后更新: 2026-05-08
 >
 > 任何新会话 AI 或新人进入项目后，**请先阅读本文件**，以便快速恢复项目状态基线。
 
@@ -14,8 +14,8 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 - [x] 多仓库（3 repos 各 ≥3 fixture，13 fixture full benchmark 已完成）
 - [x] 完成率（13/13 = 100%）
 - [x] 对比报告（`docs/reports/260506-004042`）
-- [ ] v0.4 协议操作覆盖率（6 种操作中 4/6 已达标，PATCH/DELETE/RENAME 待覆盖）
-- [ ] 多语言（Python 5/5 ✅，TypeScript 3/8 ⚠️ 需提升）
+- [ ] v0.4 协议操作覆盖率（CREATE/PATCH 达标；SEARCH_REPLACE/INSERT 标注不足；DELETE/RENAME 尚无标注与实测）
+- [ ] 多语言（Python 5/5 ✅，TypeScript/loamlog ≥3 ✅，release-hub Java+Vue 混合 fixture 0/3 ❌）
 - [x] 跨工具对比（DSH vs OpenCode，13 fixture 对比完成）
 - [x] 长期跟踪事项复审（已执行，含 21 条复核 + 3 条状态变更）
 
@@ -52,6 +52,7 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 |------|---------|--------|--------|
 | 工具采纳率修复 | 已实现，待 benchmark 验证（commit `da7c554`） | 需要一次 ≥1 fixture 的 benchmark 跑出非空 `tool_rounds` | 跑 `pnpm exec tsx run-benchmark.ts --filter=loam-` 与 260504-140432 对照 |
 | 修复循环成功率提升 | 待验证 | 依赖工具采纳率修复 benchmark 数据 | 上一项验证后用数据驱动 |
+| Controlled Benchmark Suite | 本地 `dsh-benchmark/*-phase2` 分支已创建；13 个 loam/pi/rh fixture 已回填固定 commit metadata | 尚未推送 benchmark 分支；rh Java+Vue 混合新增 fixtures 仍待实现 | 基线：loamlog `5e1d3ee57e853698beacd51f4d1a674f293c17d8`，pi `d01d427be7d2999b4d17783b8982bb518c53ec9f`，release-hub `180de500e6740433b578e60e1585dc6e315f5191` |
 
 ## 5. 已废弃事项
 
@@ -64,7 +65,7 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|---------|
 | P0 | 跑 benchmark 验证工具采纳率修复（da7c554） | 代码已落地，行为数据缺失，最新报告 260504-140432 跑在修复前 commit `c86e790` 上 | 新 run 的 `metadata.json.dsh_commit` 为 `da7c554` 或之后；至少 1 fixture 的 task-state 含非空 `tool_rounds` |
-| P1 | 多仓库/多语言全量 benchmark | Phase 2 退出条件 5 项依赖（多语言/多仓库/完成率/协议覆盖/对比） | 单 run ≥10 fixture，3 仓库各 ≥3 fixture 通过，完成率 >60% |
+| P1 | Controlled 多仓库/多语言全量 benchmark | Phase 2 退出条件 5 项依赖；loamlog/pi/release-hub 是 live 项目，严格退出必须固定基线 | 所有 Phase 2 fixture 声明 `benchmarkRef.commit`，单 run ≥10 fixture，3 仓库各 ≥3 fixture 通过，完成率 >60% |
 | P2 | 修复循环成功率提升 | 当前 0/2，目标 ≥33% | 上述 benchmark 中 repairSuccess 数据 |
 
 ## 7. 关键证据索引
@@ -117,3 +118,5 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 | deferred | patchloop-done-prompt-weak | code:packages/core/src/prompt-builder.ts | v0.4 DONE 触发（根因在第 7 条：元认知任务） | P1+P2 pipeline 自动终止已从代码层替代 prompt 方案 | P1 | waiting | 2026-05-06 |
 | evidence | patchloop-search-replace-risk-realized | code:packages/core/src/pipeline.ts | SEARCH/REPLACE 行号错位风险已实证 | 长期跟踪；v0.5 考虑 stash-rollback | P2 | waiting | 2026-05-06 |
 | evidence | patchloop-p62-first-run | report:docs/reports/260506-024933 | P6.2 首轮结果（已 supersede） | superseded 由后续多次 run（含 P1+P2 验证）替代 | P1 | resolved | 2026-05-06 |
+| deferred | verify-protocol-structured | spec:docs/specs/2026-05-07-patch-completeness.md | verify 命令从 shell string 升级为结构化断言（file_contains / exit_code / shell 等） | patch-completeness 上线 ≥1 周 + ≥10 fixture 实测后启动；议题 B 单独 spec | P1 | waiting | 2026-05-08 |
+| evidence | patch-completeness-baseline | spec:docs/specs/2026-05-07-patch-completeness.md | rh-mixed-dashboard 3 次重跑 + 13 fixture 全量 benchmark vs 260506-004042 基线对比 | 3 次单 fixture 已收集（reports 260507-235439 / 260508-000202 / 260508-000642，plan.files 覆盖率 0/3 → 2/3，testsPassed 仍 0/3 受限模型代码质量）；13 fixture 全量 benchmark 待跑 | P1 | waiting | 2026-05-08 |
