@@ -1,0 +1,146 @@
+[
+  {
+    "fixtureId": "rh-mixed-dashboard-generated-at-frontend",
+    "category": "feature",
+    "completed": true,
+    "filesChanged": [
+      "frontend/src/api/dashboardApi.ts",
+      "frontend/src/views/dashboard/Dashboard.vue"
+    ],
+    "filesExpected": [
+      "frontend/src/api/dashboardApi.ts",
+      "frontend/src/views/dashboard/Dashboard.vue"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": true,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 81232,
+    "expectedProtocolOps": [
+      "PATCH",
+      "INSERT"
+    ],
+    "actualProtocolOps": [
+      "PATCH",
+      "SEARCH_REPLACE"
+    ],
+    "toolRounds": 6,
+    "toolCalls": [
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "exec_shell",
+        "status": "success"
+      }
+    ],
+    "patchRounds": 8,
+    "patchRoundActions": [
+      {
+        "round": 1,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          },
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 2,
+        "action": "change"
+      },
+      {
+        "round": 3,
+        "action": "change"
+      },
+      {
+        "round": 4,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          },
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 5,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 6,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 7,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 8,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "success"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,35 @@
+id: rh-mixed-rename-settings-controller-backend
+description: SettingsController 重命名为 SystemSettingsController（Java）
+category: refactor
+taskPrompt: |
+  将 `backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SettingsController.java`
+  重命名为 `backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SystemSettingsController.java`
+
+  保持类中的 @RequestMapping 路径不变，只改类名和文件名。
+  Spring 的 classpath 扫描会自动发现新类名，不需要额外配置。
+
+  确保 Maven 测试通过：`mvn test -pl releasehub-interfaces -am -q`
+
+  相关文件：SettingsController.java → SystemSettingsController.java（重命名）
+expectedFiles:
+  - backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SystemSettingsController.java
+expectPass: true
+verificationCommands:
+  - "test -f backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SystemSettingsController.java"
+  - "! test -f backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SettingsController.java"
+  - "(cd backend && mvn test -pl releasehub-interfaces -am -q)"
+architectureRules:
+  - 文件内容主体不变，只改类名
+  - RequestMapping 路径不变
+  - 只改后端，不改前端
+maxRepairRounds: 2
+benchmarkRef:
+  repo: release-hub
+  branch: dsh-benchmark/release-hub-phase2
+  commit: 180de500e6740433b578e60e1585dc6e315f5191
+preflightFiles:
+  - backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SettingsController.java
+designGoal: SettingsController 重命名（rh 混合对后端侧）
+verificationGoal: SystemSettingsController.java 存在且 SettingsController.java 不存在，Maven test 通过
+expectedProtocolOperations:
+  - RENAME

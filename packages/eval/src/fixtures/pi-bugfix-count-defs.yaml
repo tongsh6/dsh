@@ -21,6 +21,15 @@ architectureRules:
   - 不用 AST 解析，保持实现简单
   - count_definitions 的调用方式和返回值类型不变
 maxRepairRounds: 2
+benchmarkRef:
+  repo: pi-proof-forge
+  branch: dsh-benchmark/pi-phase2
+  commit: d01d427be7d2999b4d17783b8982bb518c53ec9f
+preflightFiles:
+  - tools/check_v2_constraints.py
+  - tests/unit/domain/test_check_v2_constraints.py
+designGoal: 验证单文件 bugfix 对已有朴素匹配逻辑做精准 SEARCH_REPLACE 的能力
+verificationGoal: 定向 pytest 通过，证明 count_definitions 只统计真实行首 def 声明
 expectedProtocolOperations:
   - PATCH
   - SEARCH_REPLACE

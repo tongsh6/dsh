@@ -1,0 +1,630 @@
+[
+  {
+    "fixtureId": "rh-mixed-dashboard-generated-at",
+    "category": "feature",
+    "completed": true,
+    "filesChanged": [
+      "backend/releasehub-application/src/main/java/io/releasehub/application/dashboard/DashboardAppService.java"
+    ],
+    "filesExpected": [
+      "backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/dashboard/DashboardController.java",
+      "backend/releasehub-application/src/main/java/io/releasehub/application/dashboard/DashboardAppService.java",
+      "frontend/src/api/dashboardApi.ts",
+      "frontend/src/views/dashboard/Dashboard.vue"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 2,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 184716,
+    "expectedProtocolOps": [
+      "PATCH",
+      "INSERT",
+      "SEARCH_REPLACE"
+    ],
+    "actualProtocolOps": [
+      "SEARCH_REPLACE"
+    ],
+    "toolRounds": 10,
+    "toolCalls": [
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "grep_files",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "patch",
+        "status": "error"
+      },
+      {
+        "name": "search_replace",
+        "status": "error"
+      },
+      {
+        "name": "patch_search",
+        "status": "error"
+      },
+      {
+        "name": "search_replace",
+        "status": "error"
+      }
+    ],
+    "patchRounds": 11,
+    "patchRoundActions": [
+      {
+        "round": 1,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          },
+          {
+            "name": "grep_files",
+            "status": "success"
+          },
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 2,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 3,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 4,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 5,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 6,
+        "action": "change"
+      },
+      {
+        "round": 7,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 8,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "patch",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 9,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "search_replace",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 10,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "patch_search",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 11,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "search_replace",
+            "status": "error"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "fixtureId": "rh-mixed-remove-starter-ping-demo",
+    "category": "refactor",
+    "completed": true,
+    "filesChanged": [
+      "frontend/src/components/HelloWorld.vue"
+    ],
+    "filesExpected": [
+      "frontend/src/components/HelloWorld.vue",
+      "frontend/src/components/__tests__/HelloWorld.spec.ts",
+      "backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/rest/PingController.java",
+      "backend/releasehub-bootstrap/src/test/java/io/releasehub/bootstrap/api/PingApiTest.java"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 2,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 186961,
+    "expectedProtocolOps": [
+      "DELETE"
+    ],
+    "actualProtocolOps": [
+      "DELETE"
+    ],
+    "toolRounds": 10,
+    "toolCalls": [
+      {
+        "name": "grep_files",
+        "status": "success"
+      },
+      {
+        "name": "grep_files",
+        "status": "success"
+      },
+      {
+        "name": "grep_files",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "exec_shell",
+        "status": "success"
+      },
+      {
+        "name": "exec_shell",
+        "status": "success"
+      },
+      {
+        "name": "exec_shell",
+        "status": "success"
+      },
+      {
+        "name": "exec_shell",
+        "status": "success"
+      },
+      {
+        "name": "exec_shell",
+        "status": "success"
+      },
+      {
+        "name": "exec_shell",
+        "status": "success"
+      }
+    ],
+    "patchRounds": 11,
+    "patchRoundActions": [
+      {
+        "round": 1,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "grep_files",
+            "status": "success"
+          },
+          {
+            "name": "grep_files",
+            "status": "success"
+          },
+          {
+            "name": "grep_files",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 2,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          },
+          {
+            "name": "read_file",
+            "status": "success"
+          },
+          {
+            "name": "read_file",
+            "status": "success"
+          },
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 3,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 4,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 5,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 6,
+        "action": "change"
+      },
+      {
+        "round": 7,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 8,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 9,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 10,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 11,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "success"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "fixtureId": "rh-mixed-rename-common-dialog-and-settings-controller",
+    "category": "refactor",
+    "completed": true,
+    "filesChanged": [
+      "frontend/src/components/common/CrudEntityDialog.vue"
+    ],
+    "filesExpected": [
+      "frontend/src/components/common/CrudEntityDialog.vue",
+      "backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SystemSettingsController.java"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 2,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 220901,
+    "expectedProtocolOps": [
+      "RENAME",
+      "SEARCH_REPLACE"
+    ],
+    "actualProtocolOps": [
+      "CREATE"
+    ],
+    "toolRounds": 9,
+    "toolCalls": [
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "grep_files",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "exec_shell",
+        "status": "success"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      }
+    ],
+    "patchRounds": 10,
+    "patchRoundActions": [
+      {
+        "round": 1,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          },
+          {
+            "name": "read_file",
+            "status": "success"
+          },
+          {
+            "name": "grep_files",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 2,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          },
+          {
+            "name": "read_file",
+            "status": "success"
+          },
+          {
+            "name": "read_file",
+            "status": "success"
+          },
+          {
+            "name": "read_file",
+            "status": "success"
+          },
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 3,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 4,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 5,
+        "action": "change"
+      },
+      {
+        "round": 6,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 7,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 8,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 9,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 10,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      }
+    ]
+  }
+]

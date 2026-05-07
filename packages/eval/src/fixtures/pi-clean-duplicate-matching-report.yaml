@@ -1,0 +1,36 @@
+id: pi-clean-duplicate-matching-report
+description: 清理过期 placeholder matching report，只保留较新的样例报告
+category: bugfix
+taskPrompt: |
+  项目 matching_reports/ 目录下有两个 yaml 样例报告：
+  - matching_reports/mr-20260227235900.yaml (较早的 placeholder)
+  - matching_reports/mr-20260228000000.yaml (较新的样例)
+
+  matching_reports/mr-20260227235900.yaml 是一个历史 placeholder matching report，不再被任何代码引用。
+  请删除这个文件，只保留较新的 matching_reports/mr-20260228000000.yaml。
+
+  确认删除前先检查该文件是否被任何 Python import 引用（grep 搜索 mr-20260227235900 或相关路径），
+  确保不会破坏现有代码。
+
+  相关文件：matching_reports/mr-20260227235900.yaml（删除）
+expectedFiles:
+  - matching_reports/mr-20260227235900.yaml
+expectPass: true
+verificationCommands:
+  - "! test -f matching_reports/mr-20260227235900.yaml"
+  - "python3 -m pytest tests/ -q"
+architectureRules:
+  - 不修改任何 Python 源代码
+  - 不删除其他 matching report 文件
+maxRepairRounds: 2
+benchmarkRef:
+  repo: pi-proof-forge
+  branch: dsh-benchmark/pi-phase2
+  commit: d01d427be7d2999b4d17783b8982bb518c53ec9f
+preflightFiles:
+  - matching_reports/mr-20260227235900.yaml
+  - matching_reports/mr-20260228000000.yaml
+designGoal: 验证 DELETE 能物理移除一个 tracked、独立、无需保留的生成样例文件
+verificationGoal: matching_reports/mr-20260227235900.yaml 文件物理不存在，且 pytest 全量通过
+expectedProtocolOperations:
+  - DELETE

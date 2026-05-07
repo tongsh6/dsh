@@ -1,7 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
+import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {
+  cleanBenchmarkWorktree,
+  normalizeVerificationCommands,
   createEmptyResult,
+  prepareBenchmarkBranch,
   scoreResult,
   compareResults,
   formatComparisonReport,
@@ -33,9 +40,105 @@ function makeResult(overrides: Partial<TaskResult> = {}): TaskResult {
     toolCalls: [],
     patchRounds: 0,
     patchRoundActions: [],
+    verifyOutput: [],
     ...overrides,
   };
 }
+
+describe("cleanBenchmarkWorktree", () => {
+  it("removes untracked files left by previous fixture runs", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-bench-clean-"));
+    try {
+      execSync("git init -q", { cwd: tmp });
+      execSync("git config user.email test@example.com", { cwd: tmp });
+      execSync("git config user.name Test", { cwd: tmp });
+      fs.writeFileSync(path.join(tmp, "tracked.txt"), "base\n", "utf-8");
+      execSync("git add tracked.txt && git commit -q -m initial", { cwd: tmp });
+
+      fs.mkdirSync(path.join(tmp, "docs"), { recursive: true });
+      fs.writeFileSync(path.join(tmp, "docs/providers.md"), "stale fixture output\n", "utf-8");
+
+      cleanBenchmarkWorktree(tmp);
+
+      assert.equal(fs.existsSync(path.join(tmp, "docs/providers.md")), false);
+      assert.equal(fs.readFileSync(path.join(tmp, "tracked.txt"), "utf-8"), "base\n");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("normalizeVerificationCommands", () => {
+  it("returns each fixture verification command as a separate entry, preserving order", () => {
+    const commands = normalizeVerificationCommands([
+      "test -f frontend/src/api/system.ts",
+      "cd backend && mvn test -q",
+      "cd frontend && pnpm typecheck",
+    ]);
+
+    assert.deepEqual(commands, [
+      "test -f frontend/src/api/system.ts",
+      "cd backend && mvn test -q",
+      "cd frontend && pnpm typecheck",
+    ]);
+  });
+
+  it("drops empty verification commands", () => {
+    assert.deepEqual(normalizeVerificationCommands(["", "  ", "pnpm test"]), ["pnpm test"]);
+  });
+});
+
+describe("prepareBenchmarkBranch", () => {
+  it("creates the fixture branch from the fixture benchmark branch", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-bench-ref-"));
+    try {
+      execSync("git init -q", { cwd: tmp });
+      execSync("git config user.email test@example.com", { cwd: tmp });
+      execSync("git config user.name Test", { cwd: tmp });
+      fs.writeFileSync(path.join(tmp, "tracked.txt"), "main\n", "utf-8");
+      execSync("git add tracked.txt && git commit -q -m main", { cwd: tmp });
+      execSync("git checkout -q -b dsh-benchmark/phase2", { cwd: tmp });
+      fs.writeFileSync(path.join(tmp, "tracked.txt"), "benchmark\n", "utf-8");
+      fs.writeFileSync(path.join(tmp, "anchor.txt"), "exists\n", "utf-8");
+      execSync("git add tracked.txt anchor.txt && git commit -q -m benchmark", { cwd: tmp });
+      execSync("git checkout -q master", { cwd: tmp });
+
+      prepareBenchmarkBranch(tmp, {
+        id: "fixture-branch",
+        benchmarkRef: { branch: "dsh-benchmark/phase2" },
+        preflightFiles: ["anchor.txt"],
+      });
+
+      assert.equal(execSync("git branch --show-current", { cwd: tmp, encoding: "utf-8" }).trim(), "dsh-bench-fixture-branch");
+      assert.equal(fs.readFileSync(path.join(tmp, "tracked.txt"), "utf-8"), "benchmark\n");
+      assert.equal(fs.existsSync(path.join(tmp, "anchor.txt")), true);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("fails before running a fixture when a preflight tracked file is absent", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-bench-preflight-"));
+    try {
+      execSync("git init -q", { cwd: tmp });
+      execSync("git config user.email test@example.com", { cwd: tmp });
+      execSync("git config user.name Test", { cwd: tmp });
+      fs.writeFileSync(path.join(tmp, "tracked.txt"), "base\n", "utf-8");
+      execSync("git add tracked.txt && git commit -q -m initial", { cwd: tmp });
+
+      assert.throws(
+        () =>
+          prepareBenchmarkBranch(tmp, {
+            id: "fixture-preflight",
+            preflightFiles: ["missing.ts"],
+          }),
+        /preflight failed.*missing\.ts/,
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
 
 // ---- Existing score tests ----
 
@@ -50,6 +153,7 @@ describe("createEmptyResult", () => {
       expectPass: true,
       verificationCommands: [],
       architectureRules: [],
+      preflightFiles: [],
       expectedProtocolOperations: ["PATCH" as const],
       filePath: "/tmp/test.yaml",
     };

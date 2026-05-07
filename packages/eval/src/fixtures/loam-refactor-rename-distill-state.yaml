@@ -1,0 +1,49 @@
+id: loam-refactor-rename-distill-state
+description: 将 state.ts 重命名为 distill-state.ts 并更新所有 import 引用
+category: refactor
+taskPrompt: |
+  将 packages/distill/src/state.ts 重命名为 packages/distill/src/distill-state.ts，文件内容保持不变。
+
+  重命名后，必须更新项目中所有引用 `./state.js` 或 `../state.js` 的 import/export 路径。
+  需要搜索并更新的文件范围：
+  - packages/distill/src/engine.ts
+  - packages/distill/src/index.ts
+  - packages/distill/src/index.test.ts 及其他测试文件
+  - 任何其他 import 了 state.ts 的文件
+
+  注意：
+  - 文件内容主体不变，只改文件名和引用路径
+  - 确保 `pnpm typecheck` 和 `pnpm test` 通过
+
+  相关文件：packages/distill/src/state.ts → packages/distill/src/distill-state.ts（重命名）
+expectedFiles:
+  - packages/distill/src/distill-state.ts
+  - packages/distill/src/engine.ts
+  - packages/distill/src/index.ts
+expectPass: true
+verificationCommands:
+  - "test -f packages/distill/src/distill-state.ts"
+  - "! test -f packages/distill/src/state.ts"
+  - "git show HEAD:packages/distill/src/state.ts | cmp - packages/distill/src/distill-state.ts"
+  - "pnpm typecheck"
+  - "pnpm test"
+architectureRules:
+  - 文件内容保持不变
+  - 所有 import 路径必须更新
+  - 不允许同时存在 state.ts 和 distill-state.ts
+maxRepairRounds: 2
+benchmarkRef:
+  repo: loamlog
+  branch: dsh-benchmark/loamlog-phase2
+  commit: 5e1d3ee57e853698beacd51f4d1a674f293c17d8
+preflightFiles:
+  - packages/distill/src/state.ts
+  - packages/distill/src/engine.ts
+  - packages/distill/src/index.ts
+  - packages/distill/src/index.test.ts
+  - packages/distill/src/dag-runner.test.ts
+designGoal: 验证 RENAME 在大文件场景下的 token 经济性优势驱动（228 行文件，RENAME 比 CREATE+DELETE 经济得多）
+verificationGoal: 新文件存在且内容与 HEAD 一致，旧文件不存在，typecheck + test 通过
+expectedProtocolOperations:
+  - RENAME
+  - SEARCH_REPLACE

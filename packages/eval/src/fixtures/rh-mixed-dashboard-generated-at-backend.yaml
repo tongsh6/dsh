@@ -1,0 +1,36 @@
+id: rh-mixed-dashboard-generated-at-backend
+description: Dashboard stats DTO 增加 generatedAt 字段（后端 Java）
+category: feature
+taskPrompt: |
+  为 Dashboard stats API 的 Java 后端增加 `generatedAt` 字段（ISO 时间字符串）。
+
+  1. 在 `DashboardAppService.java` 中，DashboardStats record 增加 `String generatedAt` 字段并用 `Instant.now().toString()` 填充
+  2. 在 `DashboardController.java` 中，getStats() 返回的 DashboardStatsView 增加 `generatedAt` 字段
+  3. 确保 Maven 测试通过：`mvn test -pl releasehub-interfaces -am -q`
+
+  generatedAt 使用 ISO 8601 格式（Instant.now().toString() 即可）。
+
+  相关文件：DashboardAppService.java, DashboardController.java（局部修改）
+expectedFiles:
+  - backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/dashboard/DashboardController.java
+  - backend/releasehub-application/src/main/java/io/releasehub/application/dashboard/DashboardAppService.java
+expectPass: true
+verificationCommands:
+  - "grep -q 'generatedAt' backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/dashboard/DashboardController.java"
+  - "(cd backend && mvn test -pl releasehub-interfaces -am -q)"
+architectureRules:
+  - 只改 Java 后端，不改前端
+  - 不修改其他 API 端点
+  - generatedAt 使用 ISO 8601 格式
+maxRepairRounds: 2
+benchmarkRef:
+  repo: release-hub
+  branch: dsh-benchmark/release-hub-phase2
+  commit: 180de500e6740433b578e60e1585dc6e315f5191
+preflightFiles:
+  - backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/dashboard/DashboardController.java
+  - backend/releasehub-application/src/main/java/io/releasehub/application/dashboard/DashboardAppService.java
+designGoal: Dashboard generatedAt 的 Java 后端实现（rh 混合对后端侧）
+verificationGoal: DashboardController.java 含 generatedAt，Maven test 通过
+expectedProtocolOperations:
+  - PATCH

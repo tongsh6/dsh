@@ -34,12 +34,21 @@ expectedFiles:
   - backend/releasehub-application/src/test/java/io/releasehub/application/version/VersionUpdateAppServiceTest.java
 expectPass: true
 verificationCommands:
-  - "cd backend && mvn test -pl releasehub-application -Dtest=\"DashboardAppServiceTest,VersionUpdateAppServiceTest\" -q"
+  - "test -f backend/releasehub-application/src/test/java/io/releasehub/application/dashboard/DashboardAppServiceTest.java && test -f backend/releasehub-application/src/test/java/io/releasehub/application/version/VersionUpdateAppServiceTest.java && cd backend && mvn test -pl releasehub-application -Dtest=\"DashboardAppServiceTest,VersionUpdateAppServiceTest\" -q -DfailIfNoTests=true"
 architectureRules:
   - 使用 JUnit 5 + Mockito (@ExtendWith(MockitoExtension.class)) + AssertJ
   - 使用 @Mock 注解 mock 依赖，构造器注入 SUT
   - 遵循现有命名模式：@Nested + @DisplayName
   - 不修改源代码
 maxRepairRounds: 2
+benchmarkRef:
+  repo: release-hub
+  branch: dsh-benchmark/release-hub-phase2
+  commit: 180de500e6740433b578e60e1585dc6e315f5191
+preflightFiles:
+  - backend/releasehub-application/src/main/java/io/releasehub/application/dashboard/DashboardAppService.java
+  - backend/releasehub-application/src/main/java/io/releasehub/application/version/VersionUpdateAppService.java
+designGoal: 验证围绕两个 Java 应用服务创建定向单元测试文件的 CREATE 能力
+verificationGoal: 两个测试文件必须由本轮创建，且 Maven 定向测试不能因历史遗留文件虚假通过
 expectedProtocolOperations:
   - CREATE

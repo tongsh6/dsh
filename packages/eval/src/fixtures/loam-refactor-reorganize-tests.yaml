@@ -1,0 +1,38 @@
+id: loam-refactor-reorganize-tests
+description: 将 dag-runner.test.ts 重命名为 distill-dag-runner.test.ts
+category: refactor
+taskPrompt: |
+  将 packages/distill/src/dag-runner.test.ts 重命名为 packages/distill/src/distill-dag-runner.test.ts，文件内容保持不变。
+
+  该文件约 370 行，是 DAG 运行器的测试文件。项目中通过 `find ... -name '*.test.ts'` 发现测试文件，
+  因此重命名不影响测试发现机制。
+
+  注意：
+  - 文件内容主体不变，只改文件名
+  - 保持 `.test.ts` 后缀
+  - 确保 `pnpm test` 通过（新名字的测试文件能被正确发现和执行）
+
+  相关文件：packages/distill/src/dag-runner.test.ts → packages/distill/src/distill-dag-runner.test.ts（重命名）
+expectedFiles:
+  - packages/distill/src/distill-dag-runner.test.ts
+expectPass: true
+verificationCommands:
+  - "test -f packages/distill/src/distill-dag-runner.test.ts"
+  - "! test -f packages/distill/src/dag-runner.test.ts"
+  - "git show HEAD:packages/distill/src/dag-runner.test.ts | cmp - packages/distill/src/distill-dag-runner.test.ts"
+  - "pnpm test"
+architectureRules:
+  - 文件内容保持不变
+  - 不修改任何源代码
+  - 保持 .test.ts 后缀
+maxRepairRounds: 2
+benchmarkRef:
+  repo: loamlog
+  branch: dsh-benchmark/loamlog-phase2
+  commit: 5e1d3ee57e853698beacd51f4d1a674f293c17d8
+preflightFiles:
+  - packages/distill/src/dag-runner.test.ts
+designGoal: 验证真实测试文件命名整理中的 RENAME 能力（370 行文件，RENAME 比 CREATE+DELETE 经济得多）
+verificationGoal: 新测试文件存在且内容与 HEAD 一致，旧文件不存在，pnpm test 通过
+expectedProtocolOperations:
+  - RENAME

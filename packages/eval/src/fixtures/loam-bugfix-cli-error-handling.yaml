@@ -33,5 +33,16 @@ architectureRules:
   - 保持现有测试通过
   - 不需要为错误处理增加新的依赖
 maxRepairRounds: 2
+benchmarkRef:
+  repo: loamlog
+  branch: dsh-benchmark/loamlog-phase2
+  commit: 5e1d3ee57e853698beacd51f4d1a674f293c17d8
+preflightFiles:
+  - packages/cli/src/capture.ts
+  - packages/cli/src/distill.ts
+  - packages/cli/src/daemon.ts
+designGoal: 验证多文件 CLI 错误处理修复能在已有分支上做精准局部替换
+verificationGoal: typecheck 和全量测试通过，证明错误处理修复未破坏 CLI/包级契约
 expectedProtocolOperations:
   - PATCH
+  - SEARCH_REPLACE

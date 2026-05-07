@@ -28,5 +28,13 @@ architectureRules:
   - 测试必须使用 JUnit 5 + Mockito + AssertJ
   - Mock RunPort 使用 Mockito
 maxRepairRounds: 2
+benchmarkRef:
+  repo: release-hub
+  branch: dsh-benchmark/release-hub-phase2
+  commit: 180de500e6740433b578e60e1585dc6e315f5191
+preflightFiles:
+  - backend/releasehub-application/src/main/java/io/releasehub/application/export/ExportAppService.java
+designGoal: 验证 Java 应用服务中局部 CSV bugfix 与新测试创建的复合能力
+verificationGoal: 定向 Maven 测试执行 ExportAppServiceTest，证明 CSV 转义和 null 安全行为正确
 expectedProtocolOperations:
   - PATCH

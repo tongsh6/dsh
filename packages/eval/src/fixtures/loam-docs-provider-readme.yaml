@@ -23,6 +23,17 @@ architectureRules:
   - 文档内容必须与 shared.ts 中的配置接口一致
   - 不修改任何源代码文件
   - 使用中文撰写
-maxRepairRounds: 1
+maxRepairRounds: 2
+benchmarkRef:
+  repo: loamlog
+  branch: dsh-benchmark/loamlog-phase2
+  commit: 5e1d3ee57e853698beacd51f4d1a674f293c17d8
+preflightFiles:
+  - packages/distill/src/providers/shared.ts
+  - packages/distill/src/providers/openai.ts
+  - packages/distill/src/providers/anthropic.ts
+  - packages/distill/src/providers/deepseek.ts
+designGoal: 验证基于真实 Provider 接口创建新文档文件的 CREATE 能力
+verificationGoal: docs/providers.md 必须由本轮创建，且任务不得修改源代码文件
 expectedProtocolOperations:
-  - PATCH
+  - CREATE

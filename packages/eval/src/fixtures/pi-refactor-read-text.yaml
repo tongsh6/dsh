@@ -23,6 +23,16 @@ architectureRules:
   - 不引入新的第三方依赖
   - file_io.py 只放 read_text，保持最小化
 maxRepairRounds: 2
+benchmarkRef:
+  repo: pi-proof-forge
+  branch: dsh-benchmark/pi-phase2
+  commit: d01d427be7d2999b4d17783b8982bb518c53ec9f
+preflightFiles:
+  - tools/extract_evidence.py
+  - tools/extract_evidence_llm.py
+  - tests/unit/domain/test_evidence_engines.py
+designGoal: 验证从两个真实工具模块抽取共享文件并更新 import 的 CREATE+PATCH 复合能力
+verificationGoal: 证据引擎单元测试通过，证明 read_text 行为和调用方兼容性保持不变
 expectedProtocolOperations:
   - CREATE
   - PATCH

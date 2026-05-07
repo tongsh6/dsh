@@ -1,0 +1,39 @@
+id: rh-mixed-remove-starter-ping-demo-frontend
+description: 移除前端 HelloWorld 组件及测试（Vue）
+category: refactor
+taskPrompt: |
+  移除 release-hub 前端的 starter/demo 组件：
+
+  1. 删除 `frontend/src/components/HelloWorld.vue`
+  2. 删除 `frontend/src/components/__tests__/HelloWorld.spec.ts`
+
+  这两个文件是 Vite 脚手架生成的 starter 组件，不再需要。
+  确认删除前先检查是否有其他 Vue 文件 import 了 HelloWorld，如有则清理引用。
+
+  确保前端 typecheck 通过：`cd frontend && pnpm typecheck`
+
+  相关文件：HelloWorld.vue, HelloWorld.spec.ts（删除）
+expectedFiles:
+  - frontend/src/components/HelloWorld.vue
+  - frontend/src/components/__tests__/HelloWorld.spec.ts
+expectPass: true
+verificationCommands:
+  - "! test -f frontend/src/components/HelloWorld.vue"
+  - "! test -f frontend/src/components/__tests__/HelloWorld.spec.ts"
+  - "(cd frontend && pnpm typecheck)"
+architectureRules:
+  - 只删除前端 Vue 文件
+  - 不修改业务组件
+  - 清理 import 引用（如有）
+maxRepairRounds: 2
+benchmarkRef:
+  repo: release-hub
+  branch: dsh-benchmark/release-hub-phase2
+  commit: 180de500e6740433b578e60e1585dc6e315f5191
+preflightFiles:
+  - frontend/src/components/HelloWorld.vue
+  - frontend/src/components/__tests__/HelloWorld.spec.ts
+designGoal: 移除前端 starter demo 组件（rh 混合对前端侧）
+verificationGoal: HelloWorld.vue 和 HelloWorld.spec.ts 物理不存在，pnpm typecheck 通过
+expectedProtocolOperations:
+  - DELETE

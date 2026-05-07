@@ -1,0 +1,104 @@
+{
+  "run_id": "260507-101350",
+  "started_at": "2026-05-07T02:13:50.543Z",
+  "completed_at": "2026-05-07T02:30:56.384Z",
+  "elapsed_seconds": 1026,
+  "dsh_commit": "35299c2",
+  "fixture_count": 6,
+  "fixtures": [
+    {
+      "id": "rh-mixed-dashboard-generated-at-backend",
+      "category": "feature",
+      "repo": "/Users/loong/dsh-bench/repos/release-hub",
+      "benchmark_ref": {
+        "repo": "release-hub",
+        "branch": "dsh-benchmark/release-hub-phase2",
+        "commit": "180de500e6740433b578e60e1585dc6e315f5191"
+      },
+      "preflight_files": [
+        "backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/dashboard/DashboardController.java",
+        "backend/releasehub-application/src/main/java/io/releasehub/application/dashboard/DashboardAppService.java"
+      ],
+      "design_goal": "Dashboard generatedAt 的 Java 后端实现（rh 混合对后端侧）",
+      "verification_goal": "DashboardController.java 含 generatedAt，Maven test 通过"
+    },
+    {
+      "id": "rh-mixed-dashboard-generated-at-frontend",
+      "category": "feature",
+      "repo": "/Users/loong/dsh-bench/repos/release-hub",
+      "benchmark_ref": {
+        "repo": "release-hub",
+        "branch": "dsh-benchmark/release-hub-phase2",
+        "commit": "180de500e6740433b578e60e1585dc6e315f5191"
+      },
+      "preflight_files": [
+        "frontend/src/api/dashboardApi.ts",
+        "frontend/src/views/dashboard/Dashboard.vue"
+      ],
+      "design_goal": "Dashboard generatedAt 的前端 TypeScript + Vue 实现（rh 混合对前端侧）",
+      "verification_goal": "dashboardApi.ts 和 Dashboard.vue 含 generatedAt，pnpm typecheck 通过"
+    },
+    {
+      "id": "rh-mixed-remove-starter-ping-demo-backend",
+      "category": "refactor",
+      "repo": "/Users/loong/dsh-bench/repos/release-hub",
+      "benchmark_ref": {
+        "repo": "release-hub",
+        "branch": "dsh-benchmark/release-hub-phase2",
+        "commit": "180de500e6740433b578e60e1585dc6e315f5191"
+      },
+      "preflight_files": [
+        "backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/rest/PingController.java",
+        "backend/releasehub-bootstrap/src/test/java/io/releasehub/bootstrap/api/PingApiTest.java"
+      ],
+      "design_goal": "移除后端 starter demo 文件（rh 混合对后端侧）",
+      "verification_goal": "PingController.java 和 PingApiTest.java 物理不存在，Maven test 通过"
+    },
+    {
+      "id": "rh-mixed-remove-starter-ping-demo-frontend",
+      "category": "refactor",
+      "repo": "/Users/loong/dsh-bench/repos/release-hub",
+      "benchmark_ref": {
+        "repo": "release-hub",
+        "branch": "dsh-benchmark/release-hub-phase2",
+        "commit": "180de500e6740433b578e60e1585dc6e315f5191"
+      },
+      "preflight_files": [
+        "frontend/src/components/HelloWorld.vue",
+        "frontend/src/components/__tests__/HelloWorld.spec.ts"
+      ],
+      "design_goal": "移除前端 starter demo 组件（rh 混合对前端侧）",
+      "verification_goal": "HelloWorld.vue 和 HelloWorld.spec.ts 物理不存在，pnpm typecheck 通过"
+    },
+    {
+      "id": "rh-mixed-rename-entity-dialog-frontend",
+      "category": "refactor",
+      "repo": "/Users/loong/dsh-bench/repos/release-hub",
+      "benchmark_ref": {
+        "repo": "release-hub",
+        "branch": "dsh-benchmark/release-hub-phase2",
+        "commit": "180de500e6740433b578e60e1585dc6e315f5191"
+      },
+      "preflight_files": [
+        "frontend/src/components/common/EntityDialog.vue"
+      ],
+      "design_goal": "EntityDialog 重命名 + import 更新（rh 混合对前端侧）",
+      "verification_goal": "CrudEntityDialog.vue 存在且 EntityDialog.vue 不存在，pnpm typecheck 通过"
+    },
+    {
+      "id": "rh-mixed-rename-settings-controller-backend",
+      "category": "refactor",
+      "repo": "/Users/loong/dsh-bench/repos/release-hub",
+      "benchmark_ref": {
+        "repo": "release-hub",
+        "branch": "dsh-benchmark/release-hub-phase2",
+        "commit": "180de500e6740433b578e60e1585dc6e315f5191"
+      },
+      "preflight_files": [
+        "backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SettingsController.java"
+      ],
+      "design_goal": "SettingsController 重命名（rh 混合对后端侧）",
+      "verification_goal": "SystemSettingsController.java 存在且 SettingsController.java 不存在，Maven test 通过"
+    }
+  ]
+}

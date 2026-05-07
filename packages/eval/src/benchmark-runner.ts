@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import type { DeepSeekClient } from "@dsh/provider";
@@ -33,6 +33,7 @@ export interface TaskResult {
   toolCalls: { name: string; status: string }[];
   patchRounds: number;
   patchRoundActions: { round: number; action: string; toolCalls?: { name: string; status: string }[] }[];
+  verifyOutput: { command: string }[];
 }
 
 // ---- Existing Functions ----
@@ -61,6 +62,7 @@ export function createEmptyResult(fixture: LoadedFixture): TaskResult {
     toolCalls: [],
     patchRounds: 0,
     patchRoundActions: [],
+    verifyOutput: [],
   };
 }
 
@@ -183,18 +185,108 @@ function gitQuiet(cwd: string, args: string): void {
   }
 }
 
-function prepareBranch(cwd: string, taskId: string): void {
-  const base = getBaseBranch(cwd);
-  const branchName = `dsh-bench-${taskId}`;
-  gitQuiet(cwd, `checkout ${base}`);
-  gitQuiet(cwd, `branch -D ${branchName}`);
-  gitQuiet(cwd, `checkout -b ${branchName}`);
+function gitQuietFile(cwd: string, args: string[]): void {
+  try {
+    execFileSync("git", args, {
+      cwd,
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 10_000,
+    });
+  } catch (e: unknown) {
+    const err = e as { message?: string };
+    throw new Error(
+      `git ${args.join(" ")} failed in ${cwd}: ${err?.message ?? String(e)}`,
+      { cause: e },
+    );
+  }
 }
 
-function resetToMain(cwd: string): void {
-  const base = getBaseBranch(cwd);
+export function cleanBenchmarkWorktree(cwd: string): void {
   gitQuiet(cwd, "reset --hard");
-  gitQuiet(cwd, `checkout ${base}`);
+  gitQuiet(cwd, "clean -fd");
+}
+
+export function normalizeVerificationCommands(commands: string[]): string[] {
+  return commands.map((cmd) => cmd.trim()).filter(Boolean);
+}
+
+function installFrontendDeps(cwd: string): void {
+  const pkgJson = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgJson)) return;
+  try {
+    execFileSync("pnpm", ["install", "--frozen-lockfile"], { cwd, stdio: "pipe", timeout: 120_000 });
+  } catch {
+    // non-fatal
+  }
+}
+
+function installBackendDeps(cwd: string): void {
+  const pomXml = path.join(cwd, "pom.xml");
+  if (!fs.existsSync(pomXml)) return;
+  try {
+    execFileSync("mvn", ["dependency:resolve", "-q"], { cwd, stdio: "pipe", timeout: 180_000 });
+  } catch {
+    // non-fatal
+  }
+}
+
+function installBenchmarkDeps(repoPath: string): void {
+  installFrontendDeps(path.join(repoPath, "frontend"));
+  installBackendDeps(path.join(repoPath, "backend"));
+}
+
+function resolveBenchmarkRunRef(cwd: string, fixture: Pick<LoadedFixture, "benchmarkRef">): string {
+  return fixture.benchmarkRef?.commit
+    ?? fixture.benchmarkRef?.branch
+    ?? getBaseBranch(cwd);
+}
+
+function resolveBenchmarkReturnRef(cwd: string, fixture: Pick<LoadedFixture, "benchmarkRef">): string {
+  return fixture.benchmarkRef?.branch
+    ?? fixture.benchmarkRef?.commit
+    ?? getBaseBranch(cwd);
+}
+
+function assertPreflightFiles(cwd: string, fixture: Pick<LoadedFixture, "id" | "preflightFiles">): void {
+  const missing: string[] = [];
+  for (const file of fixture.preflightFiles ?? []) {
+    try {
+      execFileSync("git", ["ls-files", "--error-unmatch", "--", file], {
+        cwd,
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 5_000,
+      });
+    } catch {
+      missing.push(file);
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `fixture ${fixture.id} preflight failed: tracked file(s) missing from benchmark base: ${missing.join(", ")}`,
+    );
+  }
+}
+
+export function prepareBenchmarkBranch(
+  cwd: string,
+  fixture: Pick<LoadedFixture, "id" | "benchmarkRef" | "preflightFiles">,
+): void {
+  const base = resolveBenchmarkRunRef(cwd, fixture);
+  const branchName = `dsh-bench-${fixture.id}`;
+  cleanBenchmarkWorktree(cwd);
+  gitQuietFile(cwd, ["checkout", base]);
+  cleanBenchmarkWorktree(cwd);
+  assertPreflightFiles(cwd, fixture);
+  gitQuiet(cwd, `branch -D ${branchName}`);
+  gitQuietFile(cwd, ["checkout", "-b", branchName]);
+  cleanBenchmarkWorktree(cwd);
+}
+
+function resetToBenchmarkBase(cwd: string, fixture: Pick<LoadedFixture, "benchmarkRef">): void {
+  const base = resolveBenchmarkReturnRef(cwd, fixture);
+  cleanBenchmarkWorktree(cwd);
+  gitQuietFile(cwd, ["checkout", base]);
+  cleanBenchmarkWorktree(cwd);
 }
 
 // ---- Benchmark execution ----
@@ -212,7 +304,10 @@ export async function runTask(
 
   try {
     // 1. Git prepare
-    prepareBranch(repoPath, fixture.id);
+    prepareBenchmarkBranch(repoPath, fixture);
+
+    // 1b. Install deps so verify commands (pnpm typecheck / mvn test) work
+    installBenchmarkDeps(repoPath);
 
     // 2. Clean stale state from previous runs + setup
     const dshDir = path.join(repoPath, ".dsh");
@@ -228,7 +323,8 @@ export async function runTask(
         package_manager: stack.packageManager ?? "unknown",
       },
       verify: {
-        test: fixture.verificationCommands[0] ?? "",
+        commands: normalizeVerificationCommands(fixture.verificationCommands),
+        test: "",
         lint: "",
         typecheck: "",
       },
@@ -288,6 +384,12 @@ export async function runTask(
     if (fixture.verificationCommands.length > 0) {
       try {
         state = await runVerify({ cwd: repoPath });
+        // Capture verify output for diagnosis
+        result.verifyOutput = (state.verify_results ?? []).map((vr) => ({
+          command: (vr.results as Array<{ status: string; command: string; output: string }> | undefined)
+            ?.map((r) => `${r.status}: ${r.command}\n${r.output?.slice(0, 500)}`)
+            .join("\n") ?? "",
+        }));
 
         if (state.status === "verification_failed") {
           // 6. Repair
@@ -370,7 +472,7 @@ export async function runTask(
       }
     }
   } finally {
-    resetToMain(repoPath);
+    resetToBenchmarkBase(repoPath, fixture);
   }
 
   result.repairRounds = repairRounds;
@@ -584,6 +686,11 @@ export function formatEvaluationReport(results: TaskResult[]): string {
           .map(([name, count]) => `${name}(${count})`)
           .join(", ");
         lines.push(`| 工具详情 | ${detail} (${totalCalls > 0 ? ((toolSuccess / totalCalls) * 100).toFixed(0) : 0}% 成功) |`);
+      }
+    }
+    if (r.verifyOutput?.length > 0) {
+      for (const vo of r.verifyOutput) {
+        if (vo.command) lines.push(`| 验证输出 | ${vo.command.replace(/\n/g, "\\n").slice(0, 300)} |`);
       }
     }
     lines.push(`| 耗时 | ${(r.durationMs / 1000).toFixed(1)}s |`);

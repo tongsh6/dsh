@@ -1,0 +1,35 @@
+id: rh-mixed-rename-entity-dialog-frontend
+description: EntityDialog 重命名为 CrudEntityDialog 并更新 import（Vue）
+category: refactor
+taskPrompt: |
+  将 `frontend/src/components/common/EntityDialog.vue` 重命名为
+  `frontend/src/components/common/CrudEntityDialog.vue`，内容保持不变（约 101 行）。
+
+  搜索并更新所有 import 了 EntityDialog 的 Vue 文件（views 目录下），将 import 路径改为 CrudEntityDialog。
+  EntityDialog 是一个通用 CRUD 弹窗组件，命名改为 CrudEntityDialog 更精确。
+
+  确保前端 typecheck 通过：`cd frontend && pnpm typecheck`
+
+  相关文件：EntityDialog.vue → CrudEntityDialog.vue（重命名），views 中引用更新
+expectedFiles:
+  - frontend/src/components/common/CrudEntityDialog.vue
+expectPass: true
+verificationCommands:
+  - "test -f frontend/src/components/common/CrudEntityDialog.vue"
+  - "! test -f frontend/src/components/common/EntityDialog.vue"
+  - "(cd frontend && pnpm typecheck)"
+architectureRules:
+  - 文件内容主体不变
+  - 只改前端，不改后端
+  - 必须更新所有 import 引用
+maxRepairRounds: 2
+benchmarkRef:
+  repo: release-hub
+  branch: dsh-benchmark/release-hub-phase2
+  commit: 180de500e6740433b578e60e1585dc6e315f5191
+preflightFiles:
+  - frontend/src/components/common/EntityDialog.vue
+designGoal: EntityDialog 重命名 + import 更新（rh 混合对前端侧）
+verificationGoal: CrudEntityDialog.vue 存在且 EntityDialog.vue 不存在，pnpm typecheck 通过
+expectedProtocolOperations:
+  - RENAME

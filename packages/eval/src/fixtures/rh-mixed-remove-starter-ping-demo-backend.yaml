@@ -1,0 +1,38 @@
+id: rh-mixed-remove-starter-ping-demo-backend
+description: 移除后端 PingController 和 PingApiTest（Java）
+category: refactor
+taskPrompt: |
+  移除 release-hub 后端的 starter/demo 代码：
+
+  1. 删除 `backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/rest/PingController.java`
+  2. 删除 `backend/releasehub-bootstrap/src/test/java/io/releasehub/bootstrap/api/PingApiTest.java`
+
+  这两个文件是项目初始化时的 starter/demo 代码，不再需要。
+  确认删除前先检查是否有其他代码引用 PingController。
+
+  确保删除后 Maven 测试通过：`mvn test -pl releasehub-interfaces,releasehub-bootstrap -am -q`
+
+  相关文件：PingController.java, PingApiTest.java（删除）
+expectedFiles:
+  - backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/rest/PingController.java
+  - backend/releasehub-bootstrap/src/test/java/io/releasehub/bootstrap/api/PingApiTest.java
+expectPass: true
+verificationCommands:
+  - "! test -f backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/rest/PingController.java"
+  - "! test -f backend/releasehub-bootstrap/src/test/java/io/releasehub/bootstrap/api/PingApiTest.java"
+  - "(cd backend && mvn test -pl releasehub-interfaces,releasehub-bootstrap -am -q)"
+architectureRules:
+  - 只删除后端 Java 文件
+  - 不修改业务代码
+maxRepairRounds: 2
+benchmarkRef:
+  repo: release-hub
+  branch: dsh-benchmark/release-hub-phase2
+  commit: 180de500e6740433b578e60e1585dc6e315f5191
+preflightFiles:
+  - backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/rest/PingController.java
+  - backend/releasehub-bootstrap/src/test/java/io/releasehub/bootstrap/api/PingApiTest.java
+designGoal: 移除后端 starter demo 文件（rh 混合对后端侧）
+verificationGoal: PingController.java 和 PingApiTest.java 物理不存在，Maven test 通过
+expectedProtocolOperations:
+  - DELETE

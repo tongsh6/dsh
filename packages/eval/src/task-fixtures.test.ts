@@ -30,6 +30,14 @@ describe("loadFixture", () => {
         "architectureRules:",
         "  - No console.log in production code",
         "maxRepairRounds: 2",
+        "benchmarkRef:",
+        "  repo: loamlog",
+        "  branch: dsh-benchmark/loamlog-phase2",
+        "  commit: 1234567890abcdef1234567890abcdef12345678",
+        "preflightFiles:",
+        "  - packages/distill/src/state.ts",
+        "designGoal: Validate SEARCH_REPLACE on existing local error handling branches",
+        "verificationGoal: Typecheck and focused unit tests prove behavior",
         "expectedProtocolOperations:",
         "  - PATCH",
       ].join("\n"),
@@ -56,6 +64,20 @@ describe("loadFixture", () => {
       "No console.log in production code",
     ]);
     assert.equal(fixture.maxRepairRounds, 2);
+    assert.deepEqual(fixture.benchmarkRef, {
+      repo: "loamlog",
+      branch: "dsh-benchmark/loamlog-phase2",
+      commit: "1234567890abcdef1234567890abcdef12345678",
+    });
+    assert.deepEqual(fixture.preflightFiles, ["packages/distill/src/state.ts"]);
+    assert.equal(
+      fixture.designGoal,
+      "Validate SEARCH_REPLACE on existing local error handling branches",
+    );
+    assert.equal(
+      fixture.verificationGoal,
+      "Typecheck and focused unit tests prove behavior",
+    );
     assert.ok(fixture.filePath.endsWith("test-bugfix.yaml"));
   });
 

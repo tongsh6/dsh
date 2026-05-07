@@ -40,6 +40,16 @@ architectureRules:
   - 不能依赖 Infrastructure、Interfaces 或 Bootstrap
   - 使用构造器注入，不使用字段注入
 maxRepairRounds: 2
+benchmarkRef:
+  repo: release-hub
+  branch: dsh-benchmark/release-hub-phase2
+  commit: 180de500e6740433b578e60e1585dc6e315f5191
+preflightFiles:
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/CodeMergeService.java
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/ReleaseBranchService.java
+  - backend/releasehub-application/src/main/java/io/releasehub/application/window/AttachAppService.java
+designGoal: 验证 Java 多服务重构中新增 orchestrator 并替换重复分支操作逻辑的 CREATE+PATCH 能力
+verificationGoal: releasehub-application Maven 测试通过，证明应用层依赖边界和现有服务行为未被破坏
 expectedProtocolOperations:
   - CREATE
   - PATCH

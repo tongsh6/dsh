@@ -1,0 +1,15 @@
+{
+  "run_id": "260506-205009",
+  "started_at": "2026-05-06T12:50:09.550Z",
+  "completed_at": "2026-05-06T12:56:58.068Z",
+  "elapsed_seconds": 409,
+  "dsh_commit": "35299c2",
+  "fixture_count": 1,
+  "fixtures": [
+    {
+      "id": "loam-docs-provider-readme",
+      "category": "docs",
+      "repo": "/Users/loong/dsh-bench/repos/loamlog"
+    }
+  ]
+}

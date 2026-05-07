@@ -1,0 +1,42 @@
+id: pi-docs-prune-stale-report-reference
+description: 删除过期 matching report 并在 README 中说明 matching report 不再随仓库保存
+category: refactor
+taskPrompt: |
+  执行以下两个操作：
+
+  1. 删除过期 matching report `matching_reports/mr-20260228000000.yaml`。
+     该文件是一个较旧的样例报告，不再需要作为固定样例保留在仓库中。
+     确认删除前先检查该文件是否被任何 Python import 引用。
+
+  2. 在 `README.md` 的 pipeline 示例章节附近追加一句说明：
+     "示例输入仍使用 `tools/sample_raw.txt`，matching report 不再随仓库保存为固定样例。"
+     使用与 README 现有风格一致的中文表述。
+
+  确保删除和文档更新不破坏现有功能：`python3 -m pytest tests/` 全量通过。
+
+  相关文件：matching_reports/mr-20260228000000.yaml（删除），README.md（追加说明）
+expectedFiles:
+  - matching_reports/mr-20260228000000.yaml
+  - README.md
+expectPass: true
+verificationCommands:
+  - "! test -f matching_reports/mr-20260228000000.yaml"
+  - "grep -q 'matching report 不再随仓库保存为固定样例' README.md"
+  - "python3 -m pytest tests/ -q"
+architectureRules:
+  - 不修改 Python 源代码
+  - README 修改限定在示例说明附近
+maxRepairRounds: 2
+benchmarkRef:
+  repo: pi-proof-forge
+  branch: dsh-benchmark/pi-phase2
+  commit: d01d427be7d2999b4d17783b8982bb518c53ec9f
+preflightFiles:
+  - matching_reports/mr-20260228000000.yaml
+  - README.md
+  - tools/sample_raw.txt
+designGoal: 验证 cleanup 任务中的"删除旧产物 + 更新文档引用"组合，同时覆盖 DELETE 和 INSERT
+verificationGoal: matching_reports/mr-20260228000000.yaml 物理不存在，README 含追加说明，pytest 全量通过
+expectedProtocolOperations:
+  - DELETE
+  - INSERT

@@ -15,6 +15,18 @@ export const PROTOCOL_OP_SCHEMA = z.enum([
   "RENAME",
 ]);
 
+export const BENCHMARK_REPO_SCHEMA = z.enum([
+  "loamlog",
+  "pi-proof-forge",
+  "release-hub",
+]);
+
+export const BENCHMARK_REF_SCHEMA = z.object({
+  repo: BENCHMARK_REPO_SCHEMA.optional(),
+  branch: z.string().min(1).optional(),
+  commit: z.string().min(7).optional(),
+});
+
 export const TASK_FIXTURE_SCHEMA = z.object({
   id: z.string(),
   description: z.string(),
@@ -26,6 +38,10 @@ export const TASK_FIXTURE_SCHEMA = z.object({
   architectureRules: z.array(z.string()).default([]),
   maxRepairRounds: z.number().optional(),
   repoPath: z.string().optional(),
+  benchmarkRef: BENCHMARK_REF_SCHEMA.optional(),
+  preflightFiles: z.array(z.string()).default([]),
+  designGoal: z.string().optional(),
+  verificationGoal: z.string().optional(),
   expectedProtocolOperations: z.array(PROTOCOL_OP_SCHEMA).min(1,
     "expectedProtocolOperations is required — must list at least one protocol operation"),
 });
@@ -41,6 +57,10 @@ export interface TaskFixture extends z.infer<typeof TASK_FIXTURE_SCHEMA> {
   architectureRules: string[];
   maxRepairRounds?: number;
   repoPath?: string;
+  benchmarkRef?: z.infer<typeof BENCHMARK_REF_SCHEMA>;
+  preflightFiles: string[];
+  designGoal?: string;
+  verificationGoal?: string;
   expectedProtocolOperations: ProtocolOp[];
 }
 
@@ -64,6 +84,10 @@ export function loadFixture(filePath: string): LoadedFixture {
       architectureRules: validated.architectureRules,
       maxRepairRounds: validated.maxRepairRounds,
       repoPath: validated.repoPath,
+      benchmarkRef: validated.benchmarkRef,
+      preflightFiles: validated.preflightFiles,
+      designGoal: validated.designGoal,
+      verificationGoal: validated.verificationGoal,
       expectedProtocolOperations: validated.expectedProtocolOperations,
       filePath,
     };

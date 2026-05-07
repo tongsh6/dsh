@@ -24,5 +24,13 @@ architectureRules:
   - 使用 node:test + node:assert/strict（与项目现有测试一致）
   - 测试命名：describe + it，描述清晰
 maxRepairRounds: 2
+benchmarkRef:
+  repo: loamlog
+  branch: dsh-benchmark/loamlog-phase2
+  commit: 5e1d3ee57e853698beacd51f4d1a674f293c17d8
+preflightFiles:
+  - packages/distill/src/state.ts
+designGoal: 验证围绕现有状态管理模块创建同目录单元测试文件的 CREATE 能力
+verificationGoal: distill 包测试通过，证明新增 state 测试覆盖初始化、更新、重置等行为
 expectedProtocolOperations:
   - CREATE

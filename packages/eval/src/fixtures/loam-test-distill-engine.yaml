@@ -25,5 +25,13 @@ architectureRules:
   - 使用 node:test + node:assert/strict
   - Mock LLM Provider 和 Sink，不发起真实网络请求
 maxRepairRounds: 2
+benchmarkRef:
+  repo: loamlog
+  branch: dsh-benchmark/loamlog-phase2
+  commit: 5e1d3ee57e853698beacd51f4d1a674f293c17d8
+preflightFiles:
+  - packages/distill/src/engine.ts
+designGoal: 验证根据复杂核心模块创建同目录单元测试文件的 CREATE 能力
+verificationGoal: distill 包测试通过，证明新增 engine 测试可执行且不依赖真实外部 Provider
 expectedProtocolOperations:
   - CREATE

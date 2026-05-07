@@ -28,5 +28,16 @@ architectureRules:
   - 新增章节放在 "CI 校验" 之前
   - 不修改其他工具的文档
 maxRepairRounds: 2
+benchmarkRef:
+  repo: pi-proof-forge
+  branch: dsh-benchmark/pi-phase2
+  commit: d01d427be7d2999b4d17783b8982bb518c53ec9f
+preflightFiles:
+  - tools/README.md
+  - tools/check_v2_constraints.py
+  - tools/check_submission_readiness.py
+designGoal: 验证在长 README 的指定章节前插入新工具说明的 INSERT 能力
+verificationGoal: 架构检查脚本通过，且新增文档保持 tools/README.md 现有结构与命令约定
 expectedProtocolOperations:
   - PATCH
+  - INSERT

@@ -1,0 +1,37 @@
+id: rh-mixed-dashboard-generated-at-frontend
+description: Dashboard 前端展示 generatedAt（TypeScript + Vue）
+category: feature
+taskPrompt: |
+  为 Dashboard 前端增加 `generatedAt` 字段的展示。
+
+  1. 在 `frontend/src/api/dashboardApi.ts` 的 DashboardStats 接口中增加 `generatedAt: string`
+  2. 在 `frontend/src/views/dashboard/Dashboard.vue` 的 stats cards 区域下方显示"更新时间: {{ stats.generatedAt }}"
+  3. 确保前端 typecheck 通过：`cd frontend && pnpm typecheck`
+
+  不需要修改后端 Java 代码。只是前端接口和展示层的变更。
+
+  相关文件：dashboardApi.ts, Dashboard.vue（局部修改）
+expectedFiles:
+  - frontend/src/api/dashboardApi.ts
+  - frontend/src/views/dashboard/Dashboard.vue
+expectPass: true
+verificationCommands:
+  - "grep -q 'generatedAt' frontend/src/api/dashboardApi.ts"
+  - "grep -q 'generatedAt' frontend/src/views/dashboard/Dashboard.vue"
+  - "(cd frontend && pnpm typecheck)"
+architectureRules:
+  - 只改前端，不改后端 Java
+  - generatedAt 使用 ISO 8601 格式（string 类型）
+maxRepairRounds: 2
+benchmarkRef:
+  repo: release-hub
+  branch: dsh-benchmark/release-hub-phase2
+  commit: 180de500e6740433b578e60e1585dc6e315f5191
+preflightFiles:
+  - frontend/src/api/dashboardApi.ts
+  - frontend/src/views/dashboard/Dashboard.vue
+designGoal: Dashboard generatedAt 的前端 TypeScript + Vue 实现（rh 混合对前端侧）
+verificationGoal: dashboardApi.ts 和 Dashboard.vue 含 generatedAt，pnpm typecheck 通过
+expectedProtocolOperations:
+  - PATCH
+  - INSERT

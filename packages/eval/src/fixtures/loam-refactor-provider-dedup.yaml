@@ -43,6 +43,17 @@ architectureRules:
   - 已有的 Provider 测试必须继续通过
   - 只提取真正重复的逻辑，不做过度抽象
 maxRepairRounds: 2
+benchmarkRef:
+  repo: loamlog
+  branch: dsh-benchmark/loamlog-phase2
+  commit: 5e1d3ee57e853698beacd51f4d1a674f293c17d8
+preflightFiles:
+  - packages/distill/src/providers/shared.ts
+  - packages/distill/src/providers/openai.ts
+  - packages/distill/src/providers/deepseek.ts
+  - packages/distill/src/providers/anthropic.ts
+designGoal: 验证真实多文件 Provider 重构中新增共享函数并改造多个实现的复合能力
+verificationGoal: distill 包测试和 workspace typecheck 证明公共抽取保持对外接口兼容
 expectedProtocolOperations:
   - CREATE
   - PATCH

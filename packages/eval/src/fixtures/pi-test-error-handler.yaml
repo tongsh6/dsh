@@ -24,5 +24,16 @@ architectureRules:
   - 不要引入 pytest 特有装饰器
   - import PolicyError 和 FabricationGuardError 从 tools.errors.exceptions
 maxRepairRounds: 2
+benchmarkRef:
+  repo: pi-proof-forge
+  branch: dsh-benchmark/pi-phase2
+  commit: d01d427be7d2999b4d17783b8982bb518c53ec9f
+preflightFiles:
+  - tests/unit/domain/test_error_handler.py
+  - tools/errors/handler.py
+  - tools/errors/exceptions.py
+designGoal: 验证在现有测试类中补充相邻测试分支的 PATCH/SEARCH_REPLACE 能力
+verificationGoal: error_handler 定向 pytest 通过，证明 PolicyError 和 FabricationGuardError 均路由到 terminate_run
 expectedProtocolOperations:
   - PATCH
+  - SEARCH_REPLACE

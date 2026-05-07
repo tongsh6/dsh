@@ -28,5 +28,13 @@ architectureRules:
   - 不引入 pytest 特有装饰器
   - 测试函数命名：test_check_exists_* / test_check_contains_* / test_check_min_files_*
 maxRepairRounds: 3
+benchmarkRef:
+  repo: pi-proof-forge
+  branch: dsh-benchmark/pi-phase2
+  commit: d01d427be7d2999b4d17783b8982bb518c53ec9f
+preflightFiles:
+  - tools/check_aief_l3.py
+designGoal: 验证基于现有 Python 工具函数创建完整单元测试文件的 CREATE 能力
+verificationGoal: 新增 test_check_aief_l3.py 可被 pytest 独立执行并覆盖三个核心函数
 expectedProtocolOperations:
   - CREATE

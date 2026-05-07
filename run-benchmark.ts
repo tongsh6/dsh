@@ -41,15 +41,23 @@ if (!isCi) {
   console.log();
 }
 
-// Map fixture prefix to repo path
+// Map fixture metadata/prefix to repo path. benchmarkRef.repo is preferred
+// for controlled suites; prefixes are kept for legacy fixtures.
+const REPO_NAME_MAP: Record<string, string> = {
+  "pi-proof-forge": path.join(REPOS_DIR, "pi-proof-forge"),
+  loamlog: path.join(REPOS_DIR, "loamlog"),
+  "release-hub": path.join(REPOS_DIR, "release-hub"),
+};
+
 const REPO_PREFIX_MAP: Record<string, string> = {
-  "pi-": path.join(REPOS_DIR, "pi-proof-forge"),
-  "loam-": path.join(REPOS_DIR, "loamlog"),
-  "rh-": path.join(REPOS_DIR, "release-hub"),
+  "pi-": REPO_NAME_MAP["pi-proof-forge"],
+  "loam-": REPO_NAME_MAP["loamlog"],
+  "rh-": REPO_NAME_MAP["release-hub"],
 };
 
 function resolveRepoPath(fixture: typeof benchFixtures[0]): string {
   if (fixture.repoPath) return fixture.repoPath;
+  if (fixture.benchmarkRef?.repo) return REPO_NAME_MAP[fixture.benchmarkRef.repo];
   for (const [prefix, repoPath] of Object.entries(REPO_PREFIX_MAP)) {
     if (fixture.id.startsWith(prefix)) return repoPath;
   }
@@ -124,6 +132,10 @@ const metadata = {
     id: f.id,
     category: f.category,
     repo: resolveRepoPath(f),
+    benchmark_ref: f.benchmarkRef ?? null,
+    preflight_files: f.preflightFiles,
+    design_goal: f.designGoal ?? null,
+    verification_goal: f.verificationGoal ?? null,
   })),
 };
 
