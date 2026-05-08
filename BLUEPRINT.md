@@ -138,6 +138,36 @@ Phase 1 (当前)              Phase 2                     Phase 3
   可跑，数据少             可对比，覆盖广                 可量化，持续监控
 ```
 
+### 2.6 项目识别 — 从结论型推断到证据驱动决策
+
+```
+Phase 1 (止血)              Phase 2 (模型)              Phase 3 (替换)
+┌─────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
+│ 消除危险默认推断   │    │ Fact → Candidate     │    │ 完整决策管道          │
+│ • 弱推断不再伪装    │ →  │   → Decision 模型    │ →  │ • verify 从 Capability│
+│   成事实          │    │ • 安全 Probe 框架     │    │   推导而非 language   │
+│ • 引入最小的       │    │ • Project Card       │    │   → command 硬映射    │
+│   Intelligence   │    │   给 LLM 使用         │    │ • scanner 内部改为    │
+│   模型           │    │ • doctor 命令         │    │   Intelligence 驱动  │
+│ • 3 个已知 bug    │    │ • 候选置信度决策       │    │ • .dsh/project.yml   │
+│   立即修复        │    │ • capabilities 推导   │    │   人工确认层          │
+└─────────────────┘    └─────────────────────┘    └─────────────────────┘
+ 「确定」vs「不确定」      「不确定 → 候选 + 探测」         Intelligence 是项目
+ 不再是一刀切                                   事实的单一真相源
+```
+
+**核心理念**：DSH 不应把弱推断伪装成事实；但必须把弱推断转化为候选、探测和建议。
+
+当前 `scanner.ts` 的 `detectTechStack` + `detectVerifyCommands` 存在一类系统性缺陷：**把关联关系当成等价关系**。看到 `.java` 文件 → 推断 Maven；看到 `.py` 文件 → 推断 pip；packageManager 为 null 时 verify 命令默认 Maven。这些不是"识别"，而是"猜测并假装确定"。
+
+**Phase 1 目标（当前立即执行）**：消除 3 个已知危险默认推断；引入最小的 `ProjectIntelligence` 抽象（Fact / Candidate / Decision / Capability 四模型），通过 `toLegacyTechStack` 投影兼容现有调用链路。新增 `toProjectCard` 给 LLM 注入"已知 / 未知 / 禁止推断"的结构化上下文。
+
+**Phase 2 目标**：完整 Fact 收集器（文件系统 + 构建描述符 + wrapper 脚本 + 源码语法版本推断）；Candidate 生成器实现多候选排序 + 置信度计算；`dsh doctor` 命令输出候选判断和能力状态；`.dsh/project.yml` 人工确认层。
+
+**Phase 3 目标**：`detectVerifyCommands` 退役，verify plan 从 `ProjectCapability` 推导；scanner 内部改为 `assembleIntelligence` 驱动；LLM context 统一使用 Project Card。
+
+**与主阶段的关系**：本维度是横切关注点——Phase 1 止血与 Phase 3（工具化）并行推进，Phase 2 与 Phase 4（Agent Loop）重叠。它不是独立的 Phase 8，而是对现有 scanner/verify/context 三个模块的渐进式加固。
+
 ---
 
 ## 3. 阶段划分与优先级逻辑
