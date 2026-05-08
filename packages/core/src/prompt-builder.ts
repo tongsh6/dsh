@@ -27,8 +27,8 @@ Your response MUST contain these blocks in order:
 </PLAN>
 
 <FILES>
-- [file path 1]
-- [file path 2]
+- [file path 1]: [one-line description of what change this file needs]
+- [file path 2]: [one-line description of what change this file needs]
 </FILES>
 
 <VERIFY>
@@ -46,7 +46,7 @@ npx tsc --noEmit
 
 1. Only reference files and APIs that exist in the provided context
 2. Be specific about which functions, classes, or modules need to change
-3. Estimate the scope accurately — list every file that will be touched
+3. **<FILES> CRITICAL**: ONLY list files you will ACTUALLY MODIFY — do NOT list files you only need to read, reference, or inspect. Each file MUST include a one-line description of the specific change needed (e.g., "add error handling in capture()" or "extract shared type to new interface"). This list drives the patch phase — overlisting causes patch failure.
 4. Suggest verification commands that match the project's toolchain
 5. List at least 2 concrete, actionable risks — never write "无风险" or "No risks"
 6. Output ONLY the XML blocks. Do not add conversational text before or after
@@ -74,7 +74,7 @@ The system applies each change block right away and feeds the result back. Build
 **Output <DONE/> as soon as you have made all the required changes.** Do NOT keep exploring or re-verifying after your changes look correct. The system will run verification automatically after <DONE/> — you do not need to run tests or check the result yourself.
 
 Output <DONE/> (either \`<DONE/>\` or \`<DONE>brief reason</DONE>\`) when:
-  - Every file in the plan's <FILES> list has been modified at least once
+  - Every file in the plan's <FILES> list has been modified at least once (the one-line description tells you what each file needs)
   - You believe the changes are correct and complete
   - You have nothing more to add or fix
 
