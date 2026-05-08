@@ -1,6 +1,6 @@
 # DSH 项目事实台账
 
-> 状态: active | 最后更新: 2026-05-08
+> 状态: active | 最后更新: 2026-05-09
 >
 > 任何新会话 AI 或新人进入项目后，**请先阅读本文件**，以便快速恢复项目状态基线。
 
@@ -21,10 +21,13 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 - [x] 跨工具对比（DSH vs OpenCode，13 fixture 对比完成）
 - [x] 长期跟踪事项复审（v1 21 条 + v2 25 条，两轮复审完成）
 
-### Phase 3 起点（待 Phase 3 spec 起草）
-- baseline: testsPassed 11/24 (45%)；目标 testsPassed >60%
-- ready 议题：`verify-protocol-structured`（议题 B）
-- waiting 议题：`fixture-false-positive-audit`、`plan-files-overlist`、模型 Java 代码质量改进（议题 C，未起草）
+### Phase 3 起点
+- baseline（原始）: testsPassed 11/24 (45%) — `260508-003359`
+- baseline（议题 B P6 修正后）: testsPassed 8/24 (33%) — `260508-223235`（1 实现 bug 已修 + 7 采样变异）
+- 目标: testsPassed >60%
+- 议题 B（`verify-protocol-structured`）：✅ P1-P6 已实施完成（2026-05-09），结构化断言已上线，5 fixture 迁移试点
+- ready 议题：`fixture-false-positive-audit`（P1）、`plan-files-overlist`（P2）
+- waiting 议题：模型 Java 代码质量改进（议题 C，未起草）
 
 ## 2. 已完成事项
 
@@ -58,8 +61,8 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 
 | 事项 | 当前状态 | 阻塞点 | 下一步 |
 |------|---------|--------|--------|
-| 工具采纳率修复 | 已实现，待 benchmark 验证（commit `da7c554`） | 需要一次 ≥1 fixture 的 benchmark 跑出非空 `tool_rounds` | 跑 `pnpm exec tsx run-benchmark.ts --filter=loam-` 与 260504-140432 对照 |
-| 修复循环成功率提升 | 待验证 | 依赖工具采纳率修复 benchmark 数据 | 上一项验证后用数据驱动 |
+| 工具采纳率修复 | ✅ 已验证（commit `da7c554` → `1d68e75` → `b6e59ce`，3 次 benchmark 确认 tool_rounds 非空） | — | 无后续动作 |
+| 修复循环成功率提升 | 🔧 诊断中 → 已做定向修复 | 议题 B P6 全量数据：repair 0/17 (0%) → 单 fixture 验证：覆盖率改善（1/3→2/3, 2/5→3/5），但 repairSuccess 仍为 0 | 下一步：全量 benchmark 验证联合效果（需 ≥10 fixture） |
 | Controlled Benchmark Suite | 本地 `dsh-benchmark/*-phase2` 分支已创建；13 个 loam/pi/rh fixture 已回填固定 commit metadata | 尚未推送 benchmark 分支；rh Java+Vue 混合新增 fixtures 仍待实现 | 基线：loamlog `5e1d3ee57e853698beacd51f4d1a674f293c17d8`，pi `d01d427be7d2999b4d17783b8982bb518c53ec9f`，release-hub `180de500e6740433b578e60e1585dc6e315f5191` |
 
 ## 5. 已废弃事项
@@ -72,9 +75,9 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|---------|
-| P0 | 跑 benchmark 验证工具采纳率修复（da7c554） | 代码已落地，行为数据缺失，最新报告 260504-140432 跑在修复前 commit `c86e790` 上 | 新 run 的 `metadata.json.dsh_commit` 为 `da7c554` 或之后；至少 1 fixture 的 task-state 含非空 `tool_rounds` |
-| P1 | Controlled 多仓库/多语言全量 benchmark | Phase 2 退出条件 5 项依赖；loamlog/pi/release-hub 是 live 项目，严格退出必须固定基线 | 所有 Phase 2 fixture 声明 `benchmarkRef.commit`，单 run ≥10 fixture，3 仓库各 ≥3 fixture 通过，完成率 >60% |
-| P2 | 修复循环成功率提升 | 当前 0/2，目标 ≥33% | 上述 benchmark 中 repairSuccess 数据 |
+| P0 | 修复循环成功率突破 0% | 议题 B P6 全量数据：repair 0/17 (0%)；若不突破，Phase 3 testsPassed 60% 目标不可达 | ≥1 fixture 的 repair 成功率 > 0；至少 1 个 fixture 因 repair 从 ✗→✓ |
+| P1 | fixture-false-positive-audit | 已确认 ≥2 个 false-positive（pi-refactor-read-text、rh-test-dashboard-version），其余 11 个旧 fixture 待审计；数据可信度受污染 | 13 旧 fixture 全量审计完成 + false-positive 修正 + testsPassed baseline 更新 |
+| P2 | plan-files-overlist 修补 | pi-test-aief-l3 暴露 plan 多列文件→done 反复 reject；议题 B 实施中确认副作用仍存在 | ✅ 已实施：plan prompt `<FILES>` 格式升级（每个文件 + 改动描述）+ 规则 3 强化"仅列需修改文件"；待 benchmark 验证 |
 
 ## 7. 关键证据索引
 

@@ -81,5 +81,6 @@ pnpm run scan         # 全量质量门禁（lint + typecheck + test）
 ## 当前状态
 
 - **版本:** 0.1.0（活跃开发中）
-- **阶段:** Phase 2（工具化 + 评测体系）
-- **新特性:** 工具调用系统已就绪（read_file / grep_files / exec_shell），模型可以在生成 patch 前主动探索代码库
+- **阶段:** Phase 3（工具化 — 质量爬坡）
+- **当前基线:** testsPassed 8/24 (33% 修正后)，目标 >60%
+- **最新特性:** Verify 协议结构化（议题 B）已上线；Project Intelligence Engine Phase 1 已落地
