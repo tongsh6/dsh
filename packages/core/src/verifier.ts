@@ -43,7 +43,8 @@ function readFileForAssertion(absPath: string): { ok: true; content: string } | 
 function patternMatches(content: string, pattern: string, regex: boolean | undefined): boolean {
   if (regex) {
     try {
-      return new RegExp(pattern).test(content);
+      // m flag: ^ and $ match start/end of each line (matching grep BRE behavior)
+      return new RegExp(pattern, "m").test(content);
     } catch {
       return false;
     }

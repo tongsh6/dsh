@@ -107,6 +107,24 @@ describe("runAssertion - file_contains", () => {
       assert.equal(r.status, "failed");
     });
   });
+
+  it("matches ^ anchor as start-of-line (m flag, matching grep BRE behavior)", () => {
+    withTmp((tmp) => {
+      fs.writeFileSync(path.join(tmp, "README.md"), "# Title\n## Architecture\nsome content\n## Distill Observability\ndetails\n## Next\n", "utf-8");
+      // Without m flag ^ would only match at start of entire string; with m it matches at start of any line
+      const r = runAssertion(
+        { type: "file_contains", file: "README.md", pattern: "^## Distill Observability", regex: true },
+        tmp,
+      );
+      assert.equal(r.status, "passed", `expected passed but got: ${r.output}`);
+
+      const shouldFail = runAssertion(
+        { type: "file_contains", file: "README.md", pattern: "^## NonExistent", regex: true },
+        tmp,
+      );
+      assert.equal(shouldFail.status, "failed");
+    });
+  });
 });
 
 describe("runAssertion - file_not_contains", () => {
