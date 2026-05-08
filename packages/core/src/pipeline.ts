@@ -497,21 +497,38 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
           state.patch_rounds.push(record);
           writeTaskState(cwd, state);
           round = MAX_PATCH_ROUNDS; // exit loop cleanly
-        } else {
-          // Reject DONE: plan.files not fully covered. Reclassify this round
-          // as invalid and feed the uncovered list back so the model can
-          // continue patching. (spec §3.2 path A)
+        } else if (dedupedSoFar.length === 0) {
+          // Model hasn't produced any changes yet — reject DONE and ask for
+          // at least one change before we can let verify judge.
           record.action = "invalid";
-          record.invalid_reason = "done_with_uncovered_plan_files";
+          record.invalid_reason = "done_with_no_changes";
           state.patch_rounds.push(record);
           writeTaskState(cwd, state);
           consecutiveInvalid++;
           messages.push({
             role: "user",
             content:
-              `<DONE/> rejected: plan.files 还有未覆盖文件: [${uncovered.join(", ")}].\n` +
-              `继续输出对应的 change block；已修改文件 [${dedupedSoFar.join(", ")}] 不要重复修改。`,
+              `<DONE/> rejected: no changes have been applied yet. ` +
+              `Produce at least one change block before signalling done.`,
           });
+        } else {
+          // Model has made changes but some plan.files remain uncovered.
+          // Accept DONE — let verify provide the real signal. The uncovered
+          // list is recorded so repair knows what was missed.
+          // (Previously this was a hard reject, which punished models that
+          // listed extra files in plan and caused MAX_CONSECUTIVE_INVALID
+          // cutoffs — see docs/reports/260509-040502 for evidence.)
+          record.reasoning_excerpt = choice.message.reasoning_content?.slice(0, 500);
+          record.incomplete_note = `accepted with uncovered plan files: [${uncovered.join(", ")}]`;
+          state.patch_rounds.push(record);
+          writeTaskState(cwd, state);
+          messages.push({
+            role: "user",
+            content:
+              `<DONE/> accepted. Note: plan.files 中以下文件未被修改: [${uncovered.join(", ")}]. ` +
+              `已修改文件: [${dedupedSoFar.join(", ")}]. 现在进入验证阶段。`,
+          });
+          round = MAX_PATCH_ROUNDS; // exit loop and proceed to verify
         }
         break;
       }
@@ -587,11 +604,19 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   state.patches.push(newPatch);
 
   // ---- State transition ----
+  //
+  // When okChanges > 0 but plan.files are not fully covered, we now route to
+  // "patched" (not "patch_failed"). This lets verify produce diagnostic signals
+  // that repair can use. Previously, "patch_failed" skipped verify entirely,
+  // leaving repair blind. The patch_incomplete_reason on the patch record
+  // carries the uncovered file list forward for repair's completion mode.
+  // Evidence: docs/reports/260509-040502 (pi-refactor-read-text: 3/3 files
+  // changed but DONE rejected → verify skipped → repair blind).
 
   if (okChanges.length === 0) {
     state = transition(state, "patch_failed");
   } else if (uncoveredAfterPatch.length > 0) {
-    state = transition(state, "patch_failed");
+    state = transition(state, "patched");
   } else {
     state = transition(state, "patched");
   }
@@ -622,29 +647,26 @@ export async function runVerify(params: VerifyParams): Promise<TaskState> {
     return state;
   }
 
-  // Scope-completeness check: plan.files must all be covered by patches.
-  // (spec 2026-05-07-patch-completeness §3.5) Last-line defense — runPatch
-  // already routes uncovered cases to patch_failed, but keep this guard for
-  // any path that bypasses the patch stage.
+  // Scope-completeness check: plan.files not fully covered by patches.
+  // DONE acceptance (in runPatch) already allows partial coverage through;
+  // we no longer fail verification here — the real verify commands (test,
+  // lint, assertions) are the authoritative signal. We record the uncovered
+  // list as a non-failing diagnostic so repair can use it.
   const planFiles = state.plan?.files ?? [];
   const lastPatch = state.patches.at(-1);
   const patchedFiles = lastPatch?.files_changed ?? [];
   const uncovered = computeUncoveredPlanFiles(planFiles, patchedFiles);
   if (uncovered.length > 0 && lastPatch) {
-    // partial_ok or failed + uncovered plan files → verification_failed
     state.verify_results.push({
       round: (state.verify_results?.length ?? 0) + 1,
       results: [{
         command: "scope-completeness",
-        status: "failed",
-        exit_code: 1,
-        output: `Plan files not fully covered: ${uncovered.join(", ")}`,
+        status: "passed",
+        exit_code: 0,
+        output: `Note: plan.files 未全覆盖 — 未修改: [${uncovered.join(", ")}]. 已修改: [${patchedFiles.join(", ")}].`,
         duration_ms: 0,
       }],
     });
-    state = transition(state, "verification_failed");
-    writeTaskState(cwd, state);
-    return state;
   }
 
   const config = loadDshConfig(cwd);

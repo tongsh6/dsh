@@ -50,6 +50,9 @@ const patchRoundSchema = z.object({
   }).optional(),
   invalid_reason: z.string().optional(),
   reasoning_excerpt: z.string().optional(),
+  // When DONE is accepted with uncovered plan.files, carries the uncovered
+  // file list for downstream consumers (benchmark reporter, repair diagnostics).
+  incomplete_note: z.string().optional(),
   duration_ms: z.number(),
 });
 

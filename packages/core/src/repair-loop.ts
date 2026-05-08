@@ -201,12 +201,29 @@ export async function runRepairLoop(
         ].join("\n")
       : null;
 
+    // When repair was entered because of patch incompleteness (not verify
+    // failure), the model needs a different constraint frame. "Minimal fix"
+    // rules are counter-productive when the task is completing missing work.
+    // Switch to "completion mode" constraints that focus on finishing the
+    // original task, not fixing a specific error.
+    const isCompletionMode = incompleteHint !== null && failureHints === null;
+    const completionConstraints = [
+      "CRITICAL TASK COMPLETION RULES:",
+      "1. Your PRIMARY goal is to COMPLETE the original task — the previous attempt was INCOMPLETE.",
+      "2. Focus on the uncovered files listed above. Read each one, understand what change is needed, then produce the change block.",
+      "3. You MAY add new functions, classes, imports, or variables as needed to complete the task.",
+      "4. Do NOT re-modify files that were already changed — only fill in what's missing.",
+      "5. Produce one change block per uncovered file. Cover every file listed in the PATCH INCOMPLETE section.",
+      "6. If you're unsure what a file needs, use read_file to inspect it first.",
+      "7. After producing all change blocks, output <DONE/>.",
+    ].join("\n");
+
     const taskDescription = [
-      repairConstraints,
+      isCompletionMode ? completionConstraints : repairConstraints,
       "",
       incompleteHint ?? "",
       "",
-      failureHints ?? "The previous patch failed verification. Analyze the errors and fix the code.",
+      failureHints ?? (!isCompletionMode ? "The previous patch failed verification. Analyze the errors and fix the code." : ""),
       "",
       callSiteContext ?? "",
       "",
