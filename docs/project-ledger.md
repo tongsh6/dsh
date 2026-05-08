@@ -11,11 +11,11 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 退出条件（8 条）详见 BLUEPRINT.md。当前进展：
 - [x] 静态扫描 Phase 2-3（Top N 可解释选择）
 - [x] 首份 DSH vs OpenCode 对比报告
-- [x] 多仓库（3 repos 各 ≥3 fixture，13 fixture full benchmark 已完成）
-- [x] 完成率（13/13 = 100%）
-- [x] 对比报告（`docs/reports/260506-004042`）
-- [ ] v0.4 协议操作覆盖率（CREATE/PATCH 达标；SEARCH_REPLACE/INSERT 标注不足；DELETE/RENAME 尚无标注与实测）
-- [ ] 多语言（Python 5/5 ✅，TypeScript/loamlog ≥3 ✅，release-hub Java+Vue 混合 fixture 0/3 ❌）
+- [x] 多仓库（3 repos 各 ≥3 fixture，24 fixture full benchmark 已完成 `260508-003359`）
+- [x] 完成率（completed 24/24 = 100%；testsPassed 严格口径 11/24 = 45%，待退出复审决议字段口径）
+- [x] 对比报告（`docs/reports/260506-004042` + 升级版 `docs/reports/260508-003359`）
+- [x] v0.4 协议操作覆盖率（6 种全达标；DELETE/RENAME 在 24 fixture 全量首次实测触发 — `260508-003359/analysis.md` §2.1）
+- [x] 多语言（Python 4/7 ≥3 ✓；TypeScript/loamlog 3/8 ≥3 ✓；release-hub Java+Vue 混合 4/9 ≥3 ✓ — `260508-003359/analysis.md` §2.2）
 - [x] 跨工具对比（DSH vs OpenCode，13 fixture 对比完成）
 - [x] 长期跟踪事项复审（已执行，含 21 条复核 + 3 条状态变更）
 
@@ -45,6 +45,7 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 | 386 单元测试 | `pnpm -r run test` | — | 全部通过 |
 | DSH vs OpenCode 对比 | Benchmark（5 fixtures, pi-proof-forge） | `docs/reports/compare-20260502-120419/` | DSH 60% vs OC 100%，修复质量有差距 |
 | 工具系统 Benchmark（loamlog） | Benchmark（5 fixtures） | `docs/reports/260504-140432/` | 80% 完成，0/2 修复成功，工具零调用 |
+| 24 fixture 全量 Benchmark（patch-completeness 后） | Benchmark（24 fixtures, 3 repo） | `docs/reports/260508-003359/` + `analysis.md` | completed 24/24 (100%)，testsPassed 11/24 (45%)；协议覆盖 6/6 达标；多语言 3/3 ≥3 通过；P1-P4 暴露 2 base false-positive + 引发 1 plan-多列副作用（pi-test-aief-l3）+ 1 偶发；议题 B trigger 已成立 |
 
 ## 4. 进行中事项
 
@@ -118,5 +119,7 @@ Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 | deferred | patchloop-done-prompt-weak | code:packages/core/src/prompt-builder.ts | v0.4 DONE 触发（根因在第 7 条：元认知任务） | P1+P2 pipeline 自动终止已从代码层替代 prompt 方案 | P1 | waiting | 2026-05-06 |
 | evidence | patchloop-search-replace-risk-realized | code:packages/core/src/pipeline.ts | SEARCH/REPLACE 行号错位风险已实证 | 长期跟踪；v0.5 考虑 stash-rollback | P2 | waiting | 2026-05-06 |
 | evidence | patchloop-p62-first-run | report:docs/reports/260506-024933 | P6.2 首轮结果（已 supersede） | superseded 由后续多次 run（含 P1+P2 验证）替代 | P1 | resolved | 2026-05-06 |
-| deferred | verify-protocol-structured | spec:docs/specs/2026-05-07-patch-completeness.md | verify 命令从 shell string 升级为结构化断言（file_contains / exit_code / shell 等） | patch-completeness 上线 ≥1 周 + ≥10 fixture 实测后启动；议题 B 单独 spec | P1 | waiting | 2026-05-08 |
-| evidence | patch-completeness-baseline | spec:docs/specs/2026-05-07-patch-completeness.md | rh-mixed-dashboard 3 次重跑 + 13 fixture 全量 benchmark vs 260506-004042 基线对比 | 3 次单 fixture 已收集（reports 260507-235439 / 260508-000202 / 260508-000642，plan.files 覆盖率 0/3 → 2/3，testsPassed 仍 0/3 受限模型代码质量）；13 fixture 全量 benchmark 待跑 | P1 | waiting | 2026-05-08 |
+| deferred | verify-protocol-structured | spec:docs/specs/2026-05-07-patch-completeness.md | verify 命令从 shell string 升级为结构化断言（file_contains / exit_code / shell 等） | trigger 已满足（24 fixture 实测于 260508-003359），可起草议题 B spec | P1 | ready | 2026-05-08 |
+| evidence | patch-completeness-baseline | spec:docs/specs/2026-05-07-patch-completeness.md | rh-mixed-dashboard 3 次重跑 + 24 fixture 全量 benchmark vs 260506-004042 基线对比 | 3 次单 fixture（260507-235439/260508-000202/260508-000642，plan.files 覆盖率 0/3→2/3）+ 24 fixture 全量（260508-003359/analysis.md）已完成；P1-P4 净效应正向（2 false-positive 修正 + 1 副作用 + 1 偶发） | P1 | resolved | 2026-05-08 |
+| evidence | fixture-false-positive-audit | report:docs/reports/260508-003359/analysis.md | 全量审计 13 旧 fixture 的 verification commands 是否对所有 expectedFiles 做断言；列出 false-positive 候选 + 修正建议 | 至少 pi-refactor-read-text、rh-test-dashboard-version 已确认 false-positive；其他 fixture 待审计 | P1 | waiting | 2026-05-08 |
+| debt | plan-files-overlist | report:docs/reports/260508-003359/analysis.md | plan prompt 加约束"`<FILES>` 仅列出确实需要修改的文件，不要把要读取/参考的文件列入" | 议题 B spec 起草时同步评估；pi-test-aief-l3 暴露此模式（plan 多列 → done 反复 reject） | P2 | waiting | 2026-05-08 |
