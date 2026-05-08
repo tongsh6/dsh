@@ -217,13 +217,13 @@ function detectLanguageByFiles(cwd: string): TechStack | null {
   const threshold = 3;
 
   if (pyCount >= threshold) {
-    return { language: "python", packageManager: "pip", framework: null, details: {} };
+    return { language: "python", packageManager: null, framework: null, details: { detection: "file-extension" } };
   }
   if (tsCount >= threshold) {
-    return { language: "typescript", packageManager: "npm", framework: null, details: {} };
+    return { language: "typescript", packageManager: null, framework: null, details: { detection: "file-extension" } };
   }
   if (jsCount >= threshold && jsCount > tsCount) {
-    return { language: "javascript", packageManager: "npm", framework: null, details: {} };
+    return { language: "javascript", packageManager: null, framework: null, details: { detection: "file-extension" } };
   }
   if (goCount >= threshold) {
     return { language: "go", packageManager: null, framework: null, details: {} };
@@ -233,7 +233,7 @@ function detectLanguageByFiles(cwd: string): TechStack | null {
   }
   const javaCount = (extCounts[".java"] ?? 0);
   if (javaCount >= threshold) {
-    return { language: "java", packageManager: "maven", framework: null, details: {} };
+    return { language: "java", packageManager: null, framework: null, details: { detection: "file-extension" } };
   }
 
   return null;
@@ -292,6 +292,9 @@ export function detectVerifyCommands(
   }
 
   if (stack.language === "java") {
+    if (!stack.packageManager) {
+      return { test: null, lint: null, typecheck: null, build: null };
+    }
     const mvnCmd = stack.packageManager === "gradle" ? "gradle" : "mvn";
     const testCmd = mvnCmd === "gradle" ? "gradle test" : "mvn test -q";
     return {

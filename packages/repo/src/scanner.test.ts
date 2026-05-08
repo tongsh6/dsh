@@ -23,7 +23,7 @@ describe("detectTechStack", () => {
 
       const stack = detectTechStack(tmp);
       assert.equal(stack.language, "python");
-      assert.equal(stack.packageManager, "pip");
+      assert.equal(stack.packageManager, null, "no pyproject.toml → packageManager should be null");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -38,7 +38,7 @@ describe("detectTechStack", () => {
 
       const stack = detectTechStack(tmp);
       assert.equal(stack.language, "typescript");
-      assert.equal(stack.packageManager, "npm");
+      assert.equal(stack.packageManager, null, "no package.json → packageManager should be null");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
