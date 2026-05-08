@@ -208,7 +208,19 @@ export class DeepSeekClient {
         );
       }
 
-      const json = (await res.json()) as DeepSeekResponse;
+      // Wrap body read with a timeout. The AbortSignal on fetch covers the
+      // connection phase, but when a proxy kills the tunnel mid-response the
+      // socket enters CLOSE_WAIT and res.json() can hang indefinitely on a
+      // half-closed connection that undici's body reader never detects as EOF.
+      const json = (await Promise.race([
+        res.json(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => {
+            controller.abort();
+            reject(new DOMException("Body read timed out", "AbortError"));
+          }, this.timeoutMs),
+        ),
+      ])) as DeepSeekResponse;
       return json;
     } catch (e) {
       if (e instanceof DeepSeekError) throw e;
