@@ -11,6 +11,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { TechStack } from "./scanner.js";
 
 // ---- Models ----
 
@@ -102,7 +103,7 @@ function listTopFiles(cwd: string): Set<string> {
   return result;
 }
 
-function countSourceFiles(cwd: string, exts: string[], maxDepth = 1): number {
+function countSourceFiles(cwd: string, exts: string[], maxDepth = 2): number {
   const stopDirs = new Set(["node_modules", ".git", "dist", "__pycache__", "target", ".venv", "venv", ".dsh"]);
   let count = 0;
   function walk(dir: string, depth: number): void {
@@ -336,6 +337,10 @@ export function deriveCapabilities(
     caps.push({ key: "build", status: "available", command: "go build ./...", reason: "go.mod" });
     caps.push({ key: "test", status: "available", command: "go test ./...", reason: "go.mod" });
     caps.push({ key: "typecheck", status: "available", command: "go vet ./...", reason: "go.mod" });
+  } else if (lang === "rust") {
+    caps.push({ key: "build", status: "available", command: "cargo build", reason: "Cargo.toml" });
+    caps.push({ key: "test", status: "available", command: "cargo test", reason: "Cargo.toml" });
+    caps.push({ key: "typecheck", status: "available", command: "cargo check", reason: "Cargo.toml" });
   } else if (lang === "python" || lang === "typescript" || lang === "javascript") {
     // For interpreted / script-based languages, capabilities depend on package manager
     // Phase 1: report "likely" but don't assume commands; Phase 2 adds package-manager resolution
@@ -423,8 +428,6 @@ export function toProjectCard(pi: ProjectIntelligence): string {
 }
 
 // ---- Legacy Bridge (Phase 1 compatibility) ----
-
-import type { TechStack } from "./scanner.js";
 
 export function toLegacyTechStack(pi: ProjectIntelligence): TechStack {
   const lang = pi.language.selected ?? "unknown";

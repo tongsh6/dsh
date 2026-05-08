@@ -546,7 +546,15 @@ function extractCompilationErrors(output: string): Array<{ file: string; line: s
       const key = `${entry.file}:${entry.line}:${entry.message.slice(0, 40)}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const rel = entry.file.replace(/^.*?\/release-hub\//, "").replace(/^.*?\/loamlog\//, "").replace(/^.*?\/pi-proof-forge\//, "");
+      // Strip absolute prefix: keep everything after the last "/backend/" or
+      // "/src/" segment, or fall back to the basename.
+      let rel: string = entry.file;
+      const ctxDirs = ["/backend/", "/frontend/", "/src/", "/lib/", "/app/", "/pkg/", "/cmd/"];
+      for (const dir of ctxDirs) {
+        const idx = rel.lastIndexOf(dir);
+        if (idx !== -1) { rel = rel.slice(idx + 1); break; }
+      }
+      if (rel === entry.file) rel = entry.file.split("/").pop() ?? entry.file;
       errors.push({ ...entry, file: rel.slice(-80) });
       if (errors.length >= 10) break;
     }
