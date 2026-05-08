@@ -17,9 +17,15 @@ taskPrompt: |
 expectedFiles:
   - README.md
 expectPass: true
-verificationCommands:
-  - "grep -q '^## Distill Observability' README.md"
-  - "awk '/^## Architecture/{seen=1} seen && /^## Distill Observability/{found=1} /^## Current Direction/{exit found ? 0 : 1}' README.md"
+verifications:
+  - type: file_contains
+    file: README.md
+    pattern: "^## Distill Observability"
+    regex: true
+    name: section_exists
+  - type: shell
+    command: "awk '/^## Architecture/{seen=1} seen && /^## Distill Observability/{found=1} /^## Current Direction/{exit found ? 0 : 1}' README.md"
+    name: section_positioned_correctly
 architectureRules:
   - 只在 ## Architecture 和 ## Current Direction 之间插入新章节
   - 不修改其他章节内容

@@ -17,6 +17,11 @@ export interface DshConfig extends Record<string, unknown> {
     typecheck?: string;
     build?: string;
     commands?: string[];
+    // Structured assertions (spec 2026-05-08-verify-protocol-structured §3.3).
+    // When non-empty, takes precedence over commands/test/lint/typecheck.
+    // Each entry must conform to VerifyAssertion shape; parsing happens at
+    // resolveVerifyAssertions time in @dsh/core/pipeline.
+    assertions?: unknown[];
   };
   static_scan?: {
     enabled?: boolean;

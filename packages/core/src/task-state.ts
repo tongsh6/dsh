@@ -59,6 +59,11 @@ const planSchema = z.object({
   risks: z.array(z.string()),
   raw_xml: z.string(),
   verify_commands: z.array(z.string()).optional(),
+  // Structured verify assertions (spec 2026-05-08-verify-protocol-structured §3).
+  // When non-empty, repair-loop uses these via runVerifyAssertions for native
+  // structured diagnostics. verify_commands is preserved as a shell-only
+  // fallback carrier for backward compat.
+  verify_assertions: z.array(z.unknown()).optional(),
 });
 
 const verifyRoundSchema = z.object({

@@ -17,10 +17,16 @@ expectedFiles:
   - backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/rest/PingController.java
   - backend/releasehub-bootstrap/src/test/java/io/releasehub/bootstrap/api/PingApiTest.java
 expectPass: true
-verificationCommands:
-  - "! test -f backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/rest/PingController.java"
-  - "! test -f backend/releasehub-bootstrap/src/test/java/io/releasehub/bootstrap/api/PingApiTest.java"
-  - "(cd backend && mvn test -pl releasehub-interfaces,releasehub-bootstrap -am -q)"
+verifications:
+  - type: file_not_exists
+    file: backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/rest/PingController.java
+    name: ping_controller_deleted
+  - type: file_not_exists
+    file: backend/releasehub-bootstrap/src/test/java/io/releasehub/bootstrap/api/PingApiTest.java
+    name: ping_api_test_deleted
+  - type: shell
+    command: cd backend && mvn test -pl releasehub-interfaces,releasehub-bootstrap -am -q
+    name: maven_test_passes
 architectureRules:
   - 只删除后端 Java 文件
   - 不修改业务代码

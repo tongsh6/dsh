@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as yaml from "js-yaml";
-import { runPlan, runPatch, runVerify, runRepair, runHandoff, runFullPipeline, resolveVerifyCommands, computeUncoveredPlanFiles } from "./pipeline.js";
+import { runPlan, runPatch, runVerify, runRepair, runHandoff, runFullPipeline, resolveVerifyCommands, resolveVerifyAssertions, computeUncoveredPlanFiles } from "./pipeline.js";
 import type { DeepSeekClient, DeepSeekResponse } from "@dsh/provider";
 
 // Helper: create a mock DeepSeekClient that returns the given content
@@ -737,6 +737,74 @@ describe("resolveVerifyCommands", () => {
 
   it("returns [] for undefined verify config", () => {
     assert.deepEqual(resolveVerifyCommands(undefined, {}), []);
+  });
+});
+
+describe("resolveVerifyAssertions", () => {
+  it("uses assertions field when set, ignoring commands and slots", () => {
+    const result = resolveVerifyAssertions(
+      {
+        assertions: [{ type: "file_contains", file: "a.ts", pattern: "x" }],
+        commands: ["echo legacy"],
+        test: "pnpm test",
+      },
+      { test: true, lint: true, typecheck: true },
+    );
+    assert.equal(result.length, 1);
+    assert.equal(result[0]!.type, "file_contains");
+  });
+
+  it("falls back to commands when assertions empty", () => {
+    const result = resolveVerifyAssertions(
+      { commands: ["echo a", "echo b"] },
+      { test: true, lint: true, typecheck: true },
+    );
+    assert.equal(result.length, 2);
+    assert.ok(result.every((r) => r.type === "shell"));
+    assert.equal((result[0] as { command: string }).command, "echo a");
+  });
+
+  it("falls back to test/lint/typecheck slots when both assertions and commands missing", () => {
+    const result = resolveVerifyAssertions(
+      { test: "pnpm test", lint: "pnpm lint" },
+      { test: true, lint: true, typecheck: true },
+    );
+    assert.equal(result.length, 2);
+    assert.ok(result.every((r) => r.type === "shell"));
+  });
+
+  it("drops unparseable assertion entries silently", () => {
+    const result = resolveVerifyAssertions(
+      {
+        assertions: [
+          { type: "file_exists", file: "a.ts" },
+          { type: "garbage" },
+          { type: "file_contains" }, // missing file/pattern
+          { type: "shell", command: "echo ok" },
+        ],
+      },
+      {},
+    );
+    assert.equal(result.length, 2);
+    assert.equal(result[0]!.type, "file_exists");
+    assert.equal(result[1]!.type, "shell");
+  });
+
+  it("falls back to commands when assertions parse to empty list", () => {
+    const result = resolveVerifyAssertions(
+      {
+        assertions: [{ type: "garbage" }, { type: "still_garbage" }],
+        commands: ["echo fallback"],
+      },
+      {},
+    );
+    assert.equal(result.length, 1);
+    assert.equal(result[0]!.type, "shell");
+    assert.equal((result[0] as { command: string }).command, "echo fallback");
+  });
+
+  it("returns [] for undefined config", () => {
+    assert.deepEqual(resolveVerifyAssertions(undefined, {}), []);
   });
 });
 

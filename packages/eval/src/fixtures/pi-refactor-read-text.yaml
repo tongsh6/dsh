@@ -16,8 +16,22 @@ expectedFiles:
   - tools/extract_evidence_llm.py
   - tools/infra/file_io.py
 expectPass: true
-verificationCommands:
-  - python3 -m pytest tests/unit/domain/test_evidence_engines.py -v
+verifications:
+  - type: file_contains
+    file: tools/extract_evidence.py
+    pattern: "from tools.infra.file_io import read_text"
+    name: evidence_import_read_text
+  - type: file_contains
+    file: tools/extract_evidence_llm.py
+    pattern: "from tools.infra.file_io import read_text"
+    name: llm_import_read_text
+  - type: file_contains
+    file: tools/infra/file_io.py
+    pattern: "def read_text"
+    name: file_io_has_read_text
+  - type: shell
+    command: python3 -m pytest tests/unit/domain/test_evidence_engines.py -v
+    name: evidence_engine_tests
 architectureRules:
   - read_text 的函数签名和目标行为完全不变
   - 不引入新的第三方依赖

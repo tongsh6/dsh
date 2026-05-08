@@ -7,6 +7,7 @@ import * as path from "node:path";
 import {
   cleanBenchmarkWorktree,
   normalizeVerificationCommands,
+  compileFixtureVerifications,
   createEmptyResult,
   prepareBenchmarkBranch,
   scoreResult,
@@ -85,6 +86,48 @@ describe("normalizeVerificationCommands", () => {
 
   it("drops empty verification commands", () => {
     assert.deepEqual(normalizeVerificationCommands(["", "  ", "pnpm test"]), ["pnpm test"]);
+  });
+});
+
+describe("compileFixtureVerifications", () => {
+  it("returns structured verifications when present", () => {
+    const result = compileFixtureVerifications({
+      verifications: [
+        { type: "file_contains", file: "a.ts", pattern: "x" },
+        { type: "shell", command: "pnpm test", name: "tests" },
+      ],
+      verificationCommands: [],
+    });
+    assert.equal(result.length, 2);
+    assert.deepEqual(result[0], { type: "file_contains", file: "a.ts", pattern: "x" });
+  });
+
+  it("falls back to verificationCommands wrapped as shell when no structured field", () => {
+    const result = compileFixtureVerifications({
+      verifications: undefined,
+      verificationCommands: ["pnpm test", "pnpm typecheck"],
+    });
+    assert.deepEqual(result, [
+      { type: "shell", command: "pnpm test" },
+      { type: "shell", command: "pnpm typecheck" },
+    ]);
+  });
+
+  it("returns empty when neither field set", () => {
+    assert.deepEqual(
+      compileFixtureVerifications({ verifications: undefined, verificationCommands: [] }),
+      [],
+    );
+  });
+
+  it("structured field wins over verificationCommands when both somehow present at runtime", () => {
+    // (schema rejects this, but exercise the function precedence anyway)
+    const result = compileFixtureVerifications({
+      verifications: [{ type: "shell", command: "via-structured" }],
+      verificationCommands: ["via-legacy"],
+    });
+    assert.equal(result.length, 1);
+    assert.deepEqual(result[0], { type: "shell", command: "via-structured" });
   });
 });
 

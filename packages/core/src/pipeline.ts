@@ -18,7 +18,8 @@ import {
   applyPatch,
 } from "./patch-parser.js";
 import type { ChangeBlock } from "./patch-parser.js";
-import { runVerify as runVerifyCommands, isAllPassed } from "./verifier.js";
+import { runVerifyAssertions, isAllPassed, parseAssertion } from "./verifier.js";
+import type { VerifyAssertion } from "./verifier.js";
 import { runRepairLoop } from "./repair-loop.js";
 import type { RepairRoundResult } from "./repair-loop.js";
 import {
@@ -105,6 +106,31 @@ export function resolveVerifyCommands(
   if (pickAll || typecheck) slots.push(get("typecheck"));
 
   return slots.map((c) => c.trim()).filter((c) => c.length > 0);
+}
+
+// Resolve config into a VerifyAssertion list (spec
+// 2026-05-08-verify-protocol-structured §3.3). Precedence:
+//   1. verify.assertions[] (parsed; invalid entries silently dropped)
+//   2. verify.commands[]   (each wrapped as { type: "shell", command })
+//   3. verify.test/lint/typecheck (each non-empty wrapped as shell)
+// Returns [] if nothing resolves.
+export function resolveVerifyAssertions(
+  verifyConfig: Record<string, unknown> | undefined,
+  selection: VerifySlotSelection,
+): VerifyAssertion[] {
+  if (!verifyConfig) return [];
+
+  const assertionsField = verifyConfig["assertions"];
+  if (Array.isArray(assertionsField) && assertionsField.length > 0) {
+    const parsed = assertionsField
+      .map((raw) => parseAssertion(raw))
+      .filter((a): a is VerifyAssertion => a !== null);
+    if (parsed.length > 0) return parsed;
+  }
+
+  return resolveVerifyCommands(verifyConfig, selection).map(
+    (command) => ({ type: "shell" as const, command }),
+  );
 }
 
 function _totalCharCount(messages: DeepSeekMessage[]): number {
@@ -622,12 +648,12 @@ export async function runVerify(params: VerifyParams): Promise<TaskState> {
   }
 
   const config = loadDshConfig(cwd);
-  const validCommands = resolveVerifyCommands(config.verify, { test, lint, typecheck });
-  if (validCommands.length === 0) {
+  const assertions = resolveVerifyAssertions(config.verify, { test, lint, typecheck });
+  if (assertions.length === 0) {
     throw new Error("没有配置验证命令。请检查 .dsh/config.yml");
   }
 
-  const results = runVerifyCommands(validCommands, cwd);
+  const results = runVerifyAssertions(assertions, cwd);
   const round = (state.verify_results?.length ?? 0) + 1;
   state.verify_results.push({ round, results });
 
@@ -652,8 +678,17 @@ export async function runRepair(params: RepairParams): Promise<TaskState> {
 
   const config = loadDshConfig(cwd);
   if (config.verify && state.plan) {
-    const commands = resolveVerifyCommands(config.verify, { test: true, lint: true, typecheck: true });
-    state.plan = { ...state.plan, verify_commands: commands };
+    const assertions = resolveVerifyAssertions(config.verify, { test: true, lint: true, typecheck: true });
+    // Keep verify_commands populated (as shell-only subset) for any consumer
+    // that doesn't know about verify_assertions yet.
+    const shellCommands = assertions
+      .filter((a): a is { type: "shell"; command: string; name?: string; timeout_ms?: number } => a.type === "shell")
+      .map((a) => a.command);
+    state.plan = {
+      ...state.plan,
+      verify_commands: shellCommands,
+      verify_assertions: assertions,
+    };
   }
 
   let finalState = await runRepairLoop(state, {

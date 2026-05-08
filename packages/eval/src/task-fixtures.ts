@@ -27,6 +27,43 @@ export const BENCHMARK_REF_SCHEMA = z.object({
   commit: z.string().min(7).optional(),
 });
 
+// Structured verify assertion schema (spec 2026-05-08-verify-protocol-structured §3).
+// Discriminated by `type`; loose validation here — runtime parsing in @dsh/core.
+export const VERIFY_ASSERTION_SCHEMA = z.union([
+  z.object({
+    type: z.literal("file_exists"),
+    file: z.string().min(1),
+    name: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("file_not_exists"),
+    file: z.string().min(1),
+    name: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("file_contains"),
+    file: z.string().min(1),
+    pattern: z.string().min(1),
+    regex: z.boolean().optional(),
+    name: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("file_not_contains"),
+    file: z.string().min(1),
+    pattern: z.string().min(1),
+    regex: z.boolean().optional(),
+    name: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("shell"),
+    command: z.string().min(1),
+    timeout_ms: z.number().int().positive().optional(),
+    name: z.string().optional(),
+  }),
+]);
+
+export type VerifyAssertion = z.infer<typeof VERIFY_ASSERTION_SCHEMA>;
+
 export const TASK_FIXTURE_SCHEMA = z.object({
   id: z.string(),
   description: z.string(),
@@ -35,6 +72,9 @@ export const TASK_FIXTURE_SCHEMA = z.object({
   expectedFiles: z.array(z.string()).default([]),
   expectPass: z.boolean().default(true),
   verificationCommands: z.array(z.string()).default([]),
+  // Structured assertions (preferred over verificationCommands when present).
+  // Mutual exclusion with verificationCommands enforced by .superRefine below.
+  verifications: z.array(VERIFY_ASSERTION_SCHEMA).optional(),
   architectureRules: z.array(z.string()).default([]),
   maxRepairRounds: z.number().optional(),
   repoPath: z.string().optional(),
@@ -44,6 +84,18 @@ export const TASK_FIXTURE_SCHEMA = z.object({
   verificationGoal: z.string().optional(),
   expectedProtocolOperations: z.array(PROTOCOL_OP_SCHEMA).min(1,
     "expectedProtocolOperations is required — must list at least one protocol operation"),
+}).superRefine((data, ctx) => {
+  if (
+    data.verifications && data.verifications.length > 0 &&
+    data.verificationCommands && data.verificationCommands.length > 0
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "verifications and verificationCommands are mutually exclusive — declare one or the other, not both",
+      path: ["verifications"],
+    });
+  }
 });
 
 export interface TaskFixture extends z.infer<typeof TASK_FIXTURE_SCHEMA> {
@@ -54,6 +106,7 @@ export interface TaskFixture extends z.infer<typeof TASK_FIXTURE_SCHEMA> {
   expectedFiles: string[];
   expectPass: boolean;
   verificationCommands: string[];
+  verifications?: VerifyAssertion[];
   architectureRules: string[];
   maxRepairRounds?: number;
   repoPath?: string;
@@ -81,6 +134,7 @@ export function loadFixture(filePath: string): LoadedFixture {
       expectedFiles: validated.expectedFiles,
       expectPass: validated.expectPass,
       verificationCommands: validated.verificationCommands,
+      verifications: validated.verifications,
       architectureRules: validated.architectureRules,
       maxRepairRounds: validated.maxRepairRounds,
       repoPath: validated.repoPath,

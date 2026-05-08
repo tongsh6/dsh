@@ -15,9 +15,14 @@ expectedFiles:
   - backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/dashboard/DashboardController.java
   - backend/releasehub-application/src/main/java/io/releasehub/application/dashboard/DashboardAppService.java
 expectPass: true
-verificationCommands:
-  - "grep -q 'generatedAt' backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/dashboard/DashboardController.java"
-  - "(cd backend && mvn test -pl releasehub-interfaces -am -q)"
+verifications:
+  - type: file_contains
+    file: backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/dashboard/DashboardController.java
+    pattern: generatedAt
+    name: controller_has_generatedAt
+  - type: shell
+    command: cd backend && mvn test -pl releasehub-interfaces -am -q
+    name: maven_test_passes
 architectureRules:
   - 只改 Java 后端，不改前端
   - 不修改其他 API 端点

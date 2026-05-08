@@ -210,6 +210,21 @@ export function normalizeVerificationCommands(commands: string[]): string[] {
   return commands.map((cmd) => cmd.trim()).filter(Boolean);
 }
 
+// Compile a fixture's verify declaration into a list of structured assertions
+// (spec 2026-05-08-verify-protocol-structured §3.5). Precedence:
+//   1. fixture.verifications[]   — used as-is
+//   2. fixture.verificationCommands[] — each wrapped as { type: "shell" }
+// Returns [] when neither is set.
+export function compileFixtureVerifications(
+  fixture: Pick<LoadedFixture, "verifications" | "verificationCommands">,
+): unknown[] {
+  if (fixture.verifications && fixture.verifications.length > 0) {
+    return fixture.verifications;
+  }
+  return normalizeVerificationCommands(fixture.verificationCommands)
+    .map((command) => ({ type: "shell" as const, command }));
+}
+
 function installFrontendDeps(cwd: string): void {
   const pkgJson = path.join(cwd, "package.json");
   if (!fs.existsSync(pkgJson)) return;
@@ -323,7 +338,12 @@ export async function runTask(
         package_manager: stack.packageManager ?? "unknown",
       },
       verify: {
-        commands: normalizeVerificationCommands(fixture.verificationCommands),
+        // Structured assertions if fixture declares verifications[]; else
+        // fall back to shell-wrapped verificationCommands. (spec §3.3)
+        assertions: compileFixtureVerifications(fixture),
+        // Always clear legacy slots so we don't read stale state from the
+        // previous run on the same worktree.
+        commands: [],
         test: "",
         lint: "",
         typecheck: "",
@@ -381,7 +401,7 @@ export async function runTask(
     }));
 
     // 5. Verify
-    if (fixture.verificationCommands.length > 0) {
+    if (fixture.verificationCommands.length > 0 || (fixture.verifications && fixture.verifications.length > 0)) {
       try {
         state = await runVerify({ cwd: repoPath });
         // Capture verify output for diagnosis

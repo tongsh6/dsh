@@ -6,7 +6,8 @@ import { transition, writeTaskState } from "./task-state.js";
 import { buildDynamicContext } from "./context-builder.js";
 import { buildMessages } from "./prompt-builder.js";
 import { parseChanges, applyChanges } from "./patch-parser.js";
-import { runVerify, isAllPassed, formatResults } from "./verifier.js";
+import { runVerify, runVerifyAssertions, parseAssertion, isAllPassed, formatResults } from "./verifier.js";
+import type { VerifyAssertion } from "./verifier.js";
 import type { ContextLayers } from "./context-builder.js";
 import {
   detectFailures,
@@ -293,9 +294,25 @@ export async function runRepairLoop(
     if (patched) {
       current = transition(current, "patched");
 
-      const verifyCommands = current.plan?.verify_commands ?? [];
-      if (verifyCommands.length > 0) {
-        const results = runVerify(verifyCommands, config.cwd);
+      // Prefer structured assertions when populated by runRepair; fall back
+      // to legacy shell-only commands for backward compat.
+      // (spec 2026-05-08-verify-protocol-structured §3.5)
+      const rawAssertions = (current.plan?.verify_assertions ?? []) as unknown[];
+      const parsedAssertions = rawAssertions
+        .map((raw) => parseAssertion(raw))
+        .filter((a): a is VerifyAssertion => a !== null);
+
+      let results: ReturnType<typeof runVerifyAssertions> = [];
+      if (parsedAssertions.length > 0) {
+        results = runVerifyAssertions(parsedAssertions, config.cwd);
+      } else {
+        const verifyCommands = current.plan?.verify_commands ?? [];
+        if (verifyCommands.length > 0) {
+          results = runVerify(verifyCommands, config.cwd);
+        }
+      }
+
+      if (results.length > 0) {
         verified = isAllPassed(results);
         verifyOutput = formatResults(results);
         current.verify_results.push({ round, results });

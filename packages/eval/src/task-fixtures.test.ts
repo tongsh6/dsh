@@ -105,6 +105,77 @@ describe("loadFixture", () => {
     assert.equal(fixture.category, "failure_mode");
     assert.equal(fixture.expectPass, false);
   });
+
+  it("loads structured verifications field", () => {
+    const p = path.join(tmp, "with-verifications.yaml");
+    fs.writeFileSync(
+      p,
+      [
+        "id: with-verifs",
+        "description: Test structured verifications",
+        "category: feature",
+        "taskPrompt: do thing",
+        "verifications:",
+        "  - type: file_contains",
+        "    file: src/a.ts",
+        "    pattern: marker",
+        "  - type: shell",
+        "    command: pnpm test",
+        "    name: unit_tests",
+        "expectedProtocolOperations:",
+        "  - PATCH",
+      ].join("\n"),
+      "utf-8",
+    );
+    const fixture = loadFixture(p);
+    assert.ok(fixture.verifications);
+    assert.equal(fixture.verifications!.length, 2);
+    assert.equal(fixture.verifications![0]!.type, "file_contains");
+    assert.equal(fixture.verifications![1]!.type, "shell");
+  });
+
+  it("rejects fixture that declares both verifications and verificationCommands", () => {
+    const p = path.join(tmp, "conflict.yaml");
+    fs.writeFileSync(
+      p,
+      [
+        "id: conflict",
+        "description: Both fields set",
+        "category: bugfix",
+        "taskPrompt: x",
+        "verificationCommands:",
+        "  - pnpm test",
+        "verifications:",
+        "  - type: shell",
+        "    command: pnpm test",
+        "expectedProtocolOperations:",
+        "  - PATCH",
+      ].join("\n"),
+      "utf-8",
+    );
+    assert.throws(() => loadFixture(p), /mutually exclusive/);
+  });
+
+  it("rejects fixture with malformed verification entry", () => {
+    const p = path.join(tmp, "bad-verif.yaml");
+    fs.writeFileSync(
+      p,
+      [
+        "id: bad-verif",
+        "description: missing required field",
+        "category: bugfix",
+        "taskPrompt: x",
+        "verifications:",
+        "  - type: file_contains",
+        "    file: src/a.ts",
+        // missing pattern
+        "expectedProtocolOperations:",
+        "  - PATCH",
+      ].join("\n"),
+      "utf-8",
+    );
+    assert.throws(() => loadFixture(p), /validation failed|verifications/);
+  });
 });
 
 describe("loadAllFixtures", () => {
