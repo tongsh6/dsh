@@ -6,18 +6,25 @@
 
 ## 1. 当前阶段目标
 
-Phase 2（协议+评测完善）。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
+**Phase 3（工具化）**。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 
-退出条件（8 条）详见 BLUEPRINT.md。当前进展：
+Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/phase-2-exit-review.md` §5.7）。
+
+### Phase 2 终态（已退出，归档参考）
 - [x] 静态扫描 Phase 2-3（Top N 可解释选择）
 - [x] 首份 DSH vs OpenCode 对比报告
-- [x] 多仓库（3 repos 各 ≥3 fixture，24 fixture full benchmark 已完成 `260508-003359`）
-- [x] 完成率（completed 24/24 = 100%；testsPassed 严格口径 11/24 = 45%，待退出复审决议字段口径）
+- [x] 多仓库（3 repos 各 ≥3 fixture，24 fixture full benchmark `260508-003359`）
+- [x] 完成率（双口径：completed 24/24 = 100% ✓；testsPassed 11/24 = 45% 作为 Phase 3 baseline）
 - [x] 对比报告（`docs/reports/260506-004042` + 升级版 `docs/reports/260508-003359`）
-- [x] v0.4 协议操作覆盖率（6 种全达标；DELETE/RENAME 在 24 fixture 全量首次实测触发 — `260508-003359/analysis.md` §2.1）
-- [x] 多语言（Python 4/7 ≥3 ✓；TypeScript/loamlog 3/8 ≥3 ✓；release-hub Java+Vue 混合 4/9 ≥3 ✓ — `260508-003359/analysis.md` §2.2）
+- [x] v0.4 协议操作覆盖率（6 种全达标）
+- [x] 多语言（Python 4/7 ≥3 ✓；TypeScript/loamlog 3/8 ≥3 ✓；rh Java+Vue 混合 4/9 ≥3 ✓）
 - [x] 跨工具对比（DSH vs OpenCode，13 fixture 对比完成）
-- [x] 长期跟踪事项复审（已执行，含 21 条复核 + 3 条状态变更）
+- [x] 长期跟踪事项复审（v1 21 条 + v2 25 条，两轮复审完成）
+
+### Phase 3 起点（待 Phase 3 spec 起草）
+- baseline: testsPassed 11/24 (45%)；目标 testsPassed >60%
+- ready 议题：`verify-protocol-structured`（议题 B）
+- waiting 议题：`fixture-false-positive-audit`、`plan-files-overlist`、模型 Java 代码质量改进（议题 C，未起草）
 
 ## 2. 已完成事项
 

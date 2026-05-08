@@ -147,8 +147,8 @@ Phase 1 (当前)              Phase 2                     Phase 3
 | 阶段 | 名称 | 目标 | 预计 |
 |------|------|------|------|
 | **Phase 1** | 核心闭环（MVP） | Plan→Patch→Verify→Repair→Handoff 跑通 | ✅ 已完成 |
-| **Phase 2** | 协议+评测完善 | Patch 协议升级（v0.3）、评测体系建立、静态扫描治理 | 🔧 进行中 |
-| **Phase 3** | 工具化 | 引入基础工具集（read_file/grep/exec_shell），模型从"闭眼出 patch"升级为"先探索再修改" | 📋 |
+| **Phase 2** | 协议+评测完善 | Patch 协议升级（v0.4）、评测体系建立、静态扫描治理 | ✅ 已完成（2026-05-08，详见 `docs/reports/phase-2-exit-review.md` §5.7） |
+| **Phase 3** | 工具化 | 引入基础工具集（read_file/grep/exec_shell），模型从"闭眼出 patch"升级为"先探索再修改" | 🔧 进行中 |
 | **Phase 4** | Agent Loop | 多轮工具调用、模型自主分解任务、repair 内联到 patch 阶段 | 📋 |
 | **Phase 5** | 流式+会话 | 流式输出、会话持久化、断点续跑 | 📋 |
 | **Phase 6** | TUI | 完整终端交互体验 | 📋 |
@@ -162,18 +162,18 @@ Phase 1 (当前)              Phase 2                     Phase 3
 
 2. **先验证核心假设，再扩展范围** — Phase 2 的评测体系必须先建立，因为后续每个阶段的优化都必须用 benchmark 数据证明"确实变好了"（CONSTITUTION 原则 5）。没有评测数据，所有优化都是"我觉得"。
 
-### 当前阶段（Phase 2）的退出条件
+### Phase 2 退出条件（已全部勾选 — 2026-05-08）
 
 每个条件含阈值和数据来源，可逐项验证。
 
-- [ ] **v0.4 协议操作覆盖率** — 6 种操作（CREATE/PATCH/SEARCH_REPLACE/INSERT/DELETE/RENAME）每种 ≥3 个 fixture 标注预期触发，且 ≥1 个 fixture 实际触发并记录成功率。数据来源：`formatEvaluationReport` 输出的 Protocol Operation Coverage 表
-- [ ] **多语言** — Python（pi-proof-forge）≥3 + TypeScript（loamlog）≥3 + Java+Vue 混合（release-hub 后端 Java + 前端 Vue）≥3 个 fixture 执行通过。数据来源：benchmark 报告 Per-Task Detail
-- [ ] **多仓库** — ≥3 个不同 repo 上有 ≥3 个 fixture 执行通过。数据来源：benchmark 报告
-- [ ] **完成率** — ≥10 个 fixture 完成率 >60%。数据来源：benchmark 报告 Overview
-- [ ] **静态扫描治理 Phase 2-3** — 完整 finding schema（Phase 2 ✅）+ Top N 可解释选择（Phase 3：`static-topn.ts` 存在，支持多维 scoring + 选择理由记录）。数据来源：`packages/core/src/static-topn.ts` 文件存在 + 测试通过
+- [x] **v0.4 协议操作覆盖率** — 6 种操作（CREATE/PATCH/SEARCH_REPLACE/INSERT/DELETE/RENAME）每种 ≥3 个 fixture 标注预期触发，且 ≥1 个 fixture 实际触发并记录成功率。数据来源：`formatEvaluationReport` 输出的 Protocol Operation Coverage 表（`docs/reports/260508-003359/`：6/6 全达标）
+- [x] **多语言** — Python（pi-proof-forge）≥3 + TypeScript（loamlog）≥3 + Java+Vue 混合（release-hub 后端 Java + 前端 Vue）≥3 个 fixture 执行通过。数据来源：benchmark 报告 Per-Task Detail（pi 4/7、loam 3/8、rh Java+Vue 4/9）
+- [x] **多仓库** — ≥3 个不同 repo 上有 ≥3 个 fixture 执行通过。数据来源：benchmark 报告
+- [x] **完成率** — ≥10 个 fixture 完成率 >60%。数据来源：benchmark 报告 Overview。**字段口径**：双口径制（决议 2026-05-08 见 `phase-2-exit-review.md` §5.7）—— Phase 2 退出按 `completed=24/24=100%` 满足；`testsPassed=11/24=45%` 作为 Phase 3 起点 baseline
+- [x] **静态扫描治理 Phase 2-3** — 完整 finding schema（Phase 2 ✅）+ Top N 可解释选择（Phase 3：`static-topn.ts` 存在，支持多维 scoring + 选择理由记录）。数据来源：`packages/core/src/static-topn.ts` 文件存在 + 测试通过
 - [x] **跨工具对比** — ≥5 个相同 fixture 的 DSH vs OpenCode 对比数据产出。Claude Code 对比为 Phase 3 目标。数据来源：`docs/reports/oc-motf4q7b/dsh-vs-opencode-comparison.md`
 - [x] **对比报告** — 首份正式 DSH Evaluation Report v1.0，含协议操作分类统计。数据来源：`docs/reports/` 下归档报告
-- [x] **长期跟踪事项复审** — 遍历 `docs/project-ledger.md` §8 全部条目，对每个 status=waiting 的事项做出决策（promote 为 ready task / 继续延后 / cancel）；复审记录归档到 `docs/reports/phase-2-exit-review.md`。详见 §3.1 Phase 退出复审协议。数据来源：`docs/project-ledger.md` §8 + 归档复审报告
+- [x] **长期跟踪事项复审** — 遍历 `docs/project-ledger.md` §8 全部条目，对每个 status=waiting 的事项做出决策（promote 为 ready task / 继续延后 / cancel）；复审记录归档到 `docs/reports/phase-2-exit-review.md`（v1 + v2 两轮复审完成）。详见 §3.1 Phase 退出复审协议。数据来源：`docs/project-ledger.md` §8 + 归档复审报告
 
 ### 3.1 Phase 退出复审协议
 
