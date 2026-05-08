@@ -1,0 +1,26 @@
+{
+  "run_id": "260508-222902",
+  "started_at": "2026-05-08T14:29:02.544Z",
+  "completed_at": "2026-05-08T14:31:33.426Z",
+  "elapsed_seconds": 151,
+  "dsh_commit": "f5b6438",
+  "fixture_count": 1,
+  "fixtures": [
+    {
+      "id": "rh-mixed-dashboard-generated-at-backend",
+      "category": "feature",
+      "repo": "/Users/loong/dsh-bench/repos/release-hub",
+      "benchmark_ref": {
+        "repo": "release-hub",
+        "branch": "dsh-benchmark/release-hub-phase2",
+        "commit": "180de500e6740433b578e60e1585dc6e315f5191"
+      },
+      "preflight_files": [
+        "backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/dashboard/DashboardController.java",
+        "backend/releasehub-application/src/main/java/io/releasehub/application/dashboard/DashboardAppService.java"
+      ],
+      "design_goal": "Dashboard generatedAt 的 Java 后端实现（rh 混合对后端侧）",
+      "verification_goal": "DashboardController.java 含 generatedAt，Maven test 通过"
+    }
+  ]
+}

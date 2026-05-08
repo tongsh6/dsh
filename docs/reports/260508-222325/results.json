@@ -1,0 +1,378 @@
+[
+  {
+    "fixtureId": "rh-mixed-dashboard-generated-at-backend",
+    "category": "feature",
+    "completed": true,
+    "filesChanged": [
+      "backend/releasehub-application/src/main/java/io/releasehub/application/dashboard/DashboardAppService.java",
+      "backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/dashboard/DashboardController.java"
+    ],
+    "filesExpected": [
+      "backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/dashboard/DashboardController.java",
+      "backend/releasehub-application/src/main/java/io/releasehub/application/dashboard/DashboardAppService.java"
+    ],
+    "extraFiles": [],
+    "scopeViolation": false,
+    "testsPassed": false,
+    "repairRounds": 0,
+    "repairSuccess": false,
+    "ruleViolations": [],
+    "manualInterventions": 0,
+    "handoffQuality": 2,
+    "durationMs": 214573,
+    "expectedProtocolOps": [
+      "PATCH"
+    ],
+    "actualProtocolOps": [
+      "PATCH",
+      "SEARCH_REPLACE"
+    ],
+    "toolRounds": 18,
+    "toolCalls": [
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "read_file",
+        "status": "success"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "exec_shell",
+        "status": "error"
+      },
+      {
+        "name": "grep_files",
+        "status": "success"
+      },
+      {
+        "name": "grep_files",
+        "status": "success"
+      },
+      {
+        "name": "grep_files",
+        "status": "success"
+      },
+      {
+        "name": "grep_files",
+        "status": "success"
+      }
+    ],
+    "patchRounds": 28,
+    "patchRoundActions": [
+      {
+        "round": 1,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          },
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 2,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 3,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 4,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 5,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 6,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 7,
+        "action": "change"
+      },
+      {
+        "round": 8,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          },
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 9,
+        "action": "change"
+      },
+      {
+        "round": 10,
+        "action": "change"
+      },
+      {
+        "round": 11,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 12,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 13,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 14,
+        "action": "invalid"
+      },
+      {
+        "round": 15,
+        "action": "change"
+      },
+      {
+        "round": 16,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 17,
+        "action": "invalid"
+      },
+      {
+        "round": 18,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 19,
+        "action": "change"
+      },
+      {
+        "round": 20,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 21,
+        "action": "change"
+      },
+      {
+        "round": 22,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 23,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "read_file",
+            "status": "success"
+          },
+          {
+            "name": "read_file",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 24,
+        "action": "invalid"
+      },
+      {
+        "round": 25,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "exec_shell",
+            "status": "error"
+          },
+          {
+            "name": "exec_shell",
+            "status": "error"
+          }
+        ]
+      },
+      {
+        "round": 26,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "grep_files",
+            "status": "success"
+          },
+          {
+            "name": "grep_files",
+            "status": "success"
+          }
+        ]
+      },
+      {
+        "round": 27,
+        "action": "invalid"
+      },
+      {
+        "round": 28,
+        "action": "tools",
+        "toolCalls": [
+          {
+            "name": "grep_files",
+            "status": "success"
+          },
+          {
+            "name": "grep_files",
+            "status": "success"
+          }
+        ]
+      }
+    ],
+    "verifyOutput": []
+  }
+]
