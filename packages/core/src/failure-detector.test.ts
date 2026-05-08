@@ -355,6 +355,78 @@ describe("detectFailures", () => {
     });
   });
 
+  describe("compilation-error", () => {
+    it("detects Maven javac [ERROR] file:[line,col] format", () => {
+      const detections = detectFailures({
+        response: "",
+        planFiles: [],
+        actualChangedFiles: [],
+        verifyOutput:
+          "[ERROR] /path/to/release-hub/backend/src/main/java/io/DashboardAppService.java:[53,13] 未命名类是预览功能，默认情况下禁用。\n[ERROR] /path/to/release-hub/backend/src/main/java/io/DashboardAppService.java:[79,1] 需要 class、interface、enum 或 record",
+        patchApplyError: null,
+      });
+      const de = detections.find((d) => d.mode === "compilation-error");
+      assert.ok(de, "should detect compilation-error");
+      assert.equal(de!.confidence, "high");
+      assert.ok(de!.evidence.includes("DashboardAppService.java"));
+      assert.ok(de!.evidence.includes("line 53"));
+    });
+
+    it("detects TypeScript error format", () => {
+      const detections = detectFailures({
+        response: "",
+        planFiles: [],
+        actualChangedFiles: [],
+        verifyOutput:
+          "src/components/App.tsx(10,5): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.",
+        patchApplyError: null,
+      });
+      const de = detections.find((d) => d.mode === "compilation-error");
+      assert.ok(de);
+      assert.ok(de!.evidence.includes("TS2345"));
+    });
+
+    it("detects Python traceback with File line format", () => {
+      const detections = detectFailures({
+        response: "",
+        planFiles: [],
+        actualChangedFiles: [],
+        verifyOutput:
+          'Traceback (most recent call last):\n  File "tools/extract_evidence.py", line 42, in read_text\n    raise ValueError("boom")\nValueError: boom',
+        patchApplyError: null,
+      });
+      const de = detections.find((d) => d.mode === "compilation-error");
+      assert.ok(de, "should detect Python traceback");
+    });
+
+    it("returns null when verifyOutput has no recognizable compilation errors", () => {
+      const detections = detectFailures({
+        response: "",
+        planFiles: [],
+        actualChangedFiles: [],
+        verifyOutput: "All tests passed. 42 tests run, 0 failures.",
+        patchApplyError: null,
+      });
+      assert.ok(!detections.some((d) => d.mode === "compilation-error"));
+    });
+
+    it("deduplicates errors at same file+line", () => {
+      const detections = detectFailures({
+        response: "",
+        planFiles: [],
+        actualChangedFiles: [],
+        verifyOutput:
+          "[ERROR] /x/Foo.java:[10,5] err\n[ERROR] /x/Foo.java:[10,5] err\n[ERROR] /x/Foo.java:[20,1] err2",
+        patchApplyError: null,
+      });
+      const de = detections.find((d) => d.mode === "compilation-error");
+      assert.ok(de);
+      // should have 2 not 3 errors (10,5 is duplicate)
+      const count = de!.evidence.match(/line/g)?.length ?? 0;
+      assert.ok(count <= 2, `expected <=2 error lines, got ${count}`);
+    });
+  });
+
   describe("multiple failure modes", () => {
     it("detects multiple modes simultaneously", () => {
       const params: DetectParams = {

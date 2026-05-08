@@ -497,12 +497,106 @@ export function formatCallSiteContext(
   return parts.join("\n");
 }
 
+// ---- Compilation Error Detector ----
+
+const COMPILATION_ERROR_PATTERNS: Array<{ regex: RegExp; extract(parts: RegExpExecArray): { file: string; line: string; col?: string; message: string } | null }> = [
+  {
+    regex: /\[ERROR\]\s+(\S+\.java):\[(\d+),(\d+)\]\s+(.*)/,
+    extract(p) {
+      return { file: p[1]!, line: p[2]!, col: p[3]!, message: p[4] ?? "" };
+    },
+  },
+  {
+    regex: /^(.+?\.tsx?)\((\d+),(\d+)\):\s+error\s+(TS\d+):\s+(.*)/m,
+    extract(p) {
+      return { file: p[1]!, line: p[2]!, col: p[3]!, message: `${p[4]}: ${p[5] ?? ""}` };
+    },
+  },
+  {
+    regex: /File\s+"([^"]+\.py)",\s+line\s+(\d+)(?:,\s+in\s+(\w+))?/,
+    extract(p) {
+      return { file: p[1]!, line: p[2]!, message: p[3] ? `in ${p[3]}` : "in <module>" };
+    },
+  },
+  {
+    regex: /^(.+?\.\w{1,6}):(\d+):(\d+):\s+(error):\s+(.*)/m,
+    extract(p) {
+      if (p[4] !== "error") return null;
+      return { file: p[1]!, line: p[2]!, col: p[3]!, message: p[5] ?? "" };
+    },
+  },
+  {
+    regex: /error\[E\d+\].*\n\s+-->\s+(.+?\.rs):(\d+):(\d+)/,
+    extract(p) {
+      return { file: p[1]!, line: p[2]!, col: p[3]!, message: "Rust compilation error" };
+    },
+  },
+];
+
+function extractCompilationErrors(output: string): Array<{ file: string; line: string; col?: string; message: string }> {
+  const errors: Array<{ file: string; line: string; col?: string; message: string }> = [];
+  const seen = new Set<string>();
+
+  for (const { regex, extract } of COMPILATION_ERROR_PATTERNS) {
+    regex.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(output)) !== null) {
+      const entry = extract(match);
+      if (!entry) continue;
+      const key = `${entry.file}:${entry.line}:${entry.message.slice(0, 40)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const rel = entry.file.replace(/^.*?\/release-hub\//, "").replace(/^.*?\/loamlog\//, "").replace(/^.*?\/pi-proof-forge\//, "");
+      errors.push({ ...entry, file: rel.slice(-80) });
+      if (errors.length >= 10) break;
+    }
+    if (errors.length >= 10) break;
+  }
+
+  return errors.slice(0, 10);
+}
+
+function detectCompilationError(params: DetectParams): FailureDetection | null {
+  if (!params.verifyOutput) return null;
+
+  const errors = extractCompilationErrors(params.verifyOutput);
+  if (errors.length === 0) return null;
+
+  const byFile = new Map<string, typeof errors>();
+  for (const e of errors) {
+    const list = byFile.get(e.file) ?? [];
+    list.push(e);
+    byFile.set(e.file, list);
+  }
+
+  const summary = [...byFile.entries()]
+    .map(([file, errs]) => `  ${file}: ${errs.map((e) => `line ${e.line} - ${e.message.slice(0, 80)}`).join("; ")}`)
+    .join("\n");
+
+  return {
+    mode: "compilation-error",
+    description: "代码无法通过编译或静态检查",
+    confidence: "high",
+    evidence: `${errors.length} error(s) across ${byFile.size} file(s):\n${summary}`,
+    repairHint: [
+      `COMPILATION ERRORS - ${errors.length} error(s) in ${byFile.size} file(s).`,
+      "",
+      summary,
+      "",
+      "REPAIR: fix one file at a time. Start with the file with most errors.",
+      "Common causes: missing import, type mismatch, preview/experimental feature not enabled, wrong package, signature change without updating callers.",
+      "Focus on the FIRST error per file - later errors often cascade from it.",
+    ].join("\n"),
+  };
+}
+
 // ---- Main ----
 
 const DETECTORS = [
   detectOverconfidence,
   detectPatchDrift,
   detectScopeCreep,
+  detectCompilationError,
   detectRuleBlindness,
   detectHallucinatedApi,
   detectSearchReplaceMismatch,

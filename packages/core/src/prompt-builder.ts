@@ -140,7 +140,8 @@ new content to insert here
 2. EXPLORE — Use read_file to confirm the current content of every file you plan to modify. Never assume file content from the task context alone.
 3. COPY VERBATIM — When writing SEARCH blocks, copy text exactly from read_file output. Do not retype from memory.
 4. CHECK CALLERS — If you change a function signature, use grep_files to find all call sites that need updating.
-5. BE EFFICIENT — Limit exploration to 2-5 tool calls total. Use the most targeted tool for each question.
+5. COMPILE CHECK — After each change block, use exec_shell to run the project's compile/build check (compile-only, not full tests). Inspect build files (package.json, pom.xml, Makefile, etc.) to determine the correct compile command. If compilation fails, fix errors in the next round. System verification runs later — compile check is your fast feedback loop.
+6. BE EFFICIENT — Limit exploration + compile checks to 3-6 tool calls total. Use the most targeted tool for each question.
 
 ## After-Apply Feedback
 
