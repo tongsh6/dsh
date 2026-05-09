@@ -24,9 +24,13 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 ### Phase 3 起点
 - baseline（原始）: testsPassed 11/24 (45%) — `260508-003359`
 - baseline（议题 B P6 修正后）: testsPassed 8/24 (33%) — `260508-223235`（1 实现 bug 已修 + 7 采样变异）
+- **最新全量**: testsPassed 11/24 (45%) — `260509-165142`（parallel=3, 2087s）
+  - pi: 5/7 PASS (71%), loam: 4/8 PASS (50%), rh: 2/9 PASS (22%)
+  - repairSuccess: 0/12; FAIL: 1 (pi-refactor-read-text: plan 块为空)
 - 目标: testsPassed >60%
 - 议题 B（`verify-protocol-structured`）：✅ P1-P6 已实施完成（2026-05-09），结构化断言已上线，5 fixture 迁移试点
-- ready 议题：`fixture-false-positive-audit`（P1）、`plan-files-overlist`（P2）
+- 并行 benchmark：✅ `--parallel=N` 已上线（git worktree 隔离 + semaphore pool），3x 加速
+- ready 议题：`fixture-false-positive-audit`（P1）
 - waiting 议题：模型 Java 代码质量改进（议题 C，未起草）
 
 ## 2. 已完成事项
@@ -56,13 +60,14 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 | DSH vs OpenCode 对比 | Benchmark（5 fixtures, pi-proof-forge） | `docs/reports/compare-20260502-120419/` | DSH 60% vs OC 100%，修复质量有差距 |
 | 工具系统 Benchmark（loamlog） | Benchmark（5 fixtures） | `docs/reports/260504-140432/` | 80% 完成，0/2 修复成功，工具零调用 |
 | 24 fixture 全量 Benchmark（patch-completeness 后） | Benchmark（24 fixtures, 3 repo） | `docs/reports/260508-003359/` + `analysis.md` | completed 24/24 (100%)，testsPassed 11/24 (45%)；协议覆盖 6/6 达标；多语言 3/3 ≥3 通过；P1-P4 暴露 2 base false-positive + 引发 1 plan-多列副作用（pi-test-aief-l3）+ 1 偶发；议题 B trigger 已成立 |
+| 并行 Benchmark（DONE 接受+补全模式+regex fix） | Benchmark（24 fixtures, parallel=3） | `docs/reports/260509-165142/` | completed 24/24，testsPassed 11/24 (45%)，2087s（3x 加速）；pi 5/7(71%), loam 4/8(50%), rh 2/9(22%)；repair 0/12 |
 
 ## 4. 进行中事项
 
 | 事项 | 当前状态 | 阻塞点 | 下一步 |
 |------|---------|--------|--------|
 | 工具采纳率修复 | ✅ 已验证（commit `da7c554` → `1d68e75` → `b6e59ce`，3 次 benchmark 确认 tool_rounds 非空） | — | 无后续动作 |
-| 修复循环成功率提升 | 🔧 诊断中 → 已做定向修复 | 议题 B P6 全量数据：repair 0/17 (0%) → 单 fixture 验证：覆盖率改善（1/3→2/3, 2/5→3/5），但 repairSuccess 仍为 0 | 下一步：全量 benchmark 验证联合效果（需 ≥10 fixture） |
+| 修复循环成功率提升 | 🔧 已定位但不阻塞 | 全量 `260509-165142`：repairSuccess 0/12。DONE 接受+补全模式+scope 软化修复了机制误判（pi-refactor-read-text 单跑 3/3 PASS），但模型代码质量仍是瓶颈 | 下一步：rh Java 22% PASS 入手，提升模型 Java 代码生成质量 |
 | Controlled Benchmark Suite | 本地 `dsh-benchmark/*-phase2` 分支已创建；13 个 loam/pi/rh fixture 已回填固定 commit metadata | 尚未推送 benchmark 分支；rh Java+Vue 混合新增 fixtures 仍待实现 | 基线：loamlog `5e1d3ee57e853698beacd51f4d1a674f293c17d8`，pi `d01d427be7d2999b4d17783b8982bb518c53ec9f`，release-hub `180de500e6740433b578e60e1585dc6e315f5191` |
 
 ## 5. 已废弃事项
@@ -75,9 +80,9 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|---------|
-| P0 | 修复循环成功率突破 0% | 议题 B P6 全量数据：repair 0/17 (0%)；若不突破，Phase 3 testsPassed 60% 目标不可达 | ≥1 fixture 的 repair 成功率 > 0；至少 1 个 fixture 因 repair 从 ✗→✓ |
-| P1 | fixture-false-positive-audit | 已确认 ≥2 个 false-positive（pi-refactor-read-text、rh-test-dashboard-version），其余 11 个旧 fixture 待审计；数据可信度受污染 | 13 旧 fixture 全量审计完成 + false-positive 修正 + testsPassed baseline 更新 |
-| P2 | plan-files-overlist 修补 | pi-test-aief-l3 暴露 plan 多列文件→done 反复 reject；议题 B 实施中确认副作用仍存在 | ✅ 已实施：plan prompt `<FILES>` 格式升级（每个文件 + 改动描述）+ 规则 3 强化"仅列需修改文件"；待 benchmark 验证 |
+| P0 | rh Java 22% PASS 提升 | `260509-165142`：rh 2/9 (22%) 是全量最低分仓库，Java+Maven 是 Phase 3 60% 目标最大拖累 | rh PASS ≥ 4/9 (44%) |
+| P1 | fixture-false-positive-audit | 已确认 ≥2 个 false-positive（已通过结构化断言迁移修复），rh-refactor-branch-orchestrator 高风险（5 expectedFiles / 1 mvn test） | 13 旧 fixture 全量审计完成 + false-positive 修正 + testsPassed baseline 更新 |
+| P2 | repair 成功率提升 | `260509-165142`：repair 0/12。单跑时 repair 能补文件（覆盖率改善），但全量中模型代码质量不足 → repair 补不全 | ≥1 fixture repairSuccess=true |
 
 ## 7. 关键证据索引
 
@@ -86,7 +91,7 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 | 项目宪法 | `CONSTITUTION.md` | 5 项核心原则 + 3 条 AI 规则 + 3 项技术原则（含原则 8 跟踪事项治理） |
 | 产品蓝图 | `BLUEPRINT.md` | 7 阶段演进 + Phase 2 退出条件 |
 | 任务规范 | `docs/TASK-SPEC.md` | 任务格式、生命周期、三层体系 |
-| 最新 Benchmark | `docs/reports/260504-140432/` | 5 fixtures loamlog，工具零调用 |
+| 最新 Benchmark | `docs/reports/260509-165142/` | 24 fixtures, parallel=3, 2087s, testsPassed 11/24 (45%) |
 | 对比报告 | `docs/reports/compare-20260502-120419/` | DSH vs OpenCode |
 | 工具系统 Spec | `docs/specs/2026-05-04-tool-system.md` | 工具系统完整设计 |
 | 工具采纳修复 Spec | `docs/specs/2026-05-04-tool-adoption-fix.md` | 本次修复设计 |
@@ -132,7 +137,8 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 | deferred | verify-protocol-structured | spec:docs/specs/2026-05-07-patch-completeness.md | verify 命令从 shell string 升级为结构化断言（file_contains / exit_code / shell 等） | trigger 已满足（24 fixture 实测于 260508-003359），可起草议题 B spec | P1 | ready | 2026-05-08 |
 | evidence | patch-completeness-baseline | spec:docs/specs/2026-05-07-patch-completeness.md | rh-mixed-dashboard 3 次重跑 + 24 fixture 全量 benchmark vs 260506-004042 基线对比 | 3 次单 fixture（260507-235439/260508-000202/260508-000642，plan.files 覆盖率 0/3→2/3）+ 24 fixture 全量（260508-003359/analysis.md）已完成；P1-P4 净效应正向（2 false-positive 修正 + 1 副作用 + 1 偶发） | P1 | resolved | 2026-05-08 |
 | evidence | fixture-false-positive-audit | report:docs/reports/260508-003359/analysis.md | 全量审计 13 旧 fixture 的 verification commands 是否对所有 expectedFiles 做断言；列出 false-positive 候选 + 修正建议 | 至少 pi-refactor-read-text、rh-test-dashboard-version 已确认 false-positive；其他 fixture 待审计 | P1 | waiting | 2026-05-08 |
-| debt | plan-files-overlist | report:docs/reports/260508-003359/analysis.md | plan prompt 加约束"`<FILES>` 仅列出确实需要修改的文件，不要把要读取/参考的文件列入" | 议题 B spec 起草时同步评估；pi-test-aief-l3 暴露此模式（plan 多列 → done 反复 reject） | P2 | waiting | 2026-05-08 |
+| debt | plan-files-overlist | report:docs/reports/260508-003359/analysis.md | plan prompt 加约束"`<FILES>` 仅列出确实需要修改的文件，不要把要读取/参考的文件列入" | 已实施 (fcfc202)：FILES 格式升级（每个文件+改动描述）+ 规则 3 强化 | P2 | resolved | 2026-05-09 |
+| bug | failure-detector-regex-infinite-loop | code:packages/core/src/failure-detector.ts:540 | extractCompilationErrors() regex 无 g 标志导致无限循环（parallel=3 时 pi-bugfix-count-defs 触发） | 已修 (89db5e8)：带 g 标志副本扫描 + 零长度匹配保护 + 回归测试 | P1 | resolved | 2026-05-09 |
 | evidence | verify-protocol-structured-baseline | spec:docs/specs/2026-05-08-verify-protocol-structured.md | 议题 B 实施 P6 完成时收集（5 fixture 迁移单跑 + 24 fixture 全量 vs 260508-003359 基线对比） | P6 全量 benchmark 完成（260508-223235/analysis.md）；原始 7/24 → 修正 8/24（1 实现 bug + 7 采样变异）；4 改善含 rh-mixed-dashboard-generated-at-backend 首次全量通过 | P1 | resolved | 2026-05-09 |
 | deferred | verify-assertion-extensions | spec:docs/specs/2026-05-08-verify-protocol-structured.md | 评估是否引入 json_path / regex_named_capture 等扩展断言类型 | 5 个迁移 fixture 实测后，若仍有 ≥3 个 fixture 在 shell_other 类无法表达 | P2 | waiting | 2026-05-08 |
 | bug | scanner-java-default-maven | code:packages/repo/src/scanner.ts:237 | detectLanguageByFiles: ≥3 .java 文件 → packageManager="maven"（弱推断伪装成事实） | 已修 (bca15fd): 无 pom.xml/build.gradle 时 packageManager=null | P1 | resolved | 2026-05-09 |
