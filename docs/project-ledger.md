@@ -23,15 +23,16 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 
 ### Phase 3 起点
 - baseline（原始）: testsPassed 11/24 (45%) — `260508-003359`
-- baseline（议题 B P6 修正后）: testsPassed 8/24 (33%) — `260508-223235`（1 实现 bug 已修 + 7 采样变异）
-- **最新全量**: testsPassed 11/24 (45%) — `260509-165142`（parallel=3, 2087s）
-  - pi: 5/7 PASS (71%), loam: 4/8 PASS (50%), rh: 2/9 PASS (22%)
-  - repairSuccess: 0/12; FAIL: 1 (pi-refactor-read-text: plan 块为空)
+- baseline（议题 B P6 修正后）: testsPassed 8/24 (33%) — `260508-223235`
+- **最新全量**: testsPassed 11/24 (45%) — `260509-165142`（parallel=3, 2087s, 3x 加速）
+  - pi: 5/7 (71%), loam: 4/8 (50%), rh: 2/9 (22%)
+- **rh debug 后**: 3/9 (33%) — `260509-181614`。NoSuchMethodError 已修（mvn install），剩余 PARTIAL 是模型输出不完整（1/2 files changed）
 - 目标: testsPassed >60%
-- 议题 B（`verify-protocol-structured`）：✅ P1-P6 已实施完成（2026-05-09），结构化断言已上线，5 fixture 迁移试点
-- 并行 benchmark：✅ `--parallel=N` 已上线（git worktree 隔离 + semaphore pool），3x 加速
+- 议题 B（`verify-protocol-structured`）：✅ P1-P6 已实施完成，结构化断言已上线
+- 并行 benchmark：✅ `--parallel=N` 已上线（git worktree + semaphore pool）
+- 关键 bug 已修：CLOSE_WAIT body 超时、failure-detector regex 无限循环、`.m2` 旧 jar NoSuchMethodError
 - ready 议题：`fixture-false-positive-audit`（P1）
-- waiting 议题：模型 Java 代码质量改进（议题 C，未起草）
+- waiting 议题：议题 C（未起草）
 
 ## 2. 已完成事项
 
@@ -67,7 +68,8 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 | 事项 | 当前状态 | 阻塞点 | 下一步 |
 |------|---------|--------|--------|
 | 工具采纳率修复 | ✅ 已验证（commit `da7c554` → `1d68e75` → `b6e59ce`，3 次 benchmark 确认 tool_rounds 非空） | — | 无后续动作 |
-| 修复循环成功率提升 | 🔧 已定位但不阻塞 | 全量 `260509-165142`：repairSuccess 0/12。DONE 接受+补全模式+scope 软化修复了机制误判（pi-refactor-read-text 单跑 3/3 PASS），但模型代码质量仍是瓶颈 | 下一步：rh Java 22% PASS 入手，提升模型 Java 代码生成质量 |
+| 修复循环成功率提升 | 🔧 已定位但不阻塞 | 全量 `260509-165142`：repairSuccess 0/12。DONE 接受+补全模式+scope 软化修复了机制误判（pi-refactor-read-text 单跑即 PASS），repair 在单 fixture 中有效但全量样本波动 | 下一步：≥10 fixture 全量 + repair 成功率统计 |
+| rh Java PASS 提升 | 🔧 debug 完成 | rh 2/9(22%)→3/9(33%)。根因：`.m2` 旧 jar 导致 NoSuchMethodError（mvn compile 只编译到 target/，mvn test 无 -am 从 .m2 加载旧 jar）。已修：`installBenchmarkDeps` 改为 `mvn install -DskipTests` | 剩余 PARTIAL：模型输出不完整（1/2 files changed），非环境问题 |
 | Controlled Benchmark Suite | 本地 `dsh-benchmark/*-phase2` 分支已创建；13 个 loam/pi/rh fixture 已回填固定 commit metadata | 尚未推送 benchmark 分支；rh Java+Vue 混合新增 fixtures 仍待实现 | 基线：loamlog `5e1d3ee57e853698beacd51f4d1a674f293c17d8`，pi `d01d427be7d2999b4d17783b8982bb518c53ec9f`，release-hub `180de500e6740433b578e60e1585dc6e315f5191` |
 
 ## 5. 已废弃事项
@@ -80,9 +82,9 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|---------|
-| P0 | rh Java PASS 提升 | `260509-165142`：rh 2/9 (22%) → `260509-174358`：3/9 (33%)。stale class 误报已修（mvn clean compile），但模型 Java 代码质量仍是瓶颈。编译错误不是预存的——是模型改动引入的 | rh PASS ≥ 4/9 (44%) |
-| P1 | fixture-false-positive-audit | 已确认 ≥2 个 false-positive（已通过结构化断言迁移修复），rh-refactor-branch-orchestrator 高风险（5 expectedFiles / 1 mvn test） | 13 旧 fixture 全量审计完成 + false-positive 修正 + testsPassed baseline 更新 |
-| P2 | repair 成功率提升 | `260509-165142`：repair 0/12。单跑时 repair 能补文件（覆盖率改善），但全量中模型代码质量不足 → repair 补不全 | ≥1 fixture repairSuccess=true |
+| P0 | fixture-false-positive-audit | 已确认 ≥2 个 false-positive（已修正），rh-refactor-branch-orchestrator 高风险（5 expectedFiles / 1 mvn test）。rh debug 揭示环境 bug（.m2 旧 jar）造成的误报已消除，但测试命令覆盖缺口仍需审计 | 13 旧 fixture 全量审计完成 + false-positive 修正 |
+| P1 | repair 成功率突破 0% | 全量 `260509-165142`：repair 0/12。单跑时 repair 有效（pi-refactor-read-text PASS），但全量中受采样波动影响 | ≥1 fixture repairSuccess=true in 全量 run |
+| P2 | rh backend 模型输出完整性 | rh debug 后 3 个 fixture 仍是 PARTIAL，原因是模型只改了 1/2 expected files（如 ExportAppServiceTest 未生成）。非环境/工具问题 | rh ≥ 5/9 PASS |
 
 ## 7. 关键证据索引
 
@@ -91,7 +93,8 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 | 项目宪法 | `CONSTITUTION.md` | 5 项核心原则 + 3 条 AI 规则 + 3 项技术原则（含原则 8 跟踪事项治理） |
 | 产品蓝图 | `BLUEPRINT.md` | 7 阶段演进 + Phase 2 退出条件 |
 | 任务规范 | `docs/TASK-SPEC.md` | 任务格式、生命周期、三层体系 |
-| 最新 Benchmark | `docs/reports/260509-165142/` | 24 fixtures, parallel=3, 2087s, testsPassed 11/24 (45%) |
+| 最新全量 Benchmark | `docs/reports/260509-165142/` | 24 fixtures, parallel=3, 2087s, testsPassed 11/24 (45%) |
+| rh Debug Benchmark | `docs/reports/260509-174358/` + `260509-181614/` | rh 9 fixtures, mvn clean compile→mvn install 修复 NoSuchMethodError |
 | 对比报告 | `docs/reports/compare-20260502-120419/` | DSH vs OpenCode |
 | 工具系统 Spec | `docs/specs/2026-05-04-tool-system.md` | 工具系统完整设计 |
 | 工具采纳修复 Spec | `docs/specs/2026-05-04-tool-adoption-fix.md` | 本次修复设计 |
@@ -147,4 +150,7 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 | bug | verify-java-fallback-maven | code:packages/repo/src/scanner.ts:295 | detectVerifyCommands: packageManager 非 gradle 即默认 mvn（含 null 情形） | 已修 (bca15fd): packageManager=null 时 test/lint/typecheck/build 全返回 null | P1 | resolved | 2026-05-09 |
 | deferred | project-intelligence-phase1 | spec:BLUEPRINT.md | Project Intelligence Engine 第一阶段：新建 intelligence.ts（Fact/Candidate/Decision/Capability 模型 + 工厂函数）+ context-builder 输出 ProjectCard | 已实施 (bca15fd): intelligence.ts + intelligence.test.ts + scanner bug 修复 | P1 | resolved | 2026-05-09 |
 | deferred | project-intelligence-phase2 | spec:BLUEPRINT.md | PIE Phase 2：完整 Fact 收集器 + Candidate 排序 + dsh doctor + .dsh/project.yml | Phase 1 上线 + 24 fixture 实证 ≥1 轮后启动 | P2 | waiting | 2026-05-09 |
+| bug | provider-body-timeout | code:packages/provider/src/client.ts:211 | res.json() 在代理断连后永久阻塞（CLOSE_WAIT），导致 benchmark 卡死 | 已修 (a430453)：Promise.race body 读取超时保护 | P1 | resolved | 2026-05-09 |
+| bug | failure-detector-regex-loop | code:packages/core/src/failure-detector.ts:540 | extractCompilationErrors() regex 无 g 标志导致 CPU 100% 死循环 | 已修 (89db5e8)：带 g 副本 + 零长度保护 + 回归测试 | P1 | resolved | 2026-05-09 |
+| bug | benchmark-mvn-stale-jar | code:packages/eval/src/benchmark-runner.ts:241 | mvn compile 只编译到 target/，mvn test -pl <module> 无 -am 从 .m2 加载旧 jar → NoSuchMethodError | 已修 (3b8d00d)：mvn install -DskipTests 发布到 .m2 | P1 | resolved | 2026-05-09 |
 | deferred | project-intelligence-phase3 | spec:BLUEPRINT.md | PIE Phase 3：detectVerifyCommands 退役 + scanner 改为 Intelligence 驱动 + verify plan 从 Capability 推导 | Phase 2 上线后启动 | P3 | waiting | 2026-05-09 |
