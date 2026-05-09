@@ -80,7 +80,7 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|---------|
-| P0 | rh Java 22% PASS 提升 | `260509-165142`：rh 2/9 (22%) 是全量最低分仓库，Java+Maven 是 Phase 3 60% 目标最大拖累 | rh PASS ≥ 4/9 (44%) |
+| P0 | rh Java PASS 提升 | `260509-165142`：rh 2/9 (22%) → `260509-174358`：3/9 (33%)。stale class 误报已修（mvn clean compile），但模型 Java 代码质量仍是瓶颈。编译错误不是预存的——是模型改动引入的 | rh PASS ≥ 4/9 (44%) |
 | P1 | fixture-false-positive-audit | 已确认 ≥2 个 false-positive（已通过结构化断言迁移修复），rh-refactor-branch-orchestrator 高风险（5 expectedFiles / 1 mvn test） | 13 旧 fixture 全量审计完成 + false-positive 修正 + testsPassed baseline 更新 |
 | P2 | repair 成功率提升 | `260509-165142`：repair 0/12。单跑时 repair 能补文件（覆盖率改善），但全量中模型代码质量不足 → repair 补不全 | ≥1 fixture repairSuccess=true |
 
