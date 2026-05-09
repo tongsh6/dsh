@@ -238,8 +238,12 @@ function installFrontendDeps(cwd: string): void {
 function installBackendDeps(cwd: string): void {
   const pomXml = path.join(cwd, "pom.xml");
   if (!fs.existsSync(pomXml)) return;
+  // clean compile catches stale .class files from previous runs that would
+  // cause false-negative compilation errors during verify. dependency:resolve
+  // only downloads jars — it won't detect method signature mismatches between
+  // modules (e.g., BusinessException refactoring in release-hub).
   try {
-    execFileSync("mvn", ["dependency:resolve", "-q"], { cwd, stdio: "pipe", timeout: 180_000 });
+    execFileSync("mvn", ["clean", "compile", "-q"], { cwd, stdio: "pipe", timeout: 300_000 });
   } catch {
     // non-fatal
   }
