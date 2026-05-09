@@ -238,12 +238,13 @@ function installFrontendDeps(cwd: string): void {
 function installBackendDeps(cwd: string): void {
   const pomXml = path.join(cwd, "pom.xml");
   if (!fs.existsSync(pomXml)) return;
-  // clean compile catches stale .class files from previous runs that would
-  // cause false-negative compilation errors during verify. dependency:resolve
-  // only downloads jars — it won't detect method signature mismatches between
-  // modules (e.g., BusinessException refactoring in release-hub).
+  // mvn install -DskipTests publishes modules to ~/.m2 so that subsequent
+  // mvn test -pl <module> (without -am) resolves inter-module dependencies
+  // from freshly-built jars, not stale ones. mvn clean compile only compiles
+  // to target/classes/ — the .m2 jars stay at the old version, causing
+  // NoSuchMethodError at test runtime.
   try {
-    execFileSync("mvn", ["clean", "compile", "-q"], { cwd, stdio: "pipe", timeout: 300_000 });
+    execFileSync("mvn", ["install", "-DskipTests", "-q"], { cwd, stdio: "pipe", timeout: 300_000 });
   } catch {
     // non-fatal
   }
