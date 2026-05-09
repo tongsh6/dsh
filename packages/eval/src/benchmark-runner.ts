@@ -306,10 +306,16 @@ function resetToBenchmarkBase(cwd: string, fixture: Pick<LoadedFixture, "benchma
 
 // ---- Benchmark execution ----
 
+export interface RunTaskOptions {
+  /** When true, skip git checkout/branch creation — worktree is already at the right ref. */
+  skipBranchSetup?: boolean;
+}
+
 export async function runTask(
   fixture: LoadedFixture,
   repoPath: string,
   client: DeepSeekClient,
+  opts?: RunTaskOptions,
 ): Promise<TaskResult> {
   const startTime = Date.now();
   const result = createEmptyResult(fixture);
@@ -318,8 +324,13 @@ export async function runTask(
   let handoffQuality = 0;
 
   try {
-    // 1. Git prepare
-    prepareBenchmarkBranch(repoPath, fixture);
+    // 1. Git prepare — skip when running in a pre-configured worktree
+    if (opts?.skipBranchSetup) {
+      cleanBenchmarkWorktree(repoPath);
+      assertPreflightFiles(repoPath, fixture);
+    } else {
+      prepareBenchmarkBranch(repoPath, fixture);
+    }
 
     // 1b. Install deps so verify commands (pnpm typecheck / mvn test) work
     installBenchmarkDeps(repoPath);
@@ -492,7 +503,9 @@ export async function runTask(
       }
     }
   } finally {
-    resetToBenchmarkBase(repoPath, fixture);
+    if (!opts?.skipBranchSetup) {
+      resetToBenchmarkBase(repoPath, fixture);
+    }
   }
 
   result.repairRounds = repairRounds;

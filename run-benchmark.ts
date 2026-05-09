@@ -20,7 +20,7 @@ const isCi = args.includes("--ci");
 const filterArg = args.find((a) => a.startsWith("--filter="));
 const filterPrefix = filterArg ? filterArg.slice("--filter=".length) : null;
 const parallelArg = args.find((a) => a.startsWith("--parallel="));
-const parallelCount = parallelArg ? parseInt(parallelArg.slice("--parallel=".length), 10) : 4;
+const parallelCount = parallelArg ? parseInt(parallelArg.slice("--parallel=".length), 10) : 3;
 
 function gitShortHash(): string {
   try {
@@ -75,16 +75,31 @@ function cleanupStaleWorktrees(mainRepo: string): void {
   for (const entry of fs.readdirSync(worktreesRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const wtPath = path.join(worktreesRoot, entry.name);
-    try {
-      gitFile(mainRepo, ["worktree", "remove", wtPath, "--force"], 10_000);
-    } catch {
+    try { gitFile(mainRepo, ["worktree", "remove", wtPath, "--force"], 10_000); } catch {
       try { fs.rmSync(wtPath, { recursive: true, force: true }); } catch { /* ok */ }
     }
   }
   try { gitFile(mainRepo, ["worktree", "prune"], 10_000); } catch { /* ok */ }
 }
 
-function createWorktree(mainRepo: string, fixtureId: string): string {
+function resolveBenchmarkRef(mainRepo: string, fixture: typeof benchFixtures[0]): string {
+  const ref = fixture.benchmarkRef?.commit
+    ?? fixture.benchmarkRef?.branch
+    ?? "HEAD";
+  // If it looks like a branch (not a 40-char SHA), try to resolve via origin/
+  if (ref.length !== 40) {
+    try {
+      return execFileSync("git", ["rev-parse", `origin/${ref}`], { cwd: mainRepo, encoding: "utf-8", timeout: 5_000 }).trim();
+    } catch {
+      try {
+        return execFileSync("git", ["rev-parse", ref], { cwd: mainRepo, encoding: "utf-8", timeout: 5_000 }).trim();
+      } catch { /* fall through */ }
+    }
+  }
+  return ref;
+}
+
+function createWorktree(mainRepo: string, fixtureId: string, ref: string): string {
   const worktreesRoot = path.join(mainRepo, WORKTREES_DIR_NAME);
   fs.mkdirSync(worktreesRoot, { recursive: true });
   const wtPath = path.join(worktreesRoot, fixtureId);
@@ -95,7 +110,9 @@ function createWorktree(mainRepo: string, fixtureId: string): string {
   }
   try { gitFile(mainRepo, ["worktree", "prune"], 10_000); } catch { /* ok */ }
 
-  gitFile(mainRepo, ["worktree", "add", "--detach", wtPath, "HEAD"], 30_000);
+  // Create worktree at the resolved commit in detached HEAD.
+  // Detached HEAD avoids branch-name collisions between parallel worktrees.
+  gitFile(mainRepo, ["worktree", "add", "--detach", wtPath, ref], 30_000);
   return wtPath;
 }
 
@@ -154,13 +171,23 @@ for (const repo of allRepos) {
 
 async function runFixture(fixture: typeof benchFixtures[0]): Promise<TaskResult> {
   const mainRepo = resolveRepoPath(fixture);
-  const wtPath = createWorktree(mainRepo, fixture.id);
+
+  // Ensure remote refs are available in the shared repo before creating
+  // worktree. Without this, prepareBenchmarkBranch may fail to resolve
+  // benchmarkRef.branch that exists only as origin/<branch>.
+  try { gitFile(mainRepo, ["fetch", "origin"], 30_000); } catch { /* ok */ }
+
+  const ref = resolveBenchmarkRef(mainRepo, fixture);
+  const wtPath = createWorktree(mainRepo, fixture.id, ref);
 
   const tag = `[${fixture.id}]`;
   console.log(`\n=== ${tag} started on ${path.basename(mainRepo)} ===`);
 
   try {
-    const result = await runTask(fixture, wtPath, client);
+    // Worktree is already at the correct ref in detached HEAD — skip
+    // prepareBenchmarkBranch's checkout/branch logic which can fail when
+    // multiple worktrees share a repo.
+    const result = await runTask(fixture, wtPath, client, { skipBranchSetup: true });
     const status = result.testsPassed ? "PASS" : (result.completed ? "PARTIAL" : "FAIL");
     console.log(`  -> ${tag} ${status} (${(result.durationMs / 1000).toFixed(1)}s)`);
     if (result.error) console.log(`  -> ${tag} Error: ${result.error}`);
