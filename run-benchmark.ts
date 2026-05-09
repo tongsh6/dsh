@@ -15,11 +15,12 @@ const BENCH_ROOT = path.join(os.homedir(), "dsh-bench");
 const REPOS_DIR = path.join(BENCH_ROOT, "repos");
 const REPORTS_DIR = path.join(__dirname, "docs", "reports");
 
-// Parse CLI flags
 const args = process.argv.slice(2);
 const isCi = args.includes("--ci");
 const filterArg = args.find((a) => a.startsWith("--filter="));
 const filterPrefix = filterArg ? filterArg.slice("--filter=".length) : null;
+const parallelArg = args.find((a) => a.startsWith("--parallel="));
+const parallelCount = parallelArg ? parseInt(parallelArg.slice("--parallel=".length), 10) : 4;
 
 function gitShortHash(): string {
   try {
@@ -29,20 +30,20 @@ function gitShortHash(): string {
   }
 }
 
+function gitFile(cwd: string, args: string[], timeoutMs = 15_000): void {
+  execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"], timeout: timeoutMs });
+}
+
 const allFixtures = loadAllFixtures(fixturesDir);
 const benchFixtures = allFixtures
   .filter((f) => f.id.startsWith("pi-") || f.id.startsWith("loam-") || f.id.startsWith("rh-"))
   .filter((f) => !filterPrefix || f.id.startsWith(filterPrefix))
   .sort((a, b) => a.id.localeCompare(b.id));
 
-if (!isCi) {
-  console.log(`Loaded ${benchFixtures.length} fixtures:`);
-  benchFixtures.forEach((f) => console.log(`  - ${f.id}: ${f.category}`));
-  console.log();
-}
+console.log(`Loaded ${benchFixtures.length} fixtures (parallel=${parallelCount}):`);
+benchFixtures.forEach((f) => console.log(`  - ${f.id}: ${f.category}`));
+console.log();
 
-// Map fixture metadata/prefix to repo path. benchmarkRef.repo is preferred
-// for controlled suites; prefixes are kept for legacy fixtures.
 const REPO_NAME_MAP: Record<string, string> = {
   "pi-proof-forge": path.join(REPOS_DIR, "pi-proof-forge"),
   loamlog: path.join(REPOS_DIR, "loamlog"),
@@ -64,59 +65,130 @@ function resolveRepoPath(fixture: typeof benchFixtures[0]): string {
   throw new Error(`Cannot resolve repo path for fixture ${fixture.id}`);
 }
 
+// ---- Worktree management ----
+
+const WORKTREES_DIR_NAME = ".dsh-worktrees";
+
+function cleanupStaleWorktrees(mainRepo: string): void {
+  const worktreesRoot = path.join(mainRepo, WORKTREES_DIR_NAME);
+  if (!fs.existsSync(worktreesRoot)) return;
+  for (const entry of fs.readdirSync(worktreesRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const wtPath = path.join(worktreesRoot, entry.name);
+    try {
+      gitFile(mainRepo, ["worktree", "remove", wtPath, "--force"], 10_000);
+    } catch {
+      try { fs.rmSync(wtPath, { recursive: true, force: true }); } catch { /* ok */ }
+    }
+  }
+  try { gitFile(mainRepo, ["worktree", "prune"], 10_000); } catch { /* ok */ }
+}
+
+function createWorktree(mainRepo: string, fixtureId: string): string {
+  const worktreesRoot = path.join(mainRepo, WORKTREES_DIR_NAME);
+  fs.mkdirSync(worktreesRoot, { recursive: true });
+  const wtPath = path.join(worktreesRoot, fixtureId);
+
+  if (fs.existsSync(wtPath)) {
+    try { gitFile(mainRepo, ["worktree", "remove", wtPath, "--force"], 10_000); } catch { /* ok */ }
+    try { fs.rmSync(wtPath, { recursive: true, force: true }); } catch { /* ok */ }
+  }
+  try { gitFile(mainRepo, ["worktree", "prune"], 10_000); } catch { /* ok */ }
+
+  gitFile(mainRepo, ["worktree", "add", "--detach", wtPath, "HEAD"], 30_000);
+  return wtPath;
+}
+
+function removeWorktree(mainRepo: string, wtPath: string): void {
+  try {
+    gitFile(mainRepo, ["worktree", "remove", wtPath, "--force"], 15_000);
+  } catch {
+    try { fs.rmSync(wtPath, { recursive: true, force: true }); } catch { /* ok */ }
+  }
+  try { gitFile(mainRepo, ["worktree", "prune"], 10_000); } catch { /* ok */ }
+}
+
+// ---- Semaphore pool ----
+
+function createSemaphore(max: number) {
+  let running = 0;
+  const queue: (() => void)[] = [];
+
+  function acquire(): Promise<void> {
+    if (running < max) { running++; return Promise.resolve(); }
+    return new Promise<void>((resolve) => queue.push(resolve));
+  }
+
+  function release(): void {
+    running--;
+    const next = queue.shift();
+    if (next) { running++; next(); }
+  }
+
+  return { acquire, release };
+}
+
+// ---- Client ----
+
 let client: DeepSeekClient;
 try {
   const apiKey = process.env["DEEPSEEK_API_KEY"] ?? readApiKey(__dirname) ?? "";
   if (!apiKey) throw new Error("DEEPSEEK_API_KEY not set");
   client = new DeepSeekClient({ apiKey });
 } catch (e) {
-  const msg = e instanceof Error ? e.message : String(e);
-  if (isCi) {
-    process.stdout.write(JSON.stringify({ error: "client_init_failed", message: msg }) + "\n");
-  }
-  // Use synchronous write to ensure flush before exit
-  process.stderr.write(`[benchmark] FATAL: ${msg}\n`);
-  process.exitCode = 2;
-  setImmediate(() => process.exit(2));
+  process.stderr.write(`[benchmark] FATAL: ${e instanceof Error ? e.message : String(e)}\n`);
+  process.exit(2);
 }
+
+// ---- Main ----
 
 const runStart = new Date();
 const runId = `${runStart.getFullYear().toString().slice(2)}${String(runStart.getMonth() + 1).padStart(2, "0")}${String(runStart.getDate()).padStart(2, "0")}-${String(runStart.getHours()).padStart(2, "0")}${String(runStart.getMinutes()).padStart(2, "0")}${String(runStart.getSeconds()).padStart(2, "0")}`;
 const runDir = path.join(REPORTS_DIR, runId);
 
-const results: TaskResult[] = [];
-for (const fixture of benchFixtures) {
-  const repoPath = resolveRepoPath(fixture);
-  if (isCi) {
-    console.log(`[benchmark] starting ${fixture.id} on ${path.basename(repoPath)}`);
-  } else {
-    console.log(`\n=== Running ${fixture.id} on ${path.basename(repoPath)} ===`);
-  }
-  const result = await runTask(fixture, repoPath, client);
-  results.push(result);
-  const status = result.testsPassed ? "PASS" : (result.completed ? "PARTIAL" : "FAIL");
-  if (isCi) {
-    console.log(JSON.stringify({
-      id: fixture.id,
-      status: result.testsPassed ? "pass" : (result.completed ? "partial" : "fail"),
-      duration_s: Number((result.durationMs / 1000).toFixed(1)),
-      score: result.testsPassed ? 99 : 0, // approximate
-      repair_rounds: result.repairRounds,
-      expected_ops: result.expectedProtocolOps,
-      actual_ops: result.actualProtocolOps,
-      error: result.error ?? null,
-    }));
-  } else {
-    console.log(`  -> ${status} (${(result.durationMs / 1000).toFixed(1)}s)`);
-    if (result.error) console.log(`  -> Error: ${result.error}`);
+// Clean up stale worktrees from all repos before starting
+const allRepos = new Set(benchFixtures.map((f) => resolveRepoPath(f)));
+for (const repo of allRepos) {
+  cleanupStaleWorktrees(repo);
+}
+
+async function runFixture(fixture: typeof benchFixtures[0]): Promise<TaskResult> {
+  const mainRepo = resolveRepoPath(fixture);
+  const wtPath = createWorktree(mainRepo, fixture.id);
+
+  const tag = `[${fixture.id}]`;
+  console.log(`\n=== ${tag} started on ${path.basename(mainRepo)} ===`);
+
+  try {
+    const result = await runTask(fixture, wtPath, client);
+    const status = result.testsPassed ? "PASS" : (result.completed ? "PARTIAL" : "FAIL");
+    console.log(`  -> ${tag} ${status} (${(result.durationMs / 1000).toFixed(1)}s)`);
+    if (result.error) console.log(`  -> ${tag} Error: ${result.error}`);
+    return result;
+  } finally {
+    removeWorktree(mainRepo, wtPath);
   }
 }
 
+const semaphore = createSemaphore(parallelCount);
+const resultPromises: Promise<TaskResult>[] = [];
+
+for (const fixture of benchFixtures) {
+  resultPromises.push(
+    semaphore.acquire().then(() =>
+      runFixture(fixture).finally(() => semaphore.release()),
+    ),
+  );
+}
+
+const allResults = await Promise.all(resultPromises);
+allResults.sort((a, b) => a.fixtureId.localeCompare(b.fixtureId));
+
 const runEnd = new Date();
 const elapsed = ((runEnd.getTime() - runStart.getTime()) / 1000).toFixed(0);
-const report = formatEvaluationReport(results);
+const report = formatEvaluationReport(allResults);
 console.log("\n" + report);
-console.log(`\nTotal time: ${elapsed}s`);
+console.log(`\nTotal time: ${elapsed}s (parallel=${parallelCount})`);
 
 // ── Archive ──
 fs.mkdirSync(runDir, { recursive: true });
@@ -128,6 +200,7 @@ const metadata = {
   elapsed_seconds: Number(elapsed),
   dsh_commit: gitShortHash(),
   fixture_count: benchFixtures.length,
+  parallel_count: parallelCount,
   fixtures: benchFixtures.map((f) => ({
     id: f.id,
     category: f.category,
@@ -140,23 +213,17 @@ const metadata = {
 };
 
 fs.writeFileSync(path.join(runDir, "metadata.json"), JSON.stringify(metadata, null, 2), "utf-8");
-fs.writeFileSync(path.join(runDir, "results.json"), JSON.stringify(results, null, 2), "utf-8");
+fs.writeFileSync(path.join(runDir, "results.json"), JSON.stringify(allResults, null, 2), "utf-8");
 fs.writeFileSync(path.join(runDir, "report.md"), report, "utf-8");
 
-if (isCi) {
-  console.log(`\n[benchmark] archived to ${runDir}`);
-  const passCount = results.filter((r) => r.testsPassed).length;
-  console.log(`[benchmark] summary: ${passCount}/${results.length} passed, ${elapsed}s total`);
-} else {
-  console.log(`\nBenchmark artifacts saved to: ${runDir}`);
-}
+console.log(`\nBenchmark artifacts saved to: ${runDir}`);
 
-// --ci mode: exit non-zero if pass rate below threshold
 if (isCi) {
-  const threshold = 0.6;
-  const passRate = results.length > 0 ? results.filter((r) => r.testsPassed).length / results.length : 0;
-  if (passRate < threshold) {
-    console.error(`[benchmark] FAIL: pass rate ${(passRate * 100).toFixed(0)}% below threshold ${(threshold * 100).toFixed(0)}%`);
+  const passCount = allResults.filter((r) => r.testsPassed).length;
+  const passRate = allResults.length > 0 ? passCount / allResults.length : 0;
+  console.log(`[benchmark] summary: ${passCount}/${allResults.length} passed, ${elapsed}s total`);
+  if (passRate < 0.6) {
+    console.error(`[benchmark] FAIL: pass rate ${(passRate * 100).toFixed(0)}% below threshold 60%`);
     process.exit(1);
   }
 }
