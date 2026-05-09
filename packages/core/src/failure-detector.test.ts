@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import {
   detectFailures,
   buildRepairHints,
@@ -356,6 +357,29 @@ describe("detectFailures", () => {
   });
 
   describe("compilation-error", () => {
+    it("does not hang when compilation error patterns match duplicate output", () => {
+      const moduleUrl = new URL("./failure-detector.ts", import.meta.url).href;
+      const script = `
+        import { detectFailures } from ${JSON.stringify(moduleUrl)};
+        const detections = detectFailures({
+          response: "",
+          planFiles: [],
+          actualChangedFiles: [],
+          verifyOutput: "[ERROR] /x/Foo.java:[10,5] err\\n[ERROR] /x/Foo.java:[10,5] err",
+          patchApplyError: null,
+        });
+        if (!detections.some((d) => d.mode === "compilation-error")) process.exit(1);
+      `;
+
+      assert.doesNotThrow(() => {
+        execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], {
+          encoding: "utf-8",
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: 1000,
+        });
+      });
+    });
+
     it("detects Maven javac [ERROR] file:[line,col] format", () => {
       const detections = detectFailures({
         response: "",

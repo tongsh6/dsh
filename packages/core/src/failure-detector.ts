@@ -538,9 +538,11 @@ function extractCompilationErrors(output: string): Array<{ file: string; line: s
   const seen = new Set<string>();
 
   for (const { regex, extract } of COMPILATION_ERROR_PATTERNS) {
-    regex.lastIndex = 0;
+    const globalRegex = regex.global ? regex : new RegExp(regex.source, regex.flags + "g");
+    globalRegex.lastIndex = 0;
     let match: RegExpExecArray | null;
-    while ((match = regex.exec(output)) !== null) {
+    while ((match = globalRegex.exec(output)) !== null) {
+      if (match[0].length === 0) globalRegex.lastIndex++;
       const entry = extract(match);
       if (!entry) continue;
       const key = `${entry.file}:${entry.line}:${entry.message.slice(0, 40)}`;
