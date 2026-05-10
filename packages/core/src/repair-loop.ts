@@ -142,13 +142,37 @@ export async function runRepairLoop(
     if (prevPatch || prevVerify) {
       const verifyOutput =
         prevVerify?.results.map((r) => r.output).join("\n") ?? null;
+      
+      const beforeLastVerify = current.verify_results.at(-2);
+      const prevVerifyOutput = beforeLastVerify?.results.map((r) => r.output).join("\n") ?? null;
+
       const detections = detectFailures({
         response: prevPatch?.patch ?? "",
         planFiles: current.plan?.files ?? [],
         actualChangedFiles: prevPatch?.files_changed ?? [],
         verifyOutput,
         patchApplyError: prevPatch?.apply_status === "failed" ? prevPatch.patch : null,
+        prevVerifyOutput,
       });
+
+      // Detect if stuck on same error
+      if (verifyOutput && prevVerifyOutput && verifyOutput.slice(0, 500) === prevVerifyOutput.slice(0, 500)) {
+        detections.push({
+          mode: "stuck-on-error",
+          description: "修复停滞——连续两轮出现相同的报错",
+          confidence: "high",
+          evidence: "验证输出内容与上一轮完全一致",
+          repairHint: [
+            "CRITICAL: Your last attempt did NOT change the error output.",
+            "This usually means you are modifying the wrong line or the wrong file.",
+            "ACTION REQUIRED:",
+            "1. Use `read_file` on the ENTIRE file to confirm your assumptions about line numbers.",
+            "2. Use `grep_files` to ensure you are modifying the correct class/function.",
+            "3. If you are unsure, REVERT your last change and try a completely different approach.",
+          ].join("\n"),
+        });
+      }
+
       failureHints = buildRepairHints(detections);
     }
 
@@ -175,19 +199,6 @@ export async function runRepairLoop(
       );
     }
 
-    const repairConstraints = [
-      "CRITICAL REPAIR RULES:",
-      "1. Make the SMALLEST possible change to fix the failure — change as few lines as possible.",
-      "2. NEVER delete or modify existing imports unless they are directly causing the test failure.",
-      "3. NEVER add new functions, classes, or variables that were not part of the original task.",
-      "4. NEVER restructure or reformat code that is unrelated to the failure.",
-      "5. ONLY fix the specific error in the verify output. Do not make additional improvements.",
-      "6. If the original patch was wrong, revert to the original code and try a different minimal approach.",
-      "7. Preserve ALL existing code that is not related to the error. Every deleted line must be justified by the verify failure output.",
-      "8. If unified diff failed to apply in the previous round, use <PATCH type=\"search\" file=\"path\"> with SEARCH/REPLACE blocks instead. Copy the SEARCH block EXACTLY from the file content — this avoids line-number errors.",
-      "9. If you changed a function signature (parameters or return type), check ALL callers — they likely need updating, or you should revert the signature change.",
-    ].join("\n");
-
     // Structured signal from patch stage: if patch was marked incomplete
     // (plan.files not fully covered), surface the missing file list at the
     // top of repair task so the model treats "补全缺失文件" as the primary task.
@@ -201,12 +212,9 @@ export async function runRepairLoop(
         ].join("\n")
       : null;
 
-    // When repair was entered because of patch incompleteness (not verify
-    // failure), the model needs a different constraint frame. "Minimal fix"
-    // rules are counter-productive when the task is completing missing work.
-    // Switch to "completion mode" constraints that focus on finishing the
-    // original task, not fixing a specific error.
-    const isCompletionMode = incompleteHint !== null && failureHints === null;
+    const isCompilationError = failureHints?.includes("COMPILATION ERRORS") || failureHints?.includes("signature-mismatch") || false;
+    const isCompletionMode = incompleteHint !== null;
+
     const completionConstraints = [
       "CRITICAL TASK COMPLETION RULES:",
       "1. Your PRIMARY goal is to COMPLETE the original task — the previous attempt was INCOMPLETE.",
@@ -216,6 +224,23 @@ export async function runRepairLoop(
       "5. Produce one change block per uncovered file. Cover every file listed in the PATCH INCOMPLETE section.",
       "6. If you're unsure what a file needs, use read_file to inspect it first.",
       "7. After producing all change blocks, output <DONE/>.",
+    ].join("\n");
+
+    const repairConstraints = [
+      "CRITICAL REPAIR RULES:",
+      isCompilationError 
+        ? "1. Fix the compilation errors. You MAY need to modify multiple files (callers, interfaces, imports) to ensure type safety."
+        : "1. Make the SMALLEST possible change to fix the failure — change as few lines as possible.",
+      "2. NEVER delete or modify existing imports unless they are directly causing the test failure.",
+      "3. NEVER add new functions, classes, or variables that were not part of the original task.",
+      "4. NEVER restructure or reformat code that is unrelated to the failure.",
+      isCompilationError
+        ? "5. Ensure all cross-file dependencies are resolved. If you changed a signature, update ALL callers."
+        : "5. ONLY fix the specific error in the verify output. Do not make additional improvements.",
+      "6. If the original patch was wrong, revert to the original code and try a different minimal approach.",
+      "7. Preserve ALL existing code that is not related to the error. Every deleted line must be justified by the verify failure output.",
+      "8. If unified diff failed to apply in the previous round, use <PATCH type=\"search\" file=\"path\"> with SEARCH/REPLACE blocks instead. Copy the SEARCH block EXACTLY from the file content — this avoids line-number errors.",
+      "9. If you changed a function signature (parameters or return type), check ALL callers — they likely need updating, or you should revert the signature change.",
     ].join("\n");
 
     const taskDescription = [
@@ -238,8 +263,8 @@ export async function runRepairLoop(
       phase: "repair",
     });
 
-    // Tool call loop for repair (max 3 rounds — diagnosis then fix)
-    const MAX_REPAIR_TOOL_ROUNDS = 3;
+    // Tool call loop for repair (max 5 rounds — diagnosis then fix)
+    const MAX_REPAIR_TOOL_ROUNDS = 5;
     let content = "";
     for (let tr = 0; tr <= MAX_REPAIR_TOOL_ROUNDS; tr++) {
       const response = await config.client.chat({

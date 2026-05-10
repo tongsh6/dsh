@@ -34,8 +34,20 @@ export function buildBaseContext(
   }
 
   if (Object.keys(config).length > 0) {
+    // Sanitize config to remove hardcoded verification commands for the agent
+    const sanitizedConfig = { ...config };
+    if (sanitizedConfig.verify) {
+      sanitizedConfig.verify = {
+        ...sanitizedConfig.verify,
+        commands: "[redacted]",
+        test: "[redacted]",
+        lint: "[redacted]",
+        typecheck: "[redacted]",
+        assertions: "[redacted]",
+      };
+    }
     parts.push("## Project Configuration");
-    parts.push(JSON.stringify(config, null, 2));
+    parts.push(JSON.stringify(sanitizedConfig, null, 2));
   }
 
   return parts.join("\n");
@@ -82,6 +94,9 @@ export function buildTaskContext(
   parts.push("## Task");
   parts.push(`Description: ${taskState.task.description}`);
   parts.push(`Type: ${taskState.task.type}`);
+  if (taskState.task.verification_goal) {
+    parts.push(`Verification Goal: ${taskState.task.verification_goal}`);
+  }
 
   if (taskState.plan) {
     parts.push("");

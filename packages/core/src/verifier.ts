@@ -241,7 +241,7 @@ export function formatResults(results: VerifyRunResult[]): string {
     lines.push(`${icon} ${r.command.padEnd(40)} ${time}`);
 
     if (r.status === "failed") {
-      lines.push(`  ${r.output.slice(0, 500)}`);
+      lines.push(`  ${r.output.slice(0, 2000)}`);
     }
   }
   return lines.join("\n");

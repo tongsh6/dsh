@@ -41,7 +41,7 @@ verifications:
     file: backend/releasehub-application/src/test/java/io/releasehub/application/version/VersionUpdateAppServiceTest.java
     name: version_test_file_exists
   - type: shell
-    command: cd backend && mvn test -pl releasehub-application -Dtest="DashboardAppServiceTest,VersionUpdateAppServiceTest" -q -DfailIfNoTests=true
+    command: cd backend && mvn test -pl releasehub-application -am -Dtest="DashboardAppServiceTest,VersionUpdateAppServiceTest" -q -DfailIfNoTests=true
     name: maven_test_passes
 architectureRules:
   - 使用 JUnit 5 + Mockito (@ExtendWith(MockitoExtension.class)) + AssertJ

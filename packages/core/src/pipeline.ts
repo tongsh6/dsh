@@ -9,6 +9,7 @@ import {
   extractFilesBlock,
   extractRisksBlock,
   extractVerifyBlock,
+  extractVerifyStrategyBlock,
   parsePatchTurn,
   applyCreates,
   applyDeletes,
@@ -51,7 +52,7 @@ import type { ToolName } from "./tool-definitions.js";
 
 const MAX_PATCH_ROUNDS = 30;
 const MAX_CONSECUTIVE_INVALID = 3;
-const MAX_CONSECUTIVE_TOOLS_ONLY = 5;
+const MAX_CONSECUTIVE_TOOLS_ONLY = 10;
 
 interface VerifySlotSelection {
   test?: boolean;
@@ -192,6 +193,7 @@ export interface PipelineBase {
 export interface PlanParams extends PipelineBase {
   description: string;
   taskType: "bugfix" | "feature" | "refactor" | "test" | "docs";
+  verificationGoal?: string;
 }
 
 export interface PatchParams extends PipelineBase {
@@ -221,19 +223,25 @@ export interface HandoffParams {
 export interface FullPipelineParams extends PipelineBase {
   description: string;
   taskType: "bugfix" | "feature" | "refactor" | "test" | "docs";
+  verificationGoal?: string;
   auto?: boolean;
   maxRepairRounds?: number;
 }
 
 // ---- Internal helpers ----
 
-async function buildLayers(cwd: string, description: string, taskType: string): Promise<ContextLayers> {
+async function buildLayers(
+  cwd: string,
+  description: string,
+  taskType: string,
+  verificationGoal?: string,
+): Promise<ContextLayers> {
   const config = loadDshConfig(cwd);
   const rules = loadRuleContents(cwd);
   const stack = detectTechStack(cwd);
   const repoContext = generateRepoContext(cwd, stack);
 
-  const state = createTaskState(description, taskType as TaskState["task"]["type"]);
+  const state = createTaskState(description, taskType as TaskState["task"]["type"], verificationGoal);
   const allFiles = await scanProjectFiles(cwd);
   const ranked = rankFiles(description, allFiles);
   const taskFiles = loadTopFiles(cwd, ranked, 10);
@@ -295,55 +303,73 @@ async function runPostImplementationStaticScan(params: {
 // ---- runPlan ----
 
 export async function runPlan(params: PlanParams): Promise<TaskState> {
-  const { cwd, client, description, taskType } = params;
+  const { cwd, client, description, taskType, verificationGoal } = params;
 
   let state = readTaskState(cwd);
   if (!state || state.task.description !== description) {
-    state = createTaskState(description, taskType);
+    state = createTaskState(description, taskType, verificationGoal);
     writeTaskState(cwd, state);
   }
 
-  const layers = await buildLayers(cwd, description, taskType);
+  const layers = await buildLayers(cwd, description, taskType, verificationGoal);
   const target = classify({ command: "plan" });
 
   const messages = buildMessages({ context: layers, taskDescription: description, phase: "plan" });
-  const response = await client.chat({
-    model: target.model,
-    messages,
-    thinking: target.thinking,
-  });
+  let attempts = 0;
+  while (attempts < 2) {
+    attempts++;
+    const response = await client.chat({
+      model: target.model,
+      messages,
+      thinking: target.thinking,
+    });
 
-  const content = response.choices[0]?.message.content ?? "";
-  const planRaw = extractPlanBlock(content);
-  const files = extractFilesBlock(content);
-  const risks = extractRisksBlock(content);
-  const verifyCommands = extractVerifyBlock(content);
+    const content = response.choices[0]?.message.content ?? "";
+    const planRaw = extractPlanBlock(content);
+    const files = extractFilesBlock(content);
+    const risks = extractRisksBlock(content);
+    const verifyCommands = extractVerifyBlock(content);
+    const verifyStrategy = extractVerifyStrategyBlock(content);
 
-  if (!planRaw) {
-    // Fallback: use entire response as plan if no <PLAN> block found
-    const trimmed = content.trim();
-    if (trimmed.length > 50) {
-      state.plan = {
-        summary: trimmed.split("\n")[0]?.replace(/^#+\s*/, "") ?? description,
-        files,
-        risks,
-        raw_xml: trimmed,
-        verify_commands: verifyCommands.length > 0 ? verifyCommands : undefined,
-      };
-      state = transition(state, "planned");
-      writeTaskState(cwd, state);
-      return state;
+    if (!planRaw) {
+      // Fallback: use entire response as plan if no <PLAN> block found
+      const trimmed = content.trim();
+      if (trimmed.length > 50) {
+        state.plan = {
+          summary: trimmed.split("\n")[0]?.replace(/^#+\s*/, "") ?? description,
+          files,
+          risks,
+          raw_xml: trimmed,
+          verify_commands: verifyCommands.length > 0 ? verifyCommands : undefined,
+          verify_strategy: verifyStrategy,
+        };
+        state = transition(state, "planned");
+        writeTaskState(cwd, state);
+        return state;
+      }
+
+      if (attempts < 2) {
+        messages.push({ role: "assistant", content });
+        messages.push({
+          role: "user",
+          content: "Your response is missing the mandatory <PLAN> block. Please provide your technical plan wrapped in <PLAN>...</PLAN> XML tags as per the instructions.",
+        });
+        continue;
+      }
+      throw new Error("DeepSeek 未返回有效的 PLAN 块");
     }
-    throw new Error("DeepSeek 未返回有效的 PLAN 块");
+
+    state.plan = {
+      summary: planRaw.split("\n")[0]?.replace(/^#+\s*/, "") ?? description,
+      files,
+      risks,
+      raw_xml: planRaw,
+      verify_commands: verifyCommands.length > 0 ? verifyCommands : undefined,
+      verify_strategy: verifyStrategy,
+    };
+    break;
   }
 
-  state.plan = {
-    summary: planRaw.split("\n")[0]?.replace(/^#+\s*/, "") ?? description,
-    files,
-    risks,
-    raw_xml: planRaw,
-    verify_commands: verifyCommands.length > 0 ? verifyCommands : undefined,
-  };
   state = transition(state, "planned");
   writeTaskState(cwd, state);
 
@@ -361,7 +387,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
     throw new Error(`当前状态为 ${state.status}，需要 planned 或 repairing`);
   }
 
-  const layers = await buildLayers(cwd, state.task.description, state.task.type);
+  const layers = await buildLayers(cwd, state.task.description, state.task.type, state.task.verification_goal);
   const dynamic = buildDynamicContext(state.patches, state.verify_results, 2);
   const fullLayers = { ...layers, dynamic };
 
@@ -434,6 +460,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
             args[k] = typeof v === "string" ? v : JSON.stringify(v);
           }
           const result = executeTool(tc.function.name as ToolName, args, cwd, tc.id);
+          console.log(`[pipeline] Tool: ${tc.function.name} args: ${JSON.stringify(args)} status: ${result.status}`);
           const formatted = formatToolResult(tc.function.name as ToolName, args, result);
           messages.push({ role: "tool", content: formatted, tool_call_id: tc.id });
           callRecords.push({
@@ -445,7 +472,18 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
         }
         record.tool_calls = callRecords;
         consecutiveInvalid = 0;
-        if (hasProducedChange) consecutiveToolsOnly++;
+        consecutiveToolsOnly++;
+
+        if (consecutiveToolsOnly >= MAX_CONSECUTIVE_TOOLS_ONLY) {
+          const reason = hasProducedChange
+            ? `连续超过 ${MAX_CONSECUTIVE_TOOLS_ONLY} 轮仅调用工具而未产生代码块，任务自动终止以防止 Token 浪费。请总结已完成部分进入验证。`
+            : `初始调研轮次超过 ${MAX_CONSECUTIVE_TOOLS_ONLY} 轮且未产生任何代码修改，判定为 Analysis Paralysis。请停止调研并开始实施第一步。`;
+          
+          messages.push({
+            role: "user",
+            content: `## SYSTEM WARNING\n${reason}`,
+          });
+        }
         break;
       }
 
@@ -749,9 +787,9 @@ export async function runHandoff(params: HandoffParams): Promise<string> {
 // ---- runFullPipeline ----
 
 export async function runFullPipeline(params: FullPipelineParams): Promise<TaskState> {
-  const { cwd, client, description, taskType, auto = true, maxRepairRounds = 3 } = params;
+  const { cwd, client, description, taskType, verificationGoal, auto = true, maxRepairRounds = 5 } = params;
 
-  await runPlan({ cwd, client, description, taskType });
+  await runPlan({ cwd, client, description, taskType, verificationGoal });
   let state = await runPatch({ cwd, client, auto });
 
   if (state.status === "patched") {

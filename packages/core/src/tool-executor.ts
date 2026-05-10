@@ -238,7 +238,8 @@ export function formatToolResult(
 
   if (result.status === "error") {
     const errorMsg = result.error ?? "未知错误";
-    return `${header}\n\n❌ 错误: ${errorMsg}`;
+    const body = result.content ? `\n\n${result.content}` : "";
+    return `${header}\n\n❌ 错误: ${errorMsg}${body}`;
   }
 
   return `${header}\n\n${result.content}`;

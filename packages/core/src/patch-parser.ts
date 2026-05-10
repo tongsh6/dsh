@@ -1021,6 +1021,12 @@ export function extractVerifyBlock(response: string): string[] {
     .filter((l) => l.length > 0 && !l.startsWith("#"));
 }
 
+export function extractVerifyStrategyBlock(response: string): string | undefined {
+  const match = response.match(/<VERIFY_STRATEGY>([\s\S]*?)<\/VERIFY_STRATEGY>/);
+  if (!match || !match[1]) return undefined;
+  return match[1].trim();
+}
+
 export function extractPlanBlock(response: string): string | null {
   const match = response.match(/<PLAN>([\s\S]*?)<\/PLAN>/);
   if (!match || !match[1]) return null;

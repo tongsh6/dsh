@@ -189,7 +189,7 @@ describe("runPlan", () => {
     }
   });
 
-  it("throws when response has no PLAN block", async () => {
+  it("throws after 2 attempts when response has no PLAN block and content is too short to use as fallback", async () => {
     const tmp = await setupTempDir();
     try {
       const client = mockClient("No plan here");
@@ -197,6 +197,19 @@ describe("runPlan", () => {
         () => runPlan({ cwd: tmp, client, description: "test", taskType: "bugfix" }),
         /未返回有效的 PLAN 块/,
       );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("retries once when PLAN block is missing, succeeds on second attempt", async () => {
+    const tmp = await setupTempDir();
+    try {
+      const client = mockClientSequence(["No plan", VALID_PLAN_RESPONSE]);
+      const state = await runPlan({ cwd: tmp, client, description: "test retry", taskType: "bugfix" });
+      assert.equal(state.status, "planned");
+      assert.ok(state.plan);
+      assert.equal(state.plan!.files.length, 1);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -548,42 +561,35 @@ const V4_PATCH_FILE_B = `<PATCH>
     fs.writeFileSync(path.join(tmp, ".dsh", "task-state.json"), JSON.stringify(ts, null, 2), "utf-8");
   }
 
-  it("rejects DONE when plan.files not fully covered, then accepts after second change", async () => {
+  it("accepts DONE even when plan.files not fully covered", async () => {
     const tmp = await setupTempDir("planned");
     try {
       // plan declares 2 files; first round only patches dummy.py
       setMultiFilePlan(tmp, ["dummy.py", "other.py"]);
       fs.writeFileSync(path.join(tmp, "other.py"), "# other\n", "utf-8");
 
-      const PATCH_OTHER = `<PATCH>
---- a/other.py
-+++ b/other.py
-@@ -1 +1,2 @@
- # other
-+# touched
-</PATCH>`;
-      // Sequence: change A → DONE (rejected) → change B → DONE (accepted)
-      const client = mockClientSequence([V4_PATCH_FILE_A, V4_DONE, PATCH_OTHER, V4_DONE]);
+      // Sequence: change A → DONE (now accepted)
+      const client = mockClientSequence([V4_PATCH_FILE_A, V4_DONE]);
       const state = await runPatch({ cwd: tmp, client, auto: true });
 
-      assert.equal(state.status, "patched", `expected patched after both files covered, got ${state.status}`);
+      assert.equal(state.status, "patched", `expected patched even with uncovered files, got ${state.status}`);
 
-      // First DONE should have been reclassified as invalid with structured reason
-      const invalidRounds = state.patch_rounds.filter((r) => r.action === "invalid");
-      assert.equal(invalidRounds.length, 1);
-      assert.equal(invalidRounds[0]!.invalid_reason, "done_with_uncovered_plan_files");
+      // Check for the incomplete_note in the done round
+      const doneRound = state.patch_rounds.find((r) => r.action === "done");
+      assert.ok(doneRound, "should have a done round");
+      assert.ok(doneRound.incomplete_note?.includes("other.py"), `expected incomplete_note to mention other.py, got: ${doneRound.incomplete_note}`);
 
-      // Final patch record covers both files, no incomplete reason
+      // Final patch record should have patch_incomplete_reason
       const lastPatch = state.patches.at(-1)!;
       assert.ok(lastPatch.files_changed.includes("dummy.py"));
-      assert.ok(lastPatch.files_changed.includes("other.py"));
-      assert.equal(lastPatch.patch_incomplete_reason, undefined);
+      assert.ok(!lastPatch.files_changed.includes("other.py"));
+      assert.ok(lastPatch.patch_incomplete_reason?.includes("other.py"));
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 
-  it("aggregate: ≥1 change ok + plan.files uncovered → patch_failed with patch_incomplete_reason", async () => {
+  it("aggregate: ≥1 change ok + plan.files uncovered → patched with patch_incomplete_reason", async () => {
     const tmp = await setupTempDir("planned");
     try {
       setMultiFilePlan(tmp, ["dummy.py", "missing.py"]);
@@ -593,7 +599,7 @@ const V4_PATCH_FILE_B = `<PATCH>
       const client = mockClientSequence([V4_PATCH_FILE_A, junk, junk, junk]);
       const state = await runPatch({ cwd: tmp, client, auto: true });
 
-      assert.equal(state.status, "patch_failed", `expected patch_failed when plan.files uncovered, got ${state.status}`);
+      assert.equal(state.status, "patched", `expected patched (partial success) when plan.files uncovered, got ${state.status}`);
 
       const lastPatch = state.patches.at(-1)!;
       assert.ok(lastPatch.files_changed.includes("dummy.py"));
@@ -621,19 +627,19 @@ const V4_PATCH_FILE_B = `<PATCH>
     }
   });
 
-  it("3 consecutive DONE-rejects exit via consecutiveInvalid guard → patch_failed", async () => {
+  it("3 consecutive DONE-rejects (with NO changes) exit via consecutiveInvalid guard → patch_failed", async () => {
     const tmp = await setupTempDir("planned");
     try {
-      setMultiFilePlan(tmp, ["dummy.py", "missing.py"]);
+      setMultiFilePlan(tmp, ["dummy.py"]);
 
-      // Patch one file, then refuse to do anything but DONE 3 times
-      const client = mockClientSequence([V4_PATCH_FILE_A, V4_DONE, V4_DONE, V4_DONE]);
+      // refuse to do anything but DONE 3 times (no changes made)
+      const client = mockClientSequence([V4_DONE, V4_DONE, V4_DONE]);
       const state = await runPatch({ cwd: tmp, client, auto: true });
 
       assert.equal(state.status, "patch_failed");
       const invalidRounds = state.patch_rounds.filter((r) => r.action === "invalid");
       assert.ok(invalidRounds.length >= 3, `expected ≥3 invalid rounds, got ${invalidRounds.length}`);
-      assert.ok(invalidRounds.every((r) => r.invalid_reason === "done_with_uncovered_plan_files"));
+      assert.ok(invalidRounds.every((r) => r.invalid_reason === "done_with_no_changes"));
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -853,10 +859,10 @@ describe("runVerify", () => {
     }
   });
 
-  it("scope-completeness guard fires even when last patch apply_status === 'ok' but plan.files uncovered", async () => {
-    // (spec 2026-05-07-patch-completeness §3.5) — last line of defense for any
-    // path that bypasses the patch-stage routing (e.g. pre-existing state on
-    // disk written by an older codebase).
+  it("scope-completeness check no longer fails verification, but records a diagnostic note", async () => {
+    // (spec 2026-05-07-patch-completeness §3.5 relaxed) — we no longer fail
+    // verification just because plan.files were uncovered. We let the actual
+    // tests be the authoritative signal.
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
     try {
       fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
@@ -864,7 +870,7 @@ describe("runVerify", () => {
         path.join(tmp, ".dsh", "config.yml"),
         yaml.dump({
           project: { name: "test", language: "python" },
-          verify: { test: "echo ok" }, // verify itself would pass
+          verify: { test: "echo ok" }, // verify itself passes
           rules: { files: [] },
           deepseek: {},
         }),
@@ -884,10 +890,12 @@ describe("runVerify", () => {
         "utf-8",
       );
       const state = await runVerify({ cwd: tmp });
-      assert.equal(state.status, "verification_failed");
-      const lastVerify = state.verify_results.at(-1)!;
-      assert.equal(lastVerify.results[0]!.command, "scope-completeness");
-      assert.ok(lastVerify.results[0]!.output.includes("missing.py"));
+      assert.equal(state.status, "verified");
+      const scopeRound = state.verify_results.find(vr => vr.results.some(r => r.command === "scope-completeness"));
+      assert.ok(scopeRound, "should have recorded a scope-completeness diagnostic");
+      const res = scopeRound.results.find(r => r.command === "scope-completeness")!;
+      assert.equal(res.status, "passed");
+      assert.ok(res.output.includes("missing.py"));
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

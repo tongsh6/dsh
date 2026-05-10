@@ -16,7 +16,7 @@ expectedFiles:
 expectPass: true
 verificationCommands:
   - "test -f backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SystemSettingsController.java"
-  - "! test -f backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SettingsController.java"
+  - "ls backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SettingsController.java 2>&1 | grep 'No such file'"
   - "(cd backend && mvn test -pl releasehub-interfaces -am -q)"
 architectureRules:
   - 文件内容主体不变，只改类名

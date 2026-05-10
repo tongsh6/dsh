@@ -15,6 +15,7 @@ export interface DetectParams {
   actualChangedFiles: string[];
   verifyOutput: string | null;
   patchApplyError: string | null;
+  prevVerifyOutput?: string | null;
 }
 
 export interface SignatureChange {
@@ -572,6 +573,9 @@ function detectCompilationError(params: DetectParams): FailureDetection | null {
   const errors = extractCompilationErrors(params.verifyOutput);
   if (errors.length === 0) return null;
 
+  const prevErrors = params.prevVerifyOutput ? extractCompilationErrors(params.prevVerifyOutput) : [];
+  const delta = errors.length - prevErrors.length;
+
   const byFile = new Map<string, typeof errors>();
   for (const e of errors) {
     const list = byFile.get(e.file) ?? [];
@@ -583,20 +587,40 @@ function detectCompilationError(params: DetectParams): FailureDetection | null {
     .map(([file, errs]) => `  ${file}: ${errs.map((e) => `line ${e.line} - ${e.message.slice(0, 80)}`).join("; ")}`)
     .join("\n");
 
+  const regressionHint = delta > 0
+    ? `\n🚨 REGRESSION: Last patch introduced ${delta} NEW error(s). If you are stuck, consider REVERTING your last change and trying a different approach.`
+    : delta < 0
+    ? `\n👍 PROGRESS: Fixed ${Math.abs(delta)} error(s). Keep going!`
+    : "";
+
+  const javaHints = params.verifyOutput.includes(".java")
+    ? [
+        "Java Tips:",
+        "- 'illegal start of type' often means a missing semicolon ';' on the previous line or a curly brace '{' mismatch.",
+        "- 'cannot find symbol' for a class usually means a missing import.",
+        "- Ensure the class name matches the file name exactly.",
+      ].join("\n")
+    : "";
+
   return {
     mode: "compilation-error",
     description: "代码无法通过编译或静态检查",
     confidence: "high",
-    evidence: `${errors.length} error(s) across ${byFile.size} file(s):\n${summary}`,
+    evidence: `${errors.length} error(s) across ${byFile.size} file(s):\n${summary}${regressionHint}`,
     repairHint: [
       `COMPILATION ERRORS - ${errors.length} error(s) in ${byFile.size} file(s).`,
+      regressionHint,
       "",
       summary,
       "",
-      "REPAIR: fix one file at a time. Start with the file with most errors.",
-      "Common causes: missing import, type mismatch, preview/experimental feature not enabled, wrong package, signature change without updating callers.",
-      "Focus on the FIRST error per file - later errors often cascade from it.",
-    ].join("\n"),
+      javaHints,
+      "",
+      "REPAIR STRATEGY:",
+      "1. Fix the FIRST error per file - later errors often cascade from it.",
+      "2. fix one file at a time. Start with the file with most errors.",
+      "3. Use read_file on the ENTIRE file if line numbers seem shifted.",
+      "4. Common causes: missing import, type mismatch, wrong package, signature change without updating callers.",
+    ].filter(Boolean).join("\n"),
   };
 }
 

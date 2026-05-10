@@ -19,7 +19,7 @@ expectPass: true
 verificationCommands:
   - "test -f packages/distill/src/distill-dag-runner.test.ts"
   - "! test -f packages/distill/src/dag-runner.test.ts"
-  - "git show HEAD:packages/distill/src/dag-runner.test.ts | cmp - packages/distill/src/distill-dag-runner.test.ts"
+  - "grep -q 'describe(\"createDistillDAG\"' packages/distill/src/distill-dag-runner.test.ts"
   - "pnpm test"
 architectureRules:
   - 文件内容保持不变

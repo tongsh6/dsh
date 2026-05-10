@@ -27,6 +27,13 @@ export interface TaskResult {
   handoffQuality: number; // 0-3
   durationMs: number;
   error?: string;
+  plan?: {
+    summary: string;
+    files: string[];
+    strategy: string;
+    verify_strategy?: string;
+    verify_commands?: string[];
+  };
   expectedProtocolOps: ProtocolOp[];
   actualProtocolOps: ProtocolOp[];
   toolRounds: number;
@@ -225,36 +232,6 @@ export function compileFixtureVerifications(
     .map((command) => ({ type: "shell" as const, command }));
 }
 
-function installFrontendDeps(cwd: string): void {
-  const pkgJson = path.join(cwd, "package.json");
-  if (!fs.existsSync(pkgJson)) return;
-  try {
-    execFileSync("pnpm", ["install", "--frozen-lockfile"], { cwd, stdio: "pipe", timeout: 120_000 });
-  } catch {
-    // non-fatal
-  }
-}
-
-function installBackendDeps(cwd: string): void {
-  const pomXml = path.join(cwd, "pom.xml");
-  if (!fs.existsSync(pomXml)) return;
-  // mvn install -DskipTests publishes modules to ~/.m2 so that subsequent
-  // mvn test -pl <module> (without -am) resolves inter-module dependencies
-  // from freshly-built jars, not stale ones. mvn clean compile only compiles
-  // to target/classes/ — the .m2 jars stay at the old version, causing
-  // NoSuchMethodError at test runtime.
-  try {
-    execFileSync("mvn", ["install", "-DskipTests", "-q"], { cwd, stdio: "pipe", timeout: 300_000 });
-  } catch {
-    // non-fatal
-  }
-}
-
-function installBenchmarkDeps(repoPath: string): void {
-  installFrontendDeps(path.join(repoPath, "frontend"));
-  installBackendDeps(path.join(repoPath, "backend"));
-}
-
 function resolveBenchmarkRunRef(cwd: string, fixture: Pick<LoadedFixture, "benchmarkRef">): string {
   return fixture.benchmarkRef?.commit
     ?? fixture.benchmarkRef?.branch
@@ -337,9 +314,6 @@ export async function runTask(
       prepareBenchmarkBranch(repoPath, fixture);
     }
 
-    // 1b. Install deps so verify commands (pnpm typecheck / mvn test) work
-    installBenchmarkDeps(repoPath);
-
     // 2. Clean stale state from previous runs + setup
     const dshDir = path.join(repoPath, ".dsh");
     fs.rmSync(path.join(dshDir, "task-state.json"), { force: true });
@@ -378,7 +352,18 @@ export async function runTask(
       client,
       description: fixture.taskPrompt,
       taskType: fixture.category as "bugfix" | "feature" | "refactor" | "test" | "docs",
+      verificationGoal: fixture.verificationGoal,
     });
+
+    if (state.plan) {
+      result.plan = {
+        summary: state.plan.summary,
+        files: state.plan.files,
+        strategy: state.plan.raw_xml, // raw_xml is currently where the strategy lives
+        verify_strategy: state.plan.verify_strategy,
+        verify_commands: state.plan.verify_commands,
+      };
+    }
 
     // 4. Patch (auto)
     state = await runPatch({ cwd: repoPath, client, auto: true });

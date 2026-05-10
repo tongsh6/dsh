@@ -24,12 +24,19 @@ Your response MUST contain these blocks in order:
 
 ## Strategy
 [Step-by-step approach: what to change, in what order, and why]
+
+## Verification Strategy
+[Describe HOW you will verify the changes. Identify relevant build/test tools in the project and specific tests to run. If a verification goal is provided, explain how you will meet it.]
 </PLAN>
 
 <FILES>
 - [file path 1]: [one-line description of what change this file needs]
 - [file path 2]: [one-line description of what change this file needs]
 </FILES>
+
+<VERIFY_STRATEGY>
+[Explain your reasoning for the chosen verification steps, referencing specific project files like package.json or pom.xml]
+</VERIFY_STRATEGY>
 
 <VERIFY>
 [shell commands to verify the change after implementation, one per line]
@@ -47,7 +54,7 @@ npx tsc --noEmit
 1. Only reference files and APIs that exist in the provided context
 2. Be specific about which functions, classes, or modules need to change
 3. **<FILES> CRITICAL**: ONLY list files you will ACTUALLY MODIFY — do NOT list files you only need to read, reference, or inspect. Each file MUST include a one-line description of the specific change needed (e.g., "add error handling in capture()" or "extract shared type to new interface"). This list drives the patch phase — overlisting causes patch failure.
-4. Suggest verification commands that match the project's toolchain
+4. **AUTONOMOUS VERIFICATION**: You are responsible for determining how to verify your code. Inspect the project structure (e.g., package.json, pom.xml, tests/ directory) to find the appropriate test and build commands. Suggest real commands that match the project's actual toolchain.
 5. List at least 2 concrete, actionable risks — never write "无风险" or "No risks"
 6. Output ONLY the XML blocks. Do not add conversational text before or after
 
@@ -142,6 +149,7 @@ new content to insert here
 4. CHECK CALLERS — If you change a function signature, use grep_files to find all call sites that need updating.
 5. COMPILE CHECK — After each change block, use exec_shell to run the project's compile/build check (compile-only, not full tests). Inspect build files (package.json, pom.xml, Makefile, etc.) to determine the correct compile command. If compilation fails, fix errors in the next round. System verification runs later — compile check is your fast feedback loop.
 6. BE EFFICIENT — Limit exploration + compile checks to 3-6 tool calls total. Use the most targeted tool for each question.
+7. ENVIRONMENT READINESS — In some projects, dependencies may not be installed. If you encounter "Command not found", "Module not found", or compilation errors about missing libraries, use exec_shell to run installation commands (e.g., \`pnpm install\`, \`mvn install -DskipTests\`) to set up the environment before proceeding with changes or tests.
 
 ## After-Apply Feedback
 
@@ -166,6 +174,7 @@ If a change fails, read the file again to check its current state, then try a di
 10. CREATE blocks MUST NOT be empty — every new file needs content
 11. When using <INSERT>, pick an anchor text that definitely EXISTS in the file
 12. Do NOT delete existing imports, functions, or code blocks unless necessary for the fix
+13. **AUTONOMOUS VERIFICATION**: You are responsible for verifying your work. Use \`exec_shell\` to discover and run the appropriate build/test commands for the project. Do not rely on external guidance for verification.
 
 ## Context Layers
 
@@ -233,6 +242,7 @@ You have access to tools for diagnosing verification failures:
 1. DIAGNOSE: Use exec_shell to re-run the failing tests and capture the exact error output.
 2. FIND CALLERS: If the previous patch changed a function signature, use grep_files to find ALL call sites that need updating.
 3. VERIFY CONTENT: Use read_file to confirm file content before writing SEARCH blocks — the file may have changed since the task context was assembled.
+4. ENVIRONMENT READINESS: If the verify output indicates missing dependencies or tools (e.g., "Command not found", "Module not found"), use exec_shell to install them (e.g., \`pnpm install\`, \`mvn install -DskipTests\`) before attempting code repairs.
 
 ## Context Layers
 
@@ -270,8 +280,11 @@ export function buildUserMessage(config: PromptConfig): string {
     parts.push("");
   }
 
-  parts.push("## Your Task");
-  parts.push(taskDescription);
+  parts.push("## Task");
+  parts.push(`Description: ${taskDescription}`);
+  if (context.task.includes("Verification Goal:")) {
+    // Already included in task context by buildTaskContext
+  }
   parts.push("");
   parts.push("Output your response following the protocol above.");
 

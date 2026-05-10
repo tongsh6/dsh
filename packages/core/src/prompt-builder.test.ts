@@ -49,7 +49,7 @@ describe("buildUserMessage", () => {
     assert.ok(msg.includes("## Base Context"));
     assert.ok(msg.includes("## Repo Context"));
     assert.ok(msg.includes("## Task Context"));
-    assert.ok(msg.includes("## Your Task"));
+    assert.ok(msg.includes("## Task"));
     assert.ok(msg.includes("Fix the bug"));
   });
 
