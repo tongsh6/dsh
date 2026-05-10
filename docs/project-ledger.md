@@ -1,6 +1,6 @@
 # DSH 项目事实台账
 
-> 状态: active | 最后更新: 2026-05-09
+> 状态: active | 最后更新: 2026-05-11
 >
 > 任何新会话 AI 或新人进入项目后，**请先阅读本文件**，以便快速恢复项目状态基线。
 
@@ -8,7 +8,12 @@
 
 **Phase 3（工具化）**。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 
-Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/phase-2-exit-review.md` §5.7）。
+### Phase 3 核心演进
+- **议题 A (dsh-autonomous-env)**: ✅ P1 已实施，代码已合并（去保姆化 + prompt 增强 + 命令白名单 + repair 扩容 + fixture 验证命令修正）。
+- **议题 B (verify-protocol-structured)**: ✅ P1-P6 已实施，结构化验证协议上线。
+- **议题 C (goal-driven-verify)**: ✅ P1-P2 已实施，代码已合并（config redaction + autonomous verification prompts + PLAN retry + scope 软化 + DONE 接受放松）。
+- **议题 D (transactional-self-correction)**: spec drafted + 2 轮 review 完成，ready for P1 实施。
+- **目标**: testsPassed > 60%.
 
 ### Phase 2 终态（已退出，归档参考）
 - [x] 静态扫描 Phase 2-3（Top N 可解释选择）
@@ -28,11 +33,13 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
   - pi: 5/7 (71%), loam: 4/8 (50%), rh: 2/9 (22%)
 - **rh debug 后**: 3/9 (33%) — `260509-181614`。NoSuchMethodError 已修（mvn install），剩余 PARTIAL 是模型输出不完整（1/2 files changed）
 - 目标: testsPassed >60%
-- 议题 B（`verify-protocol-structured`）：✅ P1-P6 已实施完成，结构化断言已上线
+- 议题 B（`verify-protocol-structured`）：✅ P1-P6 已实施完成
+- 议题 A+C P1 代码实施：✅ 已完成（commit 待推送）
+- 议题 D spec：✅ drafted + reviewed（`docs/specs/2026-05-10-transactional-self-correction.md`）
 - 并行 benchmark：✅ `--parallel=N` 已上线（git worktree + semaphore pool）
 - 关键 bug 已修：CLOSE_WAIT body 超时、failure-detector regex 无限循环、`.m2` 旧 jar NoSuchMethodError
-- ready 议题：`fixture-false-positive-audit`（P1）
-- waiting 议题：议题 C（未起草）
+- ready 议题：`fixture-false-positive-audit`（P1）、`transactional-self-correction` P1（P0）
+- 下一步：议题 A+C benchmark 全量验证 → 议题 D P1 实施
 
 ## 2. 已完成事项
 
@@ -67,10 +74,10 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 
 | 事项 | 当前状态 | 阻塞点 | 下一步 |
 |------|---------|--------|--------|
-| 工具采纳率修复 | ✅ 已验证（commit `da7c554` → `1d68e75` → `b6e59ce`，3 次 benchmark 确认 tool_rounds 非空） | — | 无后续动作 |
-| 修复循环成功率提升 | 🔧 已定位但不阻塞 | 全量 `260509-165142`：repairSuccess 0/12。DONE 接受+补全模式+scope 软化修复了机制误判（pi-refactor-read-text 单跑即 PASS），repair 在单 fixture 中有效但全量样本波动 | 下一步：≥10 fixture 全量 + repair 成功率统计 |
-| rh Java PASS 提升 | 🔧 debug 完成 | rh 2/9(22%)→3/9(33%)。根因：`.m2` 旧 jar 导致 NoSuchMethodError（mvn compile 只编译到 target/，mvn test 无 -am 从 .m2 加载旧 jar）。已修：`installBenchmarkDeps` 改为 `mvn install -DskipTests` | 剩余 PARTIAL：模型输出不完整（1/2 files changed），非环境问题 |
-| Controlled Benchmark Suite | 本地 `dsh-benchmark/*-phase2` 分支已创建；13 个 loam/pi/rh fixture 已回填固定 commit metadata | 尚未推送 benchmark 分支；rh Java+Vue 混合新增 fixtures 仍待实现 | 基线：loamlog `5e1d3ee57e853698beacd51f4d1a674f293c17d8`，pi `d01d427be7d2999b4d17783b8982bb518c53ec9f`，release-hub `180de500e6740433b578e60e1585dc6e315f5191` |
+| 议题 A+C benchmark 验证 | 🔧 代码已合入，等待 benchmark 全量跑 | 需要跑 rh-* + loam 单 fixture 验证 Agent 自主环境修复 + 自主推导验证命令能力 | 先跑 rh-bugfix-csv-export 单 fixture 验证环境自愈；再跑 loam 验证自主 verify |
+| 议题 D (transactional-self-correction) P1 | spec drafted + 2 轮 review 完成 | 需先更新 task doc（采纳 review 反馈），然后起草 plan | 更新 task doc → 起草 plan → 实施双轨快照 + managed_files 追踪 |
+| 修复循环成功率提升 | 🔧 已定位但不阻塞 | 全量 `260509-165142`：repairSuccess 0/12。议题 D 的事务回滚是突破 0% 的关键杠杆 | 议题 D P1 实施后重跑 benchmark 验证 |
+| rh Java PASS 提升 | 🔧 debug 完成 | rh 2/9(22%)→3/9(33%)。根因已修，剩余 PARTIAL 是模型输出不完整（1/2 files changed） | 议题 A 让 Agent 自主 mvn install 后重跑 rh 全量 |
 
 ## 5. 已废弃事项
 
@@ -82,9 +89,10 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|---------|
-| P0 | fixture-false-positive-audit | 已确认 ≥2 个 false-positive（已修正），rh-refactor-branch-orchestrator 高风险（5 expectedFiles / 1 mvn test）。rh debug 揭示环境 bug（.m2 旧 jar）造成的误报已消除，但测试命令覆盖缺口仍需审计 | 13 旧 fixture 全量审计完成 + false-positive 修正 |
-| P1 | repair 成功率突破 0% | 全量 `260509-165142`：repair 0/12。单跑时 repair 有效（pi-refactor-read-text PASS），但全量中受采样波动影响 | ≥1 fixture repairSuccess=true in 全量 run |
-| P2 | rh backend 模型输出完整性 | rh debug 后 3 个 fixture 仍是 PARTIAL，原因是模型只改了 1/2 expected files（如 ExportAppServiceTest 未生成）。非环境/工具问题 | rh ≥ 5/9 PASS |
+| P0 | 议题 D P1 实施（transactional-self-correction） | repair 成功率当前为 0%（0/12），物理回滚是突破 0% 的关键杠杆。spec 已 review 2 轮，可进入实施 | 双轨快照 + managed_files + 回滚逻辑实现，单元测试通过 |
+| P1 | 议题 A+C benchmark 验证 | 代码已合入但未跑 benchmark，需确认 Agent 在无保姆环境下能自主完成环境修复 + 验证推导 | rh + loam 单 fixture 验证通过，testsPassed 无退化 |
+| P1 | fixture-false-positive-audit | 13 旧 fixture 验证命令覆盖缺口审计 | 全量审计完成 + false-positive 修正 |
+| P2 | rh backend 模型输出完整性 | rh debug 后 3 个 fixture 仍是 PARTIAL，原因是模型只改了 1/2 expected files | rh ≥ 5/9 PASS |
 
 ## 7. 关键证据索引
 
@@ -104,6 +112,12 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 | Repo 源码 | `packages/repo/src/` | 扫描器、配置加载、文件排序 |
 | Eval 源码 | `packages/eval/src/` | Benchmark 执行器、fixtures |
 | CI 配置 | `.github/workflows/` | scan, benchmark, codeql, gitleaks |
+| 自主环境 Spec | `docs/specs/2026-05-10-autonomous-env-verification.md` | 议题 A：剥离保姆层 + 环境自愈 |
+| 目标驱动验证 Spec | `docs/specs/2026-05-10-goal-driven-verification.md` | 议题 C：从指令驱动转向自主验证推导 |
+| 事务自愈 Spec | `docs/specs/2026-05-10-transactional-self-correction.md` | 议题 D：双轨快照 + managed_files + 物理回滚（含 2 轮 review 意见） |
+| 议题 A P1 Task | `docs/tasks/2026-05-10-dsh-autonomous-env-p1.md` | 剥离 Benchmark Runner 保姆动作 |
+| 议题 C P1 Task | `docs/tasks/2026-05-10-goal-driven-verify-p1.md` | 弱化验证指令显式引导 |
+| 议题 D P1 Task | `docs/tasks/2026-05-10-patch-loop-rollback-p1.md` | 基于 Git Stash 的事务级回滚基础设施 |
 | 跟踪事项治理 Spec | `docs/specs/2026-05-05-tracked-items-governance.md` | CONSTITUTION 原则 8 设计依据 |
 | 跟踪事项 CI 脚本 | `scripts/check-tracked-items.ts` | CONSTITUTION 原则 8 兜底；扫描 spec/report 与 ledger §8 差集；scan workflow 集成 |
 
@@ -116,6 +130,9 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 
 | type | id | source | title | trigger | prio | status | last_reviewed |
 |------|----|--------|-------|---------|------|--------|---------------|
+| deferred | dsh-autonomous-env | spec:docs/specs/2026-05-10-autonomous-env-verification.md | dsh 自主环境管理与验证推导（剥离保姆层） | ✅ P1 代码实施完成（commit 待推送）。待 benchmark 验证 Agent 自主环境修复能力 | P1 | in_progress | 2026-05-11 |
+| deferred | goal-driven-verify | spec:docs/specs/2026-05-10-goal-driven-verification.md | 从指令驱动转向目标驱动的自主验证 | ✅ P1-P2 已实施（config redaction + autonomous verification prompts + PLAN retry + scope 软化 + DONE 接受放松） | P1 | resolved | 2026-05-11 |
+| deferred | transactional-self-correction | spec:docs/specs/2026-05-10-transactional-self-correction.md | 事务级回滚与工程一致性审计（双轨快照 + managed_files + 物理回滚） | spec drafted + 2 轮 review 完成，ready for P1 实施 | P0 | ready | 2026-05-11 |
 | deferred | patchloop-repair-upgrade | spec:docs/specs/2026-05-05-patch-loop-architecture.md | repair-loop 升级到 v0.4 patch loop 协议 | v0.4 patch loop 上线后跑 ≥10 fixture，repair 表现出与 patch 类似的多文件不完整 | P1 | waiting | 2026-05-06 |
 | deferred | patch-loop-stash-rollback | spec:docs/specs/2026-05-05-patch-loop-architecture.md | 事务 rollback / stash-apply（v0.5 优化） | v0.4 patch loop 上线后出现「应用后行号错位」实证 | P3 | waiting | 2026-05-06 |
 | bug | exec-shell-redirect | report:docs/reports/260504-185028 | exec_shell 把 `2>&1` 误判为危险 | 修 EXEC_SHELL_BLOCK_PATTERNS：`/>/` 改为 `/{1,2}\s*[^\s&]/` | P3 | resolved | 2026-05-05 |
@@ -154,3 +171,4 @@ Phase 2 已于 2026-05-08 退出（决议 C 双口径，详见 `docs/reports/pha
 | bug | failure-detector-regex-loop | code:packages/core/src/failure-detector.ts:540 | extractCompilationErrors() regex 无 g 标志导致 CPU 100% 死循环 | 已修 (89db5e8)：带 g 副本 + 零长度保护 + 回归测试 | P1 | resolved | 2026-05-09 |
 | bug | benchmark-mvn-stale-jar | code:packages/eval/src/benchmark-runner.ts:241 | mvn compile 只编译到 target/，mvn test -pl <module> 无 -am 从 .m2 加载旧 jar → NoSuchMethodError | 已修 (3b8d00d)：mvn install -DskipTests 发布到 .m2 | P1 | resolved | 2026-05-09 |
 | deferred | project-intelligence-phase3 | spec:BLUEPRINT.md | PIE Phase 3：detectVerifyCommands 退役 + scanner 改为 Intelligence 驱动 + verify plan 从 Capability 推导 | Phase 2 上线后启动 | P3 | waiting | 2026-05-09 |
+| debt | pipeline-console-log | code:packages/core/src/pipeline.ts:452 | console.log 工具调用诊断输出应升级为结构化日志（debug/verbose flag 控制），避免污染 CLI TTY 输出 | Phase 3 退出时清理所有临时诊断输出 | P3 | waiting | 2026-05-10 |
