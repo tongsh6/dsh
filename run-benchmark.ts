@@ -13,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixturesDir = path.join(__dirname, "packages/eval/src/fixtures");
 const BENCH_ROOT = path.join(os.homedir(), "dsh-bench");
 const REPOS_DIR = path.join(BENCH_ROOT, "repos");
-const REPORTS_DIR = path.join(__dirname, "docs", "reports");
+const REPORTS_DIR = path.join(__dirname, "docs", "reports", "runlogs");
 
 const args = process.argv.slice(2);
 const isCi = args.includes("--ci");

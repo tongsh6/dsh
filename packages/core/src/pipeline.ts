@@ -555,7 +555,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
           // list is recorded so repair knows what was missed.
           // (Previously this was a hard reject, which punished models that
           // listed extra files in plan and caused MAX_CONSECUTIVE_INVALID
-          // cutoffs — see docs/reports/260509-040502 for evidence.)
+          // cutoffs — see docs/reports/runlogs/260509-040502 for evidence.)
           record.reasoning_excerpt = choice.message.reasoning_content?.slice(0, 500);
           record.incomplete_note = `accepted with uncovered plan files: [${uncovered.join(", ")}]`;
           state.patch_rounds.push(record);
@@ -648,7 +648,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   // that repair can use. Previously, "patch_failed" skipped verify entirely,
   // leaving repair blind. The patch_incomplete_reason on the patch record
   // carries the uncovered file list forward for repair's completion mode.
-  // Evidence: docs/reports/260509-040502 (pi-refactor-read-text: 3/3 files
+  // Evidence: docs/reports/runlogs/260509-040502 (pi-refactor-read-text: 3/3 files
   // changed but DONE rejected → verify skipped → repair blind).
 
   if (okChanges.length === 0) {
