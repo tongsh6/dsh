@@ -1,0 +1,4 @@
+# 忽略所有 benchmark 运行产物（时间戳目录 + 对比数据），仅保留 knowledge/
+/*
+!/knowledge/
+!/.gitignore
