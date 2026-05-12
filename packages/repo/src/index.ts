@@ -1,9 +1,11 @@
 export {
   detectTechStack,
   detectVerifyCommands,
-  generateRepoContext,
 } from "./scanner.js";
-export type { TechStack, SubModule, VerifyCommands, RepoContext } from "./scanner.js";
+export type { TechStack, SubModule } from "./scanner.js";
+
+export { generateRepoContext } from "./repo-context.js";
+export type { VerifyCommands, RepoContext } from "./repo-context.js";
 
 export {
   findRuleFiles,

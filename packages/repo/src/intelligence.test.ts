@@ -303,7 +303,7 @@ describe("assembleIntelligence + views", () => {
       touch(path.join(tmp, "src", "Baz.java"), "class Baz {}");
       fs.writeFileSync(path.join(tmp, "pom.xml"), "<project></project>", "utf-8");
       const pi = assembleIntelligence(tmp);
-      const stack = toLegacyTechStack(pi);
+      const stack = toLegacyTechStack(tmp, pi);
       assert.equal(stack.language, "java");
       assert.equal(stack.packageManager, "maven");
     });
@@ -315,10 +315,86 @@ describe("assembleIntelligence + views", () => {
       touch(path.join(tmp, "src", "Bar.java"), "class Bar {}");
       touch(path.join(tmp, "src", "Baz.java"), "class Baz {}");
       const pi = assembleIntelligence(tmp);
-      const stack = toLegacyTechStack(pi);
+      const stack = toLegacyTechStack(tmp, pi);
       // Java detected from source files (auto) but build system is suggest → null
       assert.equal(stack.language, "java");
       assert.equal(stack.packageManager, null);
+    });
+  });
+
+  it("toLegacyTechStack populates framework from primary pom (spring-boot)", () => {
+    withTmp((tmp) => {
+      touch(path.join(tmp, "src", "a.java"), "class A{}");
+      touch(path.join(tmp, "src", "b.java"), "class B{}");
+      touch(path.join(tmp, "src", "c.java"), "class C{}");
+      fs.writeFileSync(path.join(tmp, "pom.xml"),
+        "<project><dependencies><dependency>spring-boot-starter</dependency></dependencies></project>",
+        "utf-8");
+      const pi = assembleIntelligence(tmp);
+      const stack = toLegacyTechStack(tmp, pi);
+      assert.equal(stack.framework, "spring-boot");
+    });
+  });
+
+  it("toLegacyTechStack populates modules with frontend (Vue) only — Java primary excludes Java submodules", () => {
+    withTmp((tmp) => {
+      // primary Java + Maven
+      touch(path.join(tmp, "src", "a.java"), "class A{}");
+      touch(path.join(tmp, "src", "b.java"), "class B{}");
+      touch(path.join(tmp, "src", "c.java"), "class C{}");
+      fs.writeFileSync(path.join(tmp, "pom.xml"), "<project></project>", "utf-8");
+      // submodule backend (same lang Java) and frontend (Vue/Node)
+      touch(path.join(tmp, "backend", "pom.xml"), "<project></project>");
+      touch(path.join(tmp, "frontend", "package.json"),
+        JSON.stringify({ dependencies: { vue: "^3.0.0" } }));
+      const pi = assembleIntelligence(tmp);
+      const stack = toLegacyTechStack(tmp, pi);
+      assert.equal(stack.language, "java");
+      assert.equal(stack.modules?.length, 1, "backend(java) should be excluded; only frontend should remain");
+      assert.equal(stack.modules?.[0]?.path, "frontend");
+      assert.equal(stack.modules?.[0]?.language, "javascript");
+      assert.equal(stack.modules?.[0]?.framework, "vue");
+    });
+  });
+
+  it("toLegacyTechStack detects Node packageManager via pnpm-lock.yaml", () => {
+    withTmp((tmp) => {
+      fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({ name: "x" }), "utf-8");
+      fs.writeFileSync(path.join(tmp, "pnpm-lock.yaml"), "lockfileVersion: 9\n", "utf-8");
+      fs.writeFileSync(path.join(tmp, "tsconfig.json"), "{}", "utf-8");
+      touch(path.join(tmp, "src", "a.ts"), "export {};");
+      touch(path.join(tmp, "src", "b.ts"), "export {};");
+      touch(path.join(tmp, "src", "c.ts"), "export {};");
+      const pi = assembleIntelligence(tmp);
+      const stack = toLegacyTechStack(tmp, pi);
+      assert.equal(stack.language, "typescript");
+      assert.equal(stack.packageManager, "pnpm");
+    });
+  });
+
+  it("toLegacyTechStack detects Python poetry via poetry.lock", () => {
+    withTmp((tmp) => {
+      fs.writeFileSync(path.join(tmp, "pyproject.toml"), "[tool.poetry]\nname='x'\n", "utf-8");
+      fs.writeFileSync(path.join(tmp, "poetry.lock"), "", "utf-8");
+      touch(path.join(tmp, "a.py"), "x=1");
+      touch(path.join(tmp, "b.py"), "x=1");
+      touch(path.join(tmp, "c.py"), "x=1");
+      const pi = assembleIntelligence(tmp);
+      const stack = toLegacyTechStack(tmp, pi);
+      assert.equal(stack.language, "python");
+      assert.equal(stack.packageManager, "poetry");
+    });
+  });
+
+  it("toLegacyTechStack: framework falls back to first submodule when primary has none", () => {
+    withTmp((tmp) => {
+      // No top-level pom/package.json; only submodule
+      fs.mkdirSync(path.join(tmp, "frontend"), { recursive: true });
+      fs.writeFileSync(path.join(tmp, "frontend", "package.json"),
+        JSON.stringify({ dependencies: { next: "^14.0.0" } }), "utf-8");
+      const pi = assembleIntelligence(tmp);
+      const stack = toLegacyTechStack(tmp, pi);
+      assert.equal(stack.framework, "next.js");
     });
   });
 });

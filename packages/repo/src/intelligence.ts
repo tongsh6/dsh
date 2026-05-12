@@ -11,7 +11,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { TechStack, VerifyCommands } from "./scanner.js";
+import type { TechStack, SubModule, VerifyCommands } from "./scanner.js";
 import { readProjectYml } from "./project-yml.js";
 import type { ProjectYml } from "./project-yml.js";
 
@@ -675,17 +675,124 @@ export function moduleRoots(pi: ProjectIntelligence): string[] {
   return Array.from(roots);
 }
 
-// ---- Legacy Bridge (Phase 1 compatibility) ----
+// ---- Legacy Bridge ----
 
-export function toLegacyTechStack(pi: ProjectIntelligence): TechStack {
+/**
+ * Project a ProjectIntelligence into the legacy TechStack contract for downstream
+ * consumers (context-builder, cli/init). cwd is needed to probe lock files —
+ * packageManager (pnpm/yarn/npm/bun, poetry/pip/pipenv) is lock-file-derived,
+ * not captured in facts.
+ */
+export function toLegacyTechStack(cwd: string, pi: ProjectIntelligence): TechStack {
   const lang = pi.language.selected ?? "unknown";
   const isAuto = pi.language.mode === "auto" || pi.language.mode === "suggest";
   const bld = pi.buildSystem.mode === "auto" ? pi.buildSystem.selected : null;
+  const resolvedLang = isAuto ? lang : "unknown";
 
-  return {
-    language: isAuto ? lang : "unknown",
-    packageManager: bld === "maven" ? "maven" : bld === "gradle" ? "gradle" : null,
-    framework: null,
+  const packageManager = derivePackageManager(cwd, resolvedLang, bld);
+  const framework = pickPrimaryFramework(pi.facts);
+  const modules = groupSubmodules(cwd, pi.facts, resolvedLang);
+
+  const out: TechStack = {
+    language: resolvedLang,
+    packageManager,
+    framework,
     details: {},
   };
+  if (modules.length > 0) out.modules = modules;
+  return out;
+}
+
+function derivePackageManager(cwd: string, lang: string, buildSystem: string | null): string | null {
+  if (buildSystem === "maven" || buildSystem === "gradle") return buildSystem;
+  if (lang === "typescript" || lang === "javascript") return detectNodePackageManager(cwd);
+  if (lang === "python") return detectPythonPackageManager(cwd);
+  return null;
+}
+
+function detectNodePackageManager(dir: string): string | null {
+  if (fs.existsSync(path.join(dir, "pnpm-lock.yaml"))) return "pnpm";
+  if (fs.existsSync(path.join(dir, "yarn.lock"))) return "yarn";
+  if (fs.existsSync(path.join(dir, "package-lock.json"))) return "npm";
+  if (fs.existsSync(path.join(dir, "bun.lockb"))) return "bun";
+  return null;
+}
+
+function detectPythonPackageManager(dir: string): string | null {
+  if (fs.existsSync(path.join(dir, "poetry.lock"))) return "poetry";
+  if (fs.existsSync(path.join(dir, "Pipfile"))) return "pipenv";
+  if (fs.existsSync(path.join(dir, "requirements.txt"))) return "pip";
+  return null;
+}
+
+function pickPrimaryFramework(facts: ProjectFact[]): string | null {
+  const primary = facts.find((f) => f.value === true && f.key.startsWith("framework.primary."));
+  if (primary) return primary.key.slice("framework.primary.".length);
+  // Fallback: first submodule framework (sorted by name for determinism)
+  const sub = facts
+    .filter((f) => f.value === true && f.key.startsWith("framework.submodule."))
+    .sort((a, b) => a.key.localeCompare(b.key))[0];
+  if (!sub) return null;
+  // key: framework.submodule.<name>.<fw>, fw may contain dots (e.g. next.js)
+  const parts = sub.key.split(".");
+  return parts.slice(3).join(".");
+}
+
+function packageManagerFromSubmoduleSystem(cwd: string, name: string, system: string): string | null {
+  switch (system) {
+    case "maven":
+    case "gradle":
+      return system;
+    case "npm":
+      return detectNodePackageManager(path.join(cwd, name));
+    case "pip":
+      return detectPythonPackageManager(path.join(cwd, name));
+    case "go-modules":
+    case "cargo":
+      return null;
+    default:
+      return null;
+  }
+}
+
+function groupSubmodules(cwd: string, facts: ProjectFact[], primaryLang: string): SubModule[] {
+  const byName = new Map<string, SubModule>();
+  const ensure = (name: string): SubModule => {
+    let entry = byName.get(name);
+    if (!entry) {
+      entry = { path: name, language: "unknown", packageManager: null, framework: null };
+      byName.set(name, entry);
+    }
+    return entry;
+  };
+
+  for (const f of facts) {
+    if (f.value !== true) continue;
+
+    const sysMatch = f.key.match(/^submodule\.([^.]+)\.([^.]+)$/);
+    if (sysMatch) {
+      const [, name, system] = sysMatch;
+      const entry = ensure(name!);
+      entry.packageManager = packageManagerFromSubmoduleSystem(cwd, name!, system!);
+      continue;
+    }
+
+    const langMatch = f.key.match(/^submodule\.([^.]+)\.lang\.(.+)$/);
+    if (langMatch) {
+      const [, name, lang] = langMatch;
+      ensure(name!).language = lang!;
+      continue;
+    }
+
+    const fwMatch = f.key.match(/^framework\.submodule\.([^.]+)\.(.+)$/);
+    if (fwMatch) {
+      const [, name, fw] = fwMatch;
+      ensure(name!).framework = fw!;
+    }
+  }
+
+  // Scanner contract: only include submodules whose language differs from primary
+  return Array.from(byName.values())
+    .filter((m) => m.language !== primaryLang)
+    .sort((a, b) => a.path.localeCompare(b.path));
 }
