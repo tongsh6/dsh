@@ -27,6 +27,10 @@ export {
   getLastCommitHash,
   getBaseBranch,
   getGitInfo,
+  isGitRepo,
+  createCheckpoint,
+  applyRollback,
+  cleanupCheckpoints,
 } from "./git.js";
 export type { GitInfo } from "./git.js";
 
@@ -49,8 +53,25 @@ export {
   assembleIntelligence,
   toProjectCard,
   toLegacyTechStack,
+  pickVerifyPlan,
+  moduleRoots,
   DEFAULT_POLICY,
 } from "./intelligence.js";
+
+export {
+  createFileCheckpoint,
+  applyFileRollback,
+  cleanupFileCheckpoints,
+} from "./fs-snapshots.js";
+
+export {
+  ProjectYmlSchema,
+  projectYmlPath,
+  readProjectYml,
+  writeProjectYml,
+  renderProjectYml,
+} from "./project-yml.js";
+export type { ProjectYml, ProjectYmlModule, ProjectYmlVerifyOverride } from "./project-yml.js";
 export type {
   ProjectFact,
   Candidate,

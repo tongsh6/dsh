@@ -11,6 +11,8 @@ import {
   assembleIntelligence,
   toProjectCard,
   toLegacyTechStack,
+  pickVerifyPlan,
+  moduleRoots,
   DEFAULT_POLICY,
 } from "./intelligence.js";
 
@@ -59,6 +61,75 @@ describe("collectFacts", () => {
       const facts = collectFacts(tmp);
       const layoutFacts = facts.filter((f) => f.key.startsWith("layout."));
       assert.ok(layoutFacts.some((f) => f.key === "layout.src/main/java"));
+    });
+  });
+
+  it("collects submodule build descriptor facts for mixed projects (no top-level pom)", () => {
+    withTmp((tmp) => {
+      touch(path.join(tmp, "backend", "pom.xml"), "<project></project>");
+      touch(path.join(tmp, "frontend", "package.json"), JSON.stringify({ name: "frontend" }));
+      const facts = collectFacts(tmp);
+      const keys = new Set(facts.filter((f) => f.value === true).map((f) => f.key));
+      assert.ok(keys.has("submodule.backend.maven"), "missing submodule.backend.maven");
+      assert.ok(keys.has("submodule.backend.lang.java"), "missing submodule.backend.lang.java");
+      assert.ok(keys.has("submodule.frontend.npm"), "missing submodule.frontend.npm");
+      assert.ok(keys.has("submodule.frontend.lang.javascript"), "missing submodule.frontend.lang.javascript");
+    });
+  });
+
+  it("detects TypeScript submodule via tsconfig.json or typescript devDep", () => {
+    withTmp((tmp) => {
+      touch(path.join(tmp, "frontend", "package.json"),
+        JSON.stringify({ devDependencies: { typescript: "^5.0.0" } }));
+      const facts = collectFacts(tmp);
+      const keys = new Set(facts.filter((f) => f.value === true).map((f) => f.key));
+      assert.ok(keys.has("submodule.frontend.npm"));
+      assert.ok(keys.has("submodule.frontend.lang.typescript"),
+        "should detect typescript via devDependencies");
+    });
+  });
+
+  it("collects framework facts for primary pom.xml (spring-boot)", () => {
+    withTmp((tmp) => {
+      fs.writeFileSync(path.join(tmp, "pom.xml"),
+        "<project><dependencies><dependency>spring-boot-starter</dependency></dependencies></project>",
+        "utf-8");
+      const facts = collectFacts(tmp);
+      const keys = new Set(facts.filter((f) => f.value === true).map((f) => f.key));
+      assert.ok(keys.has("framework.primary.spring-boot"), "missing framework.primary.spring-boot");
+    });
+  });
+
+  it("collects framework facts for submodule pom.xml (spring-boot)", () => {
+    withTmp((tmp) => {
+      touch(path.join(tmp, "backend", "pom.xml"),
+        "<project><dependencies><dependency>spring-boot-starter</dependency></dependencies></project>");
+      const facts = collectFacts(tmp);
+      const keys = new Set(facts.filter((f) => f.value === true).map((f) => f.key));
+      assert.ok(keys.has("submodule.backend.maven"));
+      assert.ok(keys.has("framework.submodule.backend.spring-boot"),
+        "missing framework.submodule.backend.spring-boot");
+    });
+  });
+
+  it("collects framework facts for primary package.json (vue)", () => {
+    withTmp((tmp) => {
+      fs.writeFileSync(path.join(tmp, "package.json"),
+        JSON.stringify({ dependencies: { vue: "^3.0.0" } }), "utf-8");
+      const facts = collectFacts(tmp);
+      const keys = new Set(facts.filter((f) => f.value === true).map((f) => f.key));
+      assert.ok(keys.has("framework.primary.vue"), "missing framework.primary.vue");
+    });
+  });
+
+  it("ignores node_modules and hidden dirs during submodule shallow scan", () => {
+    withTmp((tmp) => {
+      touch(path.join(tmp, "node_modules", "foo", "package.json"), "{}");
+      touch(path.join(tmp, ".git", "config"), "");
+      touch(path.join(tmp, "target", "pom.xml"), "<project/>");
+      const facts = collectFacts(tmp);
+      const submoduleFacts = facts.filter((f) => f.key.startsWith("submodule."));
+      assert.equal(submoduleFacts.length, 0, `expected no submodule facts, got: ${submoduleFacts.map(f=>f.key).join(",")}`);
     });
   });
 });
@@ -159,6 +230,40 @@ describe("deriveCapabilities", () => {
     const patch = caps.find((c) => c.key === "patch")!;
     assert.equal(patch.status, "likely");
   });
+
+  it("emits lint capability — available for Maven", () => {
+    const lang = { key: "x", selected: "java", mode: "auto" as const, confidence: 0.95, reason: ["pom"], alternatives: [] };
+    const build = { key: "x", selected: "maven", mode: "auto" as const, confidence: 0.95, reason: ["pom"], alternatives: [] };
+    const caps = deriveCapabilities(lang, build);
+    const lint = caps.find((c) => c.key === "lint")!;
+    assert.equal(lint.status, "available");
+    assert.match(lint.command!, /mvn.*checkstyle/);
+  });
+
+  it("emits lint capability — available for Gradle / Go / Rust", () => {
+    const auto = (v: string) => ({ key: "x", selected: v, mode: "auto" as const, confidence: 0.95, reason: ["x"], alternatives: [] });
+    for (const [lang, bld, expectCmd] of [
+      ["java", "gradle", /gradle.*checkstyle/i],
+      ["go", null, /golangci-lint/],
+      ["rust", null, /cargo clippy/],
+    ] as const) {
+      const caps = deriveCapabilities(auto(lang), bld ? auto(bld) : { key: "x", selected: null, mode: "blocked" as const, confidence: 0, reason: [], alternatives: [] });
+      const lint = caps.find((c) => c.key === "lint")!;
+      assert.equal(lint.status, "available", `${lang}/${bld}: expected available`);
+      assert.match(lint.command!, expectCmd);
+    }
+  });
+
+  it("emits lint capability — likely for typescript / python (command derivation deferred to caller)", () => {
+    const auto = (v: string) => ({ key: "x", selected: v, mode: "auto" as const, confidence: 0.95, reason: ["x"], alternatives: [] });
+    const blocked = { key: "x", selected: null, mode: "blocked" as const, confidence: 0, reason: [], alternatives: [] };
+    for (const lang of ["typescript", "python"] as const) {
+      const caps = deriveCapabilities(auto(lang), blocked);
+      const lint = caps.find((c) => c.key === "lint")!;
+      assert.equal(lint.status, "likely", `${lang}: expected likely`);
+      assert.equal(lint.command, null);
+    }
+  });
 });
 
 // ---- Assemble + Views + Legacy ----
@@ -214,6 +319,84 @@ describe("assembleIntelligence + views", () => {
       // Java detected from source files (auto) but build system is suggest → null
       assert.equal(stack.language, "java");
       assert.equal(stack.packageManager, null);
+    });
+  });
+});
+
+// ---- Projections: pickVerifyPlan + moduleRoots ----
+
+describe("pickVerifyPlan", () => {
+  it("returns Maven commands when build=maven auto", () => {
+    withTmp((tmp) => {
+      touch(path.join(tmp, "src", "Foo.java"), "class Foo {}");
+      touch(path.join(tmp, "src", "Bar.java"), "class Bar {}");
+      touch(path.join(tmp, "src", "Baz.java"), "class Baz {}");
+      fs.writeFileSync(path.join(tmp, "pom.xml"), "<project></project>", "utf-8");
+      const pi = assembleIntelligence(tmp);
+      const plan = pickVerifyPlan(pi);
+      assert.match(plan.test!, /mvn/);
+      assert.match(plan.typecheck!, /mvn compile/);
+      assert.match(plan.lint!, /checkstyle/);
+      assert.match(plan.build!, /mvn package/);
+    });
+  });
+
+  it("returns null fields when capabilities are likely (TS without resolved package manager)", () => {
+    withTmp((tmp) => {
+      // 3 .ts files but no package.json → language ts (auto via file ext), build system blocked
+      touch(path.join(tmp, "src", "a.ts"), "export const a = 1;");
+      touch(path.join(tmp, "src", "b.ts"), "export const b = 2;");
+      touch(path.join(tmp, "src", "c.ts"), "export const c = 3;");
+      const pi = assembleIntelligence(tmp);
+      const plan = pickVerifyPlan(pi);
+      // ts capabilities are "likely" → command is null
+      assert.equal(plan.test, null);
+      assert.equal(plan.lint, null);
+    });
+  });
+
+  it("returns Go commands when language=go auto", () => {
+    withTmp((tmp) => {
+      fs.writeFileSync(path.join(tmp, "go.mod"), "module foo\ngo 1.21\n", "utf-8");
+      touch(path.join(tmp, "main.go"), "package main");
+      touch(path.join(tmp, "foo.go"), "package main");
+      touch(path.join(tmp, "bar.go"), "package main");
+      const pi = assembleIntelligence(tmp);
+      const plan = pickVerifyPlan(pi);
+      assert.match(plan.test!, /go test/);
+      assert.match(plan.typecheck!, /go vet/);
+      assert.match(plan.lint!, /golangci-lint/);
+    });
+  });
+});
+
+describe("moduleRoots", () => {
+  it("returns submodule names + layout hints + '.' for mixed projects", () => {
+    withTmp((tmp) => {
+      touch(path.join(tmp, "backend", "pom.xml"), "<project/>");
+      touch(path.join(tmp, "frontend", "package.json"), "{}");
+      fs.mkdirSync(path.join(tmp, "src", "main", "java"), { recursive: true });
+      const pi = assembleIntelligence(tmp);
+      const roots = moduleRoots(pi);
+      assert.ok(roots.includes("backend"), `roots missing backend: ${roots.join(",")}`);
+      assert.ok(roots.includes("frontend"), `roots missing frontend: ${roots.join(",")}`);
+      assert.ok(roots.includes("."), `roots missing '.': ${roots.join(",")}`);
+      // layout hint contributes
+      assert.ok(roots.some((r) => r.startsWith("src")), `roots missing src layout hint: ${roots.join(",")}`);
+    });
+  });
+
+  it("returns ['.'] (plus any layout hints) for single-package project with no submodules", () => {
+    withTmp((tmp) => {
+      touch(path.join(tmp, "src", "a.ts"), "export const a = 1;");
+      touch(path.join(tmp, "src", "b.ts"), "export const b = 1;");
+      touch(path.join(tmp, "src", "c.ts"), "export const c = 1;");
+      const pi = assembleIntelligence(tmp);
+      const roots = moduleRoots(pi);
+      assert.ok(roots.includes("."));
+      // no submodules
+      assert.ok(!roots.includes("backend"));
+      assert.ok(!roots.includes("frontend"));
     });
   });
 });

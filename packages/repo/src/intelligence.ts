@@ -11,7 +11,9 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { TechStack } from "./scanner.js";
+import type { TechStack, VerifyCommands } from "./scanner.js";
+import { readProjectYml } from "./project-yml.js";
+import type { ProjectYml } from "./project-yml.js";
 
 // ---- Models ----
 
@@ -134,6 +136,134 @@ function srcLayoutHints(cwd: string): string[] {
   return hints;
 }
 
+// Build descriptor → (system, primary language) mapping for submodule shallow scan.
+// Order matters: first match wins within a directory.
+const SUBMODULE_DESCRIPTORS: Array<{ file: string; system: string; lang: string }> = [
+  { file: "pom.xml",          system: "maven",      lang: "java" },
+  { file: "build.gradle",     system: "gradle",     lang: "java" },
+  { file: "build.gradle.kts", system: "gradle",     lang: "java" },
+  { file: "package.json",     system: "npm",        lang: "javascript" }, // refined below if tsconfig.json or typescript devDep
+  { file: "pyproject.toml",   system: "pip",        lang: "python" },
+  { file: "go.mod",           system: "go-modules", lang: "go" },
+  { file: "Cargo.toml",       system: "cargo",      lang: "rust" },
+];
+
+const SUBMODULE_STOP_DIRS = new Set([
+  "node_modules", ".git", "dist", "__pycache__", "target", ".venv", "venv", ".dsh",
+]);
+
+function collectSubmoduleFacts(cwd: string): { facts: ProjectFact[]; names: string[] } {
+  const facts: ProjectFact[] = [];
+  const names: string[] = [];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(cwd, { withFileTypes: true });
+  } catch {
+    return { facts, names };
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith(".") || SUBMODULE_STOP_DIRS.has(entry.name)) continue;
+    const dir = path.join(cwd, entry.name);
+
+    for (const { file, system, lang } of SUBMODULE_DESCRIPTORS) {
+      const descPath = path.join(dir, file);
+      if (!fs.existsSync(descPath)) continue;
+
+      let resolvedLang = lang;
+      if (file === "package.json") {
+        const pkg = readJsonFileSafe(descPath);
+        const hasTS = fs.existsSync(path.join(dir, "tsconfig.json")) ||
+          (pkg?.devDependencies && typeof pkg.devDependencies === "object" && "typescript" in pkg.devDependencies);
+        if (hasTS) resolvedLang = "typescript";
+      }
+
+      facts.push({
+        key: `submodule.${entry.name}.${system}`,
+        value: true,
+        source: { type: "file", path: `${entry.name}/${file}` },
+        confidence: "high",
+      });
+      facts.push({
+        key: `submodule.${entry.name}.lang.${resolvedLang}`,
+        value: true,
+        source: { type: "file", path: `${entry.name}/${file}` },
+        confidence: "high",
+      });
+      names.push(entry.name);
+      break; // one descriptor per submodule
+    }
+  }
+  return { facts, names };
+}
+
+function readJsonFileSafe(filePath: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf-8")) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function detectJavaFrameworkFromPom(pom: string): string | null {
+  if (pom.includes("spring-boot") || pom.includes("springframework.boot")) return "spring-boot";
+  if (pom.includes("quarkus")) return "quarkus";
+  if (pom.includes("micronaut")) return "micronaut";
+  return null;
+}
+
+function detectNodeFrameworkFromPkg(pkg: Record<string, unknown> | null): string | null {
+  if (!pkg) return null;
+  const deps: Record<string, unknown> = {
+    ...((pkg.dependencies as Record<string, unknown>) ?? {}),
+    ...((pkg.devDependencies as Record<string, unknown>) ?? {}),
+  };
+  if ("next" in deps) return "next.js";
+  if ("react" in deps && "vite" in deps) return "vite-react";
+  if ("react" in deps) return "react";
+  if ("vue" in deps) return "vue";
+  if ("svelte" in deps) return "svelte";
+  if ("express" in deps) return "express";
+  if ("fastify" in deps) return "fastify";
+  return null;
+}
+
+function collectFrameworkFacts(cwd: string, submoduleNames: string[]): ProjectFact[] {
+  const facts: ProjectFact[] = [];
+
+  const scanScope = (basePath: string, scope: string, relPathPrefix: string) => {
+    const pomPath = path.join(basePath, "pom.xml");
+    if (fs.existsSync(pomPath)) {
+      try {
+        const fw = detectJavaFrameworkFromPom(fs.readFileSync(pomPath, "utf-8"));
+        if (fw) facts.push({
+          key: `framework.${scope}.${fw}`,
+          value: true,
+          source: { type: "file-content", path: `${relPathPrefix}pom.xml` },
+          confidence: "high",
+        });
+      } catch { /* unreadable */ }
+    }
+    const pkgPath = path.join(basePath, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      const fw = detectNodeFrameworkFromPkg(readJsonFileSafe(pkgPath));
+      if (fw) facts.push({
+        key: `framework.${scope}.${fw}`,
+        value: true,
+        source: { type: "file-content", path: `${relPathPrefix}package.json` },
+        confidence: "high",
+      });
+    }
+  };
+
+  scanScope(cwd, "primary", "");
+  for (const name of submoduleNames) {
+    scanScope(path.join(cwd, name), `submodule.${name}`, `${name}/`);
+  }
+  return facts;
+}
+
 export function collectFacts(cwd: string): ProjectFact[] {
   const topFiles = listTopFiles(cwd);
   const facts: ProjectFact[] = [];
@@ -192,6 +322,36 @@ export function collectFacts(cwd: string): ProjectFact[] {
     } catch { /* unparseable JSON */ }
   }
 
+  // Submodule shallow scan (sibling directories of cwd with their own build descriptors)
+  const submodules = collectSubmoduleFacts(cwd);
+  facts.push(...submodules.facts);
+
+  // Framework content scan (cwd + each submodule)
+  facts.push(...collectFrameworkFacts(cwd, submodules.names));
+
+  // .dsh/project.yml manual override (Phase 2 Tier 3)
+  const yml = readProjectYmlSafe(cwd);
+  if (yml) facts.push(...projectYmlToFacts(yml));
+
+  return facts;
+}
+
+function readProjectYmlSafe(cwd: string): ProjectYml | null {
+  try {
+    return readProjectYml(cwd);
+  } catch {
+    // Schema-invalid yml: surface via `dsh doctor` (Phase D), not here.
+    return null;
+  }
+}
+
+function projectYmlToFacts(yml: ProjectYml): ProjectFact[] {
+  const facts: ProjectFact[] = [];
+  const src = { type: "file-content" as const, path: ".dsh/project.yml" };
+  if (yml.language) facts.push({ key: "project_yml.language", value: yml.language, source: src, confidence: "high" });
+  if (yml.buildSystem) facts.push({ key: "project_yml.buildSystem", value: yml.buildSystem, source: src, confidence: "high" });
+  if (yml.framework) facts.push({ key: "project_yml.framework", value: yml.framework, source: src, confidence: "high" });
+  // modules / verifyOverride are consumed by toLegacyTechStack / pickVerifyPlan extensions in Phase B/D.
   return facts;
 }
 
@@ -216,22 +376,47 @@ const LANG_SIGNALS: Record<string, { prio: number; deps: string[] }> = {
   "pkg.descriptor.go-modules": { prio: 5, deps: [] },
 };
 
+const PKG_DESCRIPTOR_TO_LANG: Record<string, string> = {
+  "pip|poetry|pdm": "python",
+  "npm": "typescript",     // tie-broken by source.typescript.exists (prio 6) when actually TS
+  "cargo": "rust",
+  "go-modules": "go",
+};
+
+function signalToLanguage(signal: string): string {
+  if (signal.startsWith("source.")) {
+    return signal.replace("source.", "").replace(".exists", "");
+  }
+  if (signal.startsWith("pkg.descriptor.")) {
+    const key = signal.replace("pkg.descriptor.", "");
+    return PKG_DESCRIPTOR_TO_LANG[key] ?? key;
+  }
+  return signal;
+}
+
 export function generateLanguageCandidates(facts: ProjectFact[]): Candidate<string>[] {
   const factSet = new Set(facts.filter((f) => f.value).map((f) => f.key));
-  const candidates: Candidate<string>[] = [];
+  const byLang = new Map<string, Candidate<string>>();
 
   for (const [signal, { prio, deps }] of Object.entries(LANG_SIGNALS)) {
     if (!factSet.has(signal)) continue;
     // Skip JavaScript if TypeScript also present (lower prio)
     const blocked = deps.some((d) => factSet.has(d));
     if (blocked) continue;
-    const lang = signal.replace("source.", "").replace(".exists", "").replace(/^pkg\.descriptor\./, "").split("|")[0] === "pip" ? "python"
-      : signal.replace("pkg.descriptor.", "").split("|")[0] === "npm" ? "typescript"
-      : signal.replace("source.", "").replace(".exists", "");
-    candidates.push(candidate(lang, 0.4 + prio * 0.1, [signal], []));
+    const lang = signalToLanguage(signal);
+    const conf = 0.4 + prio * 0.1;
+    const existing = byLang.get(lang);
+    if (existing) {
+      // Merge evidence; take stronger confidence (do not stack — multiple weak signals
+      // shouldn't combine to overcome a single strong one).
+      existing.evidence.push(signal);
+      if (conf > existing.confidence) existing.confidence = conf;
+    } else {
+      byLang.set(lang, candidate(lang, conf, [signal], []));
+    }
   }
 
-  return candidates.sort((a, b) => b.confidence - a.confidence);
+  return Array.from(byLang.values()).sort((a, b) => b.confidence - a.confidence);
 }
 
 const BUILD_SIGNALS: Record<string, { prio: number; evidence: string; missing: string[] }> = {
@@ -324,32 +509,38 @@ export function deriveCapabilities(
     reason: canSourceEdit ? `language=${lang}, build=${bld ?? "unknown"}` : "language unknown",
   });
 
-  // build
+  // build / test / typecheck / lint
   if (bld === "maven") {
     caps.push({ key: "build", status: "available", command: "mvn package -DskipTests -q", reason: "pom.xml + maven" });
     caps.push({ key: "test", status: "available", command: "mvn test -q", reason: "pom.xml + maven" });
     caps.push({ key: "typecheck", status: "available", command: "mvn compile -q", reason: "pom.xml + maven" });
+    caps.push({ key: "lint", status: "available", command: "mvn checkstyle:check -q", reason: "pom.xml + maven" });
   } else if (bld === "gradle") {
     caps.push({ key: "build", status: "available", command: "gradle build", reason: "build.gradle" });
     caps.push({ key: "test", status: "available", command: "gradle test", reason: "build.gradle" });
     caps.push({ key: "typecheck", status: "available", command: "gradle compileJava", reason: "build.gradle" });
+    caps.push({ key: "lint", status: "available", command: "gradle checkstyleMain", reason: "build.gradle" });
   } else if (lang === "go") {
     caps.push({ key: "build", status: "available", command: "go build ./...", reason: "go.mod" });
     caps.push({ key: "test", status: "available", command: "go test ./...", reason: "go.mod" });
     caps.push({ key: "typecheck", status: "available", command: "go vet ./...", reason: "go.mod" });
+    caps.push({ key: "lint", status: "available", command: "golangci-lint run", reason: "go.mod" });
   } else if (lang === "rust") {
     caps.push({ key: "build", status: "available", command: "cargo build", reason: "Cargo.toml" });
     caps.push({ key: "test", status: "available", command: "cargo test", reason: "Cargo.toml" });
     caps.push({ key: "typecheck", status: "available", command: "cargo check", reason: "Cargo.toml" });
+    caps.push({ key: "lint", status: "available", command: "cargo clippy", reason: "Cargo.toml" });
   } else if (lang === "python" || lang === "typescript" || lang === "javascript") {
     // For interpreted / script-based languages, capabilities depend on package manager
     // Phase 1: report "likely" but don't assume commands; Phase 2 adds package-manager resolution
     caps.push({ key: "build", status: "likely", command: null, reason: `${lang} project — build command varies by package manager` });
     caps.push({ key: "test", status: "likely", command: null, reason: `${lang} project — test command varies by package manager` });
+    caps.push({ key: "lint", status: "likely", command: null, reason: `${lang} project — lint via eslint/ruff/pkg.scripts depends on config` });
   } else {
     caps.push({ key: "build", status: "unavailable", command: null, reason: "build system unknown" });
     caps.push({ key: "test", status: "unavailable", command: null, reason: "build system unknown" });
     caps.push({ key: "typecheck", status: "unavailable", command: null, reason: "build system unknown" });
+    caps.push({ key: "lint", status: "unavailable", command: null, reason: "build system unknown" });
   }
 
   return caps;
@@ -366,12 +557,32 @@ export interface ProjectIntelligence {
 
 export function assembleIntelligence(cwd: string, policy: DecisionPolicy = DEFAULT_POLICY): ProjectIntelligence {
   const facts = collectFacts(cwd);
-  const langCandidates = generateLanguageCandidates(facts);
-  const buildCandidates = generateBuildSystemCandidates(facts);
-  const language = decide(langCandidates, policy, "language.primary");
-  const buildSystem = decide(buildCandidates, policy, "build.system");
+  const language = decideWithOverride(facts, "language", "language.primary", () =>
+    decide(generateLanguageCandidates(facts), policy, "language.primary"));
+  const buildSystem = decideWithOverride(facts, "buildSystem", "build.system", () =>
+    decide(generateBuildSystemCandidates(facts), policy, "build.system"));
   const capabilities = deriveCapabilities(language, buildSystem);
   return { language, buildSystem, capabilities, facts };
+}
+
+function decideWithOverride(
+  facts: ProjectFact[],
+  ymlKey: "language" | "buildSystem" | "framework",
+  decisionKey: string,
+  fallback: () => ProjectDecision<string>,
+): ProjectDecision<string> {
+  const override = facts.find((f) => f.key === `project_yml.${ymlKey}` && typeof f.value === "string");
+  if (override) {
+    return {
+      key: decisionKey,
+      selected: override.value as string,
+      mode: "auto",
+      confidence: 1.0,
+      reason: ["manual override (.dsh/project.yml)"],
+      alternatives: [],
+    };
+  }
+  return fallback();
 }
 
 // ---- Views ----
@@ -425,6 +636,43 @@ export function toProjectCard(pi: ProjectIntelligence): string {
   }
 
   return lines.join("\n");
+}
+
+// ---- Projection: ProjectIntelligence → consumable views ----
+
+/**
+ * Project verify plan from Capabilities. `unavailable` capabilities yield
+ * null fields; downstream (e.g. cli/init) may fall back to package.json scripts.
+ */
+export function pickVerifyPlan(pi: ProjectIntelligence): VerifyCommands {
+  const get = (key: "build" | "test" | "typecheck" | "lint"): string | null => {
+    const cap = pi.capabilities.find((c) => c.key === key);
+    if (!cap || cap.status === "unavailable") return null;
+    return cap.command;
+  };
+  return {
+    test: get("test"),
+    lint: get("lint"),
+    typecheck: get("typecheck"),
+    build: get("build"),
+  };
+}
+
+/**
+ * Module roots for path resolution (repair-loop / failure-detector).
+ * Returns submodule directory names + source layout hints + "." (cwd itself).
+ */
+export function moduleRoots(pi: ProjectIntelligence): string[] {
+  const roots = new Set<string>(["."]);
+  for (const f of pi.facts) {
+    if (!f.value) continue;
+    const sub = f.key.match(/^submodule\.([^.]+)\./);
+    if (sub) roots.add(sub[1]!);
+    if (f.key.startsWith("layout.")) {
+      roots.add(f.key.slice("layout.".length));
+    }
+  }
+  return Array.from(roots);
 }
 
 // ---- Legacy Bridge (Phase 1 compatibility) ----
