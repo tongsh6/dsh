@@ -6,6 +6,7 @@ import { patchCommand } from "./commands/patch.js";
 import { verifyCommand } from "./commands/verify.js";
 import { repairCommand } from "./commands/repair.js";
 import { handoffCommand } from "./commands/handoff.js";
+import { doctorCommand } from "./commands/doctor.js";
 
 const cli = cac("dsh");
 
@@ -43,6 +44,12 @@ cli
   .option("--format <format>", "Output format: markdown or json", { default: "markdown" })
   .option("--output <dir>", "Output directory")
   .action((opts) => handoffCommand(opts));
+
+cli
+  .command("doctor", "Show project intelligence (decisions + capabilities + facts)")
+  .option("--write", "Write a .dsh/project.yml draft from current decisions")
+  .option("--force", "Overwrite existing .dsh/project.yml (use with --write)")
+  .action((opts) => doctorCommand(opts));
 
 cli.help();
 cli.version("0.1.0");
