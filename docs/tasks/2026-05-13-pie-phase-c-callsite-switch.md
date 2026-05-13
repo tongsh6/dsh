@@ -1,6 +1,6 @@
 ---
 id: pie-phase-c-callsite-switch
-status: backlog
+status: in_review
 priority: p1
 type: refactor
 spec_ref: docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md
@@ -43,7 +43,9 @@ assignee: ai
 
 ## Notes
 
-- 本 task 是"破坏性"步骤：scanner.ts 物理消失后无法回退到旧路径
-- Step 6 / 7 同 commit 提交风险高 —— 建议拆两个 commit（Step 6 完成后跑 typecheck，再做 Step 7）
-- Step 8（scanner.ts 删除）单独 commit；如出现 import 残留，tsc 会立刻报错，便于定位
-- `cli/init.ts` 在 `pickVerifyPlan` 返回 null 字段时的 fallback 必须保留：项目早期人工调 dsh init 体验不能回退
+- **实施时范围调整（2026-05-13）**：
+  - Step 6 detectTechStack 5 处调用切换已在 Task B 完成（plan §Step 5 改 generateRepoContext 签名连带）
+  - 本 task 实际只覆盖 Step 7（cli/init detectVerifyCommands 切换）+ Step 8（scanner.ts 物理删除）
+- **Step 7 实现选择**：pkg.scripts / Python fallback 逻辑搬到 `pickVerifyPlan(cwd, pi)` 内（intelligence.ts），而不是 cli/init.ts。理由：(a) 与 `toLegacyTechStack(cwd, pi)` 签名对称；(b) `pickVerifyPlan` 成为 verify plan 投影的完整入口，未来 Phase D `dsh doctor` 也能直接复用；(c) cli/init.ts 不需重新实现 detectVerifyCommands 的解析逻辑
+- **类型迁移**：`TechStack` / `SubModule` 接口从 scanner.ts 迁到 intelligence.ts，因为 intelligence 现在是这些类型的唯一生产者（`toLegacyTechStack` 输出）。`VerifyCommands` 在 Task B 时已迁到 repo-context.ts
+- **保留的 detectVerifyCommands 引用**：`tool-executor.test.ts` 中 3 处字符串字面量（grep 测试 fixture）+ `tool-definitions.ts:59` 描述文案的例子文字——非 import 调用，保留

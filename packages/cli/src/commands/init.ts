@@ -2,8 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   assembleIntelligence,
-  detectVerifyCommands,
   loadRuleContents,
+  pickVerifyPlan,
   toLegacyTechStack,
   writeDshConfig,
 } from "@dsh/repo";
@@ -25,7 +25,7 @@ export async function initCommand(opts: InitOptions): Promise<void> {
   console.log("正在分析项目...");
   const pi = assembleIntelligence(cwd);
   const stack = toLegacyTechStack(cwd, pi);
-  const verify = detectVerifyCommands(cwd, stack);
+  const verify = pickVerifyPlan(cwd, pi);
   const rules = loadRuleContents(cwd);
 
   // writeDshConfig merges with existing — api_key and other manual edits are preserved
