@@ -21,8 +21,21 @@ expectedFiles:
   - backend/releasehub-application/src/main/java/io/releasehub/application/export/ExportAppService.java
   - backend/releasehub-application/src/test/java/io/releasehub/application/export/ExportAppServiceTest.java
 expectPass: true
-verificationCommands:
-  - "cd backend && mvn test -pl releasehub-application -am -Dtest=\"ExportAppServiceTest\" -q"
+verifications:
+  - type: file_exists
+    file: backend/releasehub-application/src/main/java/io/releasehub/application/export/ExportAppService.java
+    name: export_app_service_exists
+  - type: file_exists
+    file: backend/releasehub-application/src/test/java/io/releasehub/application/export/ExportAppServiceTest.java
+    name: export_app_service_test_exists
+  - type: maven_test
+    project_dir: backend
+    module: releasehub-application
+    tests: ExportAppServiceTest
+    also_make: true
+    quiet: true
+    timeout_ms: 180000
+    name: export_app_service_maven_test
 architectureRules:
   - Application 层不能依赖 Infrastructure、Interfaces 或 Bootstrap
   - 测试必须使用 JUnit 5 + Mockito + AssertJ
@@ -37,4 +50,5 @@ preflightFiles:
 designGoal: 验证 Java 应用服务中局部 CSV bugfix 与新测试创建的复合能力
 verificationGoal: 定向 Maven 测试执行 ExportAppServiceTest，证明 CSV 转义和 null 安全行为正确
 expectedProtocolOperations:
+  - CREATE
   - PATCH

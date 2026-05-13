@@ -178,6 +178,50 @@ describe("runAssertion - shell wrapper", () => {
   });
 });
 
+describe("runAssertion - maven_test", () => {
+  it("composes a targeted multi-module Maven test with upstream no-match tolerance", () => {
+    withTmp((tmp) => {
+      const binDir = path.join(tmp, "bin");
+      const backendDir = path.join(tmp, "backend");
+      fs.mkdirSync(binDir, { recursive: true });
+      fs.mkdirSync(backendDir, { recursive: true });
+      const argsFile = path.join(tmp, "mvn-args.txt");
+      fs.writeFileSync(
+        path.join(binDir, "mvn"),
+        `#!/bin/sh\necho "$@" > "${argsFile}"\n`,
+        "utf-8",
+      );
+      fs.chmodSync(path.join(binDir, "mvn"), 0o755);
+
+      const oldPath = process.env.PATH;
+      process.env.PATH = `${binDir}:${oldPath ?? ""}`;
+      try {
+        const r = runAssertion({
+          type: "maven_test",
+          project_dir: "backend",
+          module: "releasehub-application",
+          tests: "ExportAppServiceTest",
+          also_make: true,
+          quiet: true,
+          name: "application_csv_test",
+        } as any, tmp);
+
+        assert.equal(r.status, "passed");
+        assert.match(r.command, /^application_csv_test: cd backend && mvn test/);
+        const args = fs.readFileSync(argsFile, "utf-8");
+        assert.match(args, /test/);
+        assert.match(args, /-pl releasehub-application/);
+        assert.match(args, /-am/);
+        assert.match(args, /-Dtest=ExportAppServiceTest/);
+        assert.match(args, /-Dsurefire\.failIfNoSpecifiedTests=false/);
+        assert.match(args, /-q/);
+      } finally {
+        process.env.PATH = oldPath;
+      }
+    });
+  });
+});
+
 describe("parseAssertion", () => {
   it("parses each of the 5 valid types", () => {
     assert.deepEqual(
@@ -199,6 +243,28 @@ describe("parseAssertion", () => {
     assert.deepEqual(
       parseAssertion({ type: "shell", command: "pnpm test" }),
       { type: "shell", command: "pnpm test" },
+    );
+    assert.deepEqual(
+      parseAssertion({
+        type: "maven_test",
+        project_dir: "backend",
+        module: "releasehub-application",
+        tests: "ExportAppServiceTest",
+        also_make: true,
+        quiet: true,
+        timeout_ms: 180000,
+        name: "maven_csv",
+      }),
+      {
+        type: "maven_test",
+        project_dir: "backend",
+        module: "releasehub-application",
+        tests: "ExportAppServiceTest",
+        also_make: true,
+        quiet: true,
+        timeout_ms: 180000,
+        name: "maven_csv",
+      },
     );
   });
 

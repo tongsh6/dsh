@@ -134,6 +134,34 @@ describe("loadFixture", () => {
     assert.equal(fixture.verifications![1]!.type, "shell");
   });
 
+  it("loads structured Maven test verifications", () => {
+    const p = path.join(tmp, "with-maven-verification.yaml");
+    fs.writeFileSync(
+      p,
+      [
+        "id: with-maven",
+        "description: Test Maven structured verification",
+        "category: bugfix",
+        "taskPrompt: do thing",
+        "verifications:",
+        "  - type: maven_test",
+        "    project_dir: backend",
+        "    module: releasehub-application",
+        "    tests: ExportAppServiceTest",
+        "    also_make: true",
+        "    quiet: true",
+        "    name: application_csv_test",
+        "expectedProtocolOperations:",
+        "  - PATCH",
+      ].join("\n"),
+      "utf-8",
+    );
+    const fixture = loadFixture(p);
+    assert.ok(fixture.verifications);
+    assert.equal(fixture.verifications![0]!.type, "maven_test");
+    assert.equal((fixture.verifications![0]! as any).module, "releasehub-application");
+  });
+
   it("rejects fixture that declares both verifications and verificationCommands", () => {
     const p = path.join(tmp, "conflict.yaml");
     fs.writeFileSync(

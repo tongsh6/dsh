@@ -134,6 +134,7 @@ export {
   runRepair,
   runHandoff,
   runFullPipeline,
+  runPreflight,
 } from "./pipeline.js";
 export type {
   PlanParams,
@@ -142,6 +143,7 @@ export type {
   RepairParams,
   HandoffParams,
   FullPipelineParams,
+  PreflightParams,
   PipelineBase,
 } from "./pipeline.js";
 

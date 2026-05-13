@@ -1007,8 +1007,19 @@ export function extractFilesBlock(response: string): string[] {
   return match[1]
     .trim()
     .split("\n")
-    .map((line) => line.replace(/^-\s*/, "").trim())
+    .map(normalizeFilesBlockEntry)
     .filter((f) => f.length > 0);
+}
+
+function normalizeFilesBlockEntry(line: string): string {
+  const entry = line.replace(/^-\s*/, "").trim();
+  const backtickPath = entry.match(/^`([^`]+)`/);
+  if (backtickPath?.[1]) return backtickPath[1].trim();
+
+  const delimiter = entry.match(/^(.+?)(?:\s+[-—]\s+|:\s+)/);
+  if (delimiter?.[1]) return delimiter[1].trim();
+
+  return entry;
 }
 
 export function extractVerifyBlock(response: string): string[] {

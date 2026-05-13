@@ -22,7 +22,17 @@ export type VerifyAssertion =
   | { type: "file_not_exists"; file: string; name?: string }
   | { type: "file_contains"; file: string; pattern: string; regex?: boolean; name?: string }
   | { type: "file_not_contains"; file: string; pattern: string; regex?: boolean; name?: string }
-  | { type: "shell"; command: string; timeout_ms?: number; name?: string };
+  | { type: "shell"; command: string; timeout_ms?: number; name?: string }
+  | {
+      type: "maven_test";
+      project_dir?: string;
+      module: string;
+      tests?: string;
+      also_make?: boolean;
+      quiet?: boolean;
+      timeout_ms?: number;
+      name?: string;
+    };
 
 const FILE_CONTAINS_MAX_BYTES = 10 * 1024 * 1024; // 10MB safety bound
 
@@ -63,7 +73,27 @@ function describeAssertion(a: VerifyAssertion, idx?: number): string {
       return `${a.type} ${a.file} ~ ${a.pattern}`;
     case "shell":
       return idx !== undefined ? `shell[${idx}]` : "shell";
+    case "maven_test":
+      return idx !== undefined ? `maven_test[${idx}]` : "maven_test";
   }
+}
+
+function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9_./:=,@+-]+$/.test(value)) return value;
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function buildMavenTestCommand(assertion: Extract<VerifyAssertion, { type: "maven_test" }>): string {
+  const args = ["mvn", "test", "-pl", assertion.module];
+  if (assertion.also_make) args.push("-am");
+  if (assertion.tests) args.push(`-Dtest=${assertion.tests}`);
+  args.push("-Dsurefire.failIfNoSpecifiedTests=false");
+  if (assertion.quiet) args.push("-q");
+
+  const mvn = args.map(shellQuote).join(" ");
+  return assertion.project_dir
+    ? `cd ${shellQuote(assertion.project_dir)} && ${mvn}`
+    : mvn;
 }
 
 export function runAssertion(assertion: VerifyAssertion, cwd: string, idx?: number): VerifyRunResult {
@@ -74,6 +104,12 @@ export function runAssertion(assertion: VerifyAssertion, cwd: string, idx?: numb
     const result = runCommand(assertion.command, cwd, assertion.timeout_ms);
     // Use the human display name (or command itself) so reports stay readable
     return { ...result, command: assertion.name ? `${assertion.name}: ${assertion.command}` : result.command };
+  }
+
+  if (assertion.type === "maven_test") {
+    const command = buildMavenTestCommand(assertion);
+    const result = runCommand(command, cwd, assertion.timeout_ms);
+    return { ...result, command: assertion.name ? `${assertion.name}: ${command}` : result.command };
   }
 
   const absPath = path.isAbsolute(assertion.file) ? assertion.file : path.join(cwd, assertion.file);
@@ -181,6 +217,27 @@ export function parseAssertion(raw: unknown): VerifyAssertion | null {
       return {
         type: "shell",
         command,
+        ...(timeoutMs !== undefined ? { timeout_ms: timeoutMs } : {}),
+        ...(name ? { name } : {}),
+      };
+    }
+    case "maven_test": {
+      const module = r["module"];
+      if (typeof module !== "string" || module.trim().length === 0) return null;
+      const projectDir = typeof r["project_dir"] === "string" && r["project_dir"].trim().length > 0
+        ? r["project_dir"]
+        : undefined;
+      const tests = typeof r["tests"] === "string" && r["tests"].trim().length > 0
+        ? r["tests"]
+        : undefined;
+      const timeoutMs = typeof r["timeout_ms"] === "number" ? (r["timeout_ms"] as number) : undefined;
+      return {
+        type: "maven_test",
+        ...(projectDir ? { project_dir: projectDir } : {}),
+        module,
+        ...(tests ? { tests } : {}),
+        ...(r["also_make"] === true ? { also_make: true } : {}),
+        ...(r["quiet"] === true ? { quiet: true } : {}),
         ...(timeoutMs !== undefined ? { timeout_ms: timeoutMs } : {}),
         ...(name ? { name } : {}),
       };

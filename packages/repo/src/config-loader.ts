@@ -17,6 +17,9 @@ export interface DshConfig extends Record<string, unknown> {
     typecheck?: string;
     build?: string;
     commands?: string[];
+    initial_preflight?: boolean;
+    preflight_commands?: string[];
+    preflight_assertions?: unknown[];
     // Structured assertions (spec 2026-05-08-verify-protocol-structured §3.3).
     // When non-empty, takes precedence over commands/test/lint/typecheck.
     // Each entry must conform to VerifyAssertion shape; parsing happens at
@@ -64,6 +67,14 @@ export function findDshRoot(startDir: string): string | null {
     if (fs.existsSync(dshPath) && fs.statSync(dshPath).isDirectory()) {
       return dshPath;
     }
+    
+    // Boundary: Stop if we hit a .git entry (file or directory)
+    // This prevents walking up past the project root in worktrees or nested repos.
+    const gitPath = path.join(current, ".git");
+    if (fs.existsSync(gitPath)) {
+      break;
+    }
+
     current = path.dirname(current);
   }
 

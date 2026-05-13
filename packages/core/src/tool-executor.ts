@@ -32,23 +32,32 @@ export function isShellAllowed(command: string): string | null {
     if (pattern.test(trimmed)) {
       // Allow safe pipe patterns: `| head`, `| tail`, `| grep` (reading operations)
       if (pattern.source === "\\|" || pattern.source === "\\/\\|\\/") {
-        const pipeIndex = trimmed.lastIndexOf("|");
-        if (pipeIndex >= 0) {
-          const afterPipe = trimmed.slice(pipeIndex + 1).trimStart();
+        const pipeMatch = trimmed.match(/\|\s*([^|]+)$/);
+        if (pipeMatch) {
+          const afterPipe = pipeMatch[1]?.trimStart() ?? "";
           const safePipes = ["head ", "tail ", "grep ", "rg "];
-          const isSafePipe = safePipes.some((p) => afterPipe.startsWith(p));
-          if (isSafePipe) continue;
+          if (safePipes.some((p) => afterPipe.startsWith(p))) continue;
+        }
+        // Allow common safe error suppression: `|| true`, `|| echo ...`
+        if (trimmed.includes("||")) {
+          const orMatch = trimmed.match(/\|\|\s*([^|&;]+)$/);
+          if (orMatch) {
+            const afterOr = orMatch[1]?.trimStart() ?? "";
+            const safeOrs = ["true", "echo ", "exit 0"];
+            if (safeOrs.some((p) => afterOr.startsWith(p))) continue;
+          }
         }
       }
+
       // Allow `cd <dir> && <cmd>` — model's common chdir + run pattern
       if (pattern.source === "&&" && trimmed.startsWith("cd ")) {
         const parts = trimmed.split("&&");
         if (parts.length === 2) {
           const second = parts[1]?.trimStart() ?? "";
-          const isAllowed = EXEC_SHELL_ALLOW_LIST.some((p) => second.startsWith(p));
-          if (isAllowed) continue;
+          if (EXEC_SHELL_ALLOW_LIST.some((p) => second.startsWith(p))) continue;
         }
       }
+
       return `命令包含禁止的模式: ${String(pattern)}`;
     }
   }
@@ -155,7 +164,6 @@ function grepFilesImpl(
     return [header, ...formatted].join("\n");
   } catch (e: unknown) {
     const err = e as { status?: number; stderr?: string; message?: string };
-    // grep exit code 1 = no match; anything else is a real error
     if (err.status === 1) {
       return `未找到匹配 "${pattern}" 的结果`;
     }
@@ -165,28 +173,23 @@ function grepFilesImpl(
 }
 
 function execShellImpl(command: string, cwd: string): ToolResult {
-  const blockReason = isShellAllowed(command);
-  if (blockReason) {
-    return {
-      callId: "",
-      status: "error",
-      content: "",
-      error: blockReason,
-    };
+  const allowedError = isShellAllowed(command);
+  if (allowedError) {
+    return { callId: "", status: "error", content: "", error: allowedError };
   }
 
   const start = Date.now();
   try {
-    const stdout = execSync(command, {
+    const output = execSync(command, {
       cwd,
       encoding: "utf-8",
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["ignore", "pipe", "pipe"], // capture stdout and stderr
       timeout: EXEC_SHELL_TIMEOUT_MS,
       maxBuffer: EXEC_SHELL_MAX_OUTPUT,
     });
     const duration = Date.now() - start;
 
-    const out = stdout.trim() || "(无输出)";
+    const out = output.trim() || "(无输出)";
     const truncated = out.length > EXEC_SHELL_MAX_OUTPUT
       ? out.slice(0, EXEC_SHELL_MAX_OUTPUT) + `\n...[截断，总长度 ${out.length}]`
       : out;
@@ -195,7 +198,7 @@ function execShellImpl(command: string, cwd: string): ToolResult {
       callId: "",
       status: "success",
       content: [
-        `Exit code: 0`,
+        "Exit code: 0",
         `Duration: ${duration}ms`,
         "",
         "```",
@@ -207,7 +210,7 @@ function execShellImpl(command: string, cwd: string): ToolResult {
     const duration = Date.now() - start;
     const err = e as { status?: number; stdout?: string; stderr?: string; message?: string };
     const combined = [err.stdout ?? "", err.stderr ?? ""].filter(Boolean).join("\n");
-    const out = (combined.trim() || err.message || "未知错误");
+    const out = combined.trim() || err.message || "未知错误";
 
     return {
       callId: "",
@@ -225,43 +228,22 @@ function execShellImpl(command: string, cwd: string): ToolResult {
   }
 }
 
-export function formatToolResult(
-  toolName: ToolName,
-  args: Record<string, string>,
-  result: ToolResult,
-): string {
-  const argStr = Object.entries(args)
-    .map(([k, v]) => `${k}="${v}"`)
-    .join(", ");
-
-  const header = `## 工具调用结果: ${toolName}(${argStr})`;
-
-  if (result.status === "error") {
-    const errorMsg = result.error ?? "未知错误";
-    const body = result.content ? `\n\n${result.content}` : "";
-    return `${header}\n\n❌ 错误: ${errorMsg}${body}`;
-  }
-
-  return `${header}\n\n${result.content}`;
-}
-
 export function executeTool(
   name: ToolName,
   args: Record<string, string>,
   cwd: string,
-  callId?: string,
+  callId: string = "test-call-id",
 ): ToolResult {
-  const id = callId ?? "";
   switch (name) {
     case "read_file": {
       const filePath = args["path"];
       if (!filePath) {
-        return { callId: id, status: "error", content: "", error: "缺少必填参数 path" };
+        return { callId, status: "error", content: "", error: "缺少必填参数 path" };
       }
       const content = readFileImpl(filePath, cwd);
       const isError = content.startsWith("错误:");
       return {
-        callId: id,
+        callId,
         status: isError ? "error" : "success",
         content,
         error: isError ? content : undefined,
@@ -271,12 +253,12 @@ export function executeTool(
     case "grep_files": {
       const pattern = args["pattern"];
       if (!pattern) {
-        return { callId: id, status: "error", content: "", error: "缺少必填参数 pattern" };
+        return { callId, status: "error", content: "", error: "缺少必填参数 pattern" };
       }
       const content = grepFilesImpl(pattern, args["include"], cwd);
       const isError = content.startsWith("错误:");
       return {
-        callId: id,
+        callId,
         status: isError ? "error" : "success",
         content,
         error: isError ? content : undefined,
@@ -286,18 +268,35 @@ export function executeTool(
     case "exec_shell": {
       const command = args["command"];
       if (!command) {
-        return { callId: id, status: "error", content: "", error: "缺少必填参数 command" };
+        return { callId, status: "error", content: "", error: "缺少必填参数 command" };
       }
       const result = execShellImpl(command, cwd);
-      return { ...result, callId: id };
+      return { ...result, callId };
     }
 
     default:
       return {
-        callId: id,
+        callId,
         status: "error",
         content: "",
         error: `未知工具: ${name}`,
       };
   }
+}
+
+export function formatToolResult(
+  name: ToolName,
+  args: Record<string, string>,
+  result: ToolResult,
+): string {
+  const argStr = Object.entries(args)
+    .map(([k, v]) => `${k}="${v}"`)
+    .join(", ");
+  const header = `## 工具调用结果: ${name}(${argStr})`;
+  if (result.status === "error") {
+    const errorMsg = result.error ?? "未知错误";
+    const body = result.content ? `\n\n${result.content}` : "";
+    return `${header}\n\n❌ 错误: ${errorMsg}${body}`;
+  }
+  return `${header}\n\n${result.content}`;
 }

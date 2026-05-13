@@ -14,6 +14,8 @@ import {
   compareResults,
   formatComparisonReport,
   formatEvaluationReport,
+  summarizePatchRecords,
+  collectTaskDiagnostics,
 } from "./benchmark-runner.js";
 import type { TaskResult } from "./benchmark-runner.js";
 import { detectProtocolOpsFromText } from "@dsh/core";
@@ -228,6 +230,62 @@ describe("scoreResult", () => {
     const r = makeResult({ completed: false, repairRounds: 3, ruleViolations: ["r1"], manualInterventions: 2 });
     const s = scoreResult(r);
     assert.ok(s < 30);
+  });
+});
+
+describe("summarizePatchRecords", () => {
+  it("aggregates files and protocol operations across all patch attempts", () => {
+    const summary = summarizePatchRecords([
+      {
+        files_changed: ["src/a.ts"],
+        patch: '<PATCH file="src/a.ts">x</PATCH>',
+      } as any,
+      {
+        files_changed: [],
+        patch: "<empty>",
+      } as any,
+      {
+        files_changed: ["src/b.test.ts"],
+        patch: '<CREATE path="src/b.test.ts">test</CREATE>',
+      } as any,
+    ]);
+
+    assert.deepEqual(summary.filesChanged, ["src/a.ts", "src/b.test.ts"]);
+    assert.ok(summary.actualProtocolOps.includes("PATCH"));
+    assert.ok(summary.actualProtocolOps.includes("CREATE"));
+  });
+});
+
+describe("collectTaskDiagnostics", () => {
+  it("preserves full verification output for post-run diagnosis", () => {
+    const longOutput = `[ERROR] COMPILATION ERROR :\n${"x".repeat(1200)}\n[ERROR] Foo.java:[42,7] ';' expected`;
+    const diagnostics = collectTaskDiagnostics({
+      version: "0.1",
+      status: "repair_exhausted",
+      task: { description: "fix", type: "bugfix", created_at: "2026-05-13T00:00:00.000Z" },
+      patches: [{ round: 1, patch: "<PATCH>...</PATCH>", apply_status: "ok", files_changed: ["Foo.java"] }],
+      patch_rounds: [],
+      tool_rounds: [],
+      preflight_results: [],
+      verify_results: [{
+        round: 1,
+        results: [{
+          command: "maven_test",
+          status: "failed",
+          exit_code: 1,
+          output: longOutput,
+          duration_ms: 10,
+        }],
+      }],
+      static_scan_runs: [],
+      static_repair_results: [],
+      repair_rounds: 1,
+      managed_files: [],
+    });
+
+    assert.equal(diagnostics.finalStatus, "repair_exhausted");
+    assert.equal(diagnostics.verifyResults[0]!.results[0]!.output, longOutput);
+    assert.ok(diagnostics.verifyResults[0]!.results[0]!.output.length > 1000);
   });
 });
 

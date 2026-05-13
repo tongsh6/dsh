@@ -3,8 +3,8 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import type { DeepSeekClient } from "@dsh/provider";
 import { detectProtocolOpsFromText, readTaskState } from "@dsh/core";
-import type { ProtocolOp } from "@dsh/core";
-import { runPlan, runPatch, runVerify, runRepair, runHandoff } from "@dsh/core";
+import type { PatchRecord, ProtocolOp, TaskState } from "@dsh/core";
+import { runPlan, runPreflight, runPatch, runVerify, runRepair, runHandoff } from "@dsh/core";
 import { writeDshConfig, getBaseBranch, assembleIntelligence, toLegacyTechStack } from "@dsh/repo";
 import { PROTOCOL_OP_SCHEMA } from "./task-fixtures.js";
 import type { LoadedFixture } from "./task-fixtures.js";
@@ -41,6 +41,29 @@ export interface TaskResult {
   patchRounds: number;
   patchRoundActions: { round: number; action: string; toolCalls?: { name: string; status: string }[] }[];
   verifyOutput: { command: string }[];
+  diagnostics?: TaskDiagnostics;
+}
+
+export interface TaskDiagnostics {
+  finalStatus: TaskState["status"];
+  verifyResults: Array<{
+    round: number;
+    results: Array<{
+      command: string;
+      status: string;
+      exit_code: number;
+      output: string;
+      duration_ms: number;
+    }>;
+  }>;
+  patches: Array<{
+    round: number;
+    apply_status: string;
+    files_changed: string[];
+    rolled_back?: boolean;
+    rollback_reason?: string;
+    patch: string;
+  }>;
 }
 
 // ---- Existing Functions ----
@@ -95,6 +118,51 @@ export function scoreResult(result: TaskResult): number {
   score += Math.min(result.handoffQuality * 2, 5);
 
   return Math.min(score, 100);
+}
+
+export function summarizePatchRecords(
+  patches: Pick<PatchRecord, "patch" | "files_changed">[],
+): { filesChanged: string[]; actualProtocolOps: ProtocolOp[] } {
+  const filesChanged = new Set<string>();
+  const actualProtocolOps = new Set<ProtocolOp>();
+
+  for (const patch of patches) {
+    for (const file of patch.files_changed ?? []) {
+      filesChanged.add(file);
+    }
+    for (const op of detectProtocolOpsFromText(patch.patch ?? "")) {
+      actualProtocolOps.add(op);
+    }
+  }
+
+  return {
+    filesChanged: [...filesChanged],
+    actualProtocolOps: [...actualProtocolOps],
+  };
+}
+
+export function collectTaskDiagnostics(state: TaskState): TaskDiagnostics {
+  return {
+    finalStatus: state.status,
+    verifyResults: (state.verify_results ?? []).map((round) => ({
+      round: round.round,
+      results: round.results.map((result) => ({
+        command: result.command,
+        status: result.status,
+        exit_code: result.exit_code,
+        output: result.output,
+        duration_ms: result.duration_ms,
+      })),
+    })),
+    patches: (state.patches ?? []).map((patch) => ({
+      round: patch.round,
+      apply_status: patch.apply_status,
+      files_changed: patch.files_changed,
+      ...(patch.rolled_back !== undefined ? { rolled_back: patch.rolled_back } : {}),
+      ...(patch.rollback_reason !== undefined ? { rollback_reason: patch.rollback_reason } : {}),
+      patch: patch.patch,
+    })),
+  };
 }
 
 export interface ComparisonReport {
@@ -365,14 +433,16 @@ export async function runTask(
       };
     }
 
-    // 4. Patch (auto)
+    // 4. Preflight
+    state = await runPreflight({ cwd: repoPath, client });
+
+    // 5. Patch (auto)
     state = await runPatch({ cwd: repoPath, client, auto: true });
 
     // Record files changed
-    result.filesChanged = state.patches.at(-1)?.files_changed ?? [];
-
-    // Detect actual protocol ops from the stored patch text (best-effort)
-    result.actualProtocolOps = detectProtocolOpsFromText(state.patches.at(-1)?.patch ?? "");
+    const patchSummaryAfterPatch = summarizePatchRecords(state.patches);
+    result.filesChanged = patchSummaryAfterPatch.filesChanged;
+    result.actualProtocolOps = patchSummaryAfterPatch.actualProtocolOps;
 
     // Record tool usage — prefer v0.4 patch_rounds data when available
     if (state.patch_rounds && state.patch_rounds.length > 0) {
@@ -449,12 +519,50 @@ export async function runTask(
     result.completed = true;
     result.testsPassed = state.status === "verified";
 
+    // Record files changed (refreshing from state to include repair changes)
+    const patchSummary = summarizePatchRecords(state.patches);
+    result.filesChanged = patchSummary.filesChanged;
+    result.actualProtocolOps = patchSummary.actualProtocolOps;
+
+    // Update tool usage including preflight, patch_rounds and repair patches
+    const allToolCalls: { name: string; status: string }[] = [];
+    let allToolRounds = 0;
+
+    // From tool_rounds (v0.3 format + preflight rounds which are > 1000)
+    allToolRounds += state.tool_rounds?.length ?? 0;
+    allToolCalls.push(...(state.tool_rounds ?? []).flatMap((tr) =>
+      tr.calls.map((c) => ({ name: c.name, status: c.status })),
+    ));
+
+    // From patch_rounds (v0.4 format)
+    if (state.patch_rounds && state.patch_rounds.length > 0) {
+      const toolActionRounds = state.patch_rounds.filter((pr) => pr.action === "tools");
+      allToolRounds += toolActionRounds.length;
+      allToolCalls.push(...toolActionRounds.flatMap((pr) =>
+        (pr.tool_calls ?? []).map((tc) => ({ name: tc.name, status: tc.status })),
+      ));
+    }
+
+    // From repair patches
+    for (const p of state.patches) {
+      if (p.tool_rounds && p.tool_rounds.length > 0) {
+        allToolRounds += p.tool_rounds.length;
+        allToolCalls.push(...p.tool_rounds.flatMap((tr) =>
+          tr.calls.map((c) => ({ name: c.name, status: c.status })),
+        ));
+      }
+    }
+
+    result.toolRounds = allToolRounds;
+    result.toolCalls = allToolCalls;
+
     // Scope check
     const extraFiles = result.filesChanged.filter(
       (f: string) => !fixture.expectedFiles.some((ef: string) => f.endsWith(ef) || ef.endsWith(f)),
     );
     result.extraFiles = extraFiles;
     result.scopeViolation = extraFiles.length > 0;
+    result.diagnostics = collectTaskDiagnostics(state);
 
   } catch (err) {
     result.completed = false;
@@ -476,9 +584,9 @@ export async function runTask(
 
       if (result.patchRounds > 0) {
         // v0.4: consolidate from patch_rounds
-        const toolsRounds = result.patchRoundActions.filter((a) => a.action === "tools");
-        result.toolRounds = toolsRounds.length;
-        result.toolCalls = toolsRounds.flatMap((a) => a.toolCalls ?? []);
+        const toolActionRounds = result.patchRoundActions.filter((a) => a.action === "tools");
+        result.toolRounds = toolActionRounds.length;
+        result.toolCalls = toolActionRounds.flatMap((a) => a.toolCalls ?? []);
       } else {
         result.toolRounds = stateOnDisk.tool_rounds?.length ?? 0;
         result.toolCalls = (stateOnDisk.tool_rounds ?? []).flatMap((tr) =>
@@ -486,11 +594,27 @@ export async function runTask(
         );
       }
 
-      const lastPatch = stateOnDisk.patches.at(-1);
-      if (lastPatch) {
-        result.filesChanged = lastPatch.files_changed;
-        result.actualProtocolOps = detectProtocolOpsFromText(lastPatch.patch);
+      // Add preflight rounds if present (and not v0.3)
+      if (result.patchRounds > 0) {
+        const preflightRounds = stateOnDisk.tool_rounds?.filter(tr => tr.round >= 1000) ?? [];
+        result.toolRounds += preflightRounds.length;
+        result.toolCalls.push(...preflightRounds.flatMap(tr => tr.calls.map(c => ({ name: c.name, status: c.status }))));
       }
+
+      // Add repair tools
+      for (const p of stateOnDisk.patches) {
+        if (p.tool_rounds && p.tool_rounds.length > 0) {
+          result.toolRounds += p.tool_rounds.length;
+          result.toolCalls.push(...p.tool_rounds.flatMap((tr) =>
+            tr.calls.map((c) => ({ name: c.name, status: c.status })),
+          ));
+        }
+      }
+
+      const patchSummary = summarizePatchRecords(stateOnDisk.patches);
+      result.filesChanged = patchSummary.filesChanged;
+      result.actualProtocolOps = patchSummary.actualProtocolOps;
+      result.diagnostics = collectTaskDiagnostics(stateOnDisk);
     }
   } finally {
     if (!opts?.skipBranchSetup) {

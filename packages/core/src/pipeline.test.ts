@@ -4,7 +4,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import * as yaml from "js-yaml";
-import { runPlan, runPatch, runVerify, runRepair, runHandoff, runFullPipeline, resolveVerifyCommands, resolveVerifyAssertions, computeUncoveredPlanFiles } from "./pipeline.js";
+import { runPlan, runPatch, runVerify, runRepair, runHandoff, runFullPipeline, runPreflight, resolveVerifyCommands, resolveVerifyAssertions, computeUncoveredPlanFiles } from "./pipeline.js";
+import { readTaskState } from "./task-state.js";
 import type { DeepSeekClient, DeepSeekResponse } from "@dsh/provider";
 
 // Helper: create a mock DeepSeekClient that returns the given content
@@ -214,6 +215,65 @@ describe("runPlan", () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it("retries when PLAN exists but the mandatory FILES block is empty", async () => {
+    const tmp = await setupTempDir();
+    try {
+      let calls = 0;
+      const missingFilesResponse = `<PLAN>
+## Goal
+Fix CSV export
+## Files Involved
+- backend/releasehub-application/src/main/java/io/releasehub/application/export/ExportAppService.java
+- backend/releasehub-application/src/test/java/io/releasehub/application/export/ExportAppServiceTest.java
+</PLAN>`;
+      const client = {
+        chat: async () => {
+          calls++;
+          const content = calls === 1 ? missingFilesResponse : VALID_PLAN_RESPONSE;
+          return {
+            id: "test-id",
+            object: "chat.completion",
+            created: Date.now(),
+            model: "deepseek-v4-pro",
+            choices: [{
+              index: 0,
+              message: { role: "assistant" as const, content },
+              finish_reason: "stop",
+            }],
+            usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      const state = await runPlan({ cwd: tmp, client, description: "test files retry", taskType: "bugfix" });
+
+      assert.equal(calls, 2);
+      assert.deepEqual(state.plan!.files, ["tools/check_v2_constraints.py"]);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("throws when PLAN keeps omitting the mandatory FILES block", async () => {
+    const tmp = await setupTempDir();
+    try {
+      const client = mockClient(`<PLAN>
+## Goal
+Fix CSV export
+## Files Involved
+- backend/releasehub-application/src/main/java/io/releasehub/application/export/ExportAppService.java
+</PLAN>`);
+
+      await assert.rejects(
+        () => runPlan({ cwd: tmp, client, description: "test files missing", taskType: "bugfix" }),
+        /未返回有效的 FILES 块/,
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---- runPatch Tests ----
@@ -243,7 +303,7 @@ describe("runPatch", () => {
       const client = mockClient(VALID_PATCH_RESPONSE);
       await assert.rejects(
         () => runPatch({ cwd: tmp, client }),
-        /需要 planned 或 repairing/,
+        /需要 planned, repairing, preflighted 或 preflight_failed/,
       );
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -646,6 +706,140 @@ const V4_PATCH_FILE_B = `<PATCH>
   });
 });
 
+// ---- runPreflight Tests ----
+
+describe("runPreflight", () => {
+  it("does not run final acceptance assertions during preflight", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "python" },
+          verify: {
+            assertions: [
+              { type: "file_exists", file: "created-after-patch.txt" },
+            ],
+          },
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      const client = mockClient("<DONE/>");
+      const state = await runPreflight({ cwd: tmp, client });
+      assert.equal(state.status, "preflighted");
+      assert.equal(state.preflight_results.length, 0);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("runs explicit preflight commands when configured", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "python" },
+          verify: {
+            preflight_commands: ["echo preflight-ok"],
+            assertions: [{ type: "file_exists", file: "created-after-patch.txt" }],
+          },
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      const client = mockClient("<DONE/>");
+      const state = await runPreflight({ cwd: tmp, client });
+      assert.equal(state.status, "preflighted");
+      assert.equal(state.preflight_results.length, 1);
+      assert.equal(state.preflight_results[0]!.results[0]!.status, "passed");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("skips preflight if initial_preflight is false", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({ verify: { initial_preflight: false } }),
+        "utf-8"
+      );
+      const client = mockClient("should not be called");
+      const state = await runPreflight({ cwd: tmp, client });
+      assert.equal(state.status, "preflighted");
+      assert.equal(state.preflight_results.length, 0);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("normalizes preflight tool arguments so persisted state can be read back", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      let callIndex = 0;
+      const responses: DeepSeekResponse[] = [
+        {
+          id: "preflight-tool",
+          object: "chat.completion",
+          created: Date.now(),
+          model: "deepseek-v4-pro",
+          choices: [{
+            index: 0,
+            message: {
+              role: "assistant",
+              content: "",
+              tool_calls: [{
+                id: "call_read_1",
+                type: "function",
+                function: {
+                  name: "read_file",
+                  arguments: '{"path":"dummy.py","limit":5}',
+                },
+              }],
+            },
+            finish_reason: "tool_calls",
+          }],
+          usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 },
+        },
+        {
+          id: "preflight-done",
+          object: "chat.completion",
+          created: Date.now(),
+          model: "deepseek-v4-pro",
+          choices: [{
+            index: 0,
+            message: { role: "assistant", content: "<DONE/>" },
+            finish_reason: "stop",
+          }],
+          usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 },
+        },
+      ];
+      const client = {
+        chat: async () => {
+          const res = responses[Math.min(callIndex, responses.length - 1)]!;
+          callIndex++;
+          return res;
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      const state = await runPreflight({ cwd: tmp, client });
+      const persisted = readTaskState(tmp);
+
+      assert.equal(state.status, "preflighted");
+      assert.ok(persisted, "persisted task-state should parse after preflight tool calls");
+      assert.equal(persisted!.tool_rounds[0]!.calls[0]!.arguments.limit, "5");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
 // ---- runVerify Tests ----
 
 describe("computeUncoveredPlanFiles", () => {
@@ -1031,6 +1225,295 @@ describe("runRepair", () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it("injects source context around Java compilation errors into repair task description", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
+    try {
+      const javaPath = "backend/releasehub-application/src/main/java/io/releasehub/application/export/ExportAppService.java";
+      const absJavaPath = path.join(tmp, javaPath);
+      fs.mkdirSync(path.dirname(absJavaPath), { recursive: true });
+      fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "java" },
+          verify: { test: "echo ok" },
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      fs.writeFileSync(
+        absJavaPath,
+        [
+          "package io.releasehub.application.export;",
+          "",
+          "public class ExportAppService {",
+          "  public String exportCsv() {",
+          "    String header = columns.stream()",
+          "      .map(this::escapeCsv)",
+          "      .collect(java.util.stream.Collectors.joining(\",\"));",
+          "    return header;",
+          "  }",
+          "}",
+          "",
+        ].join("\n"),
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "task-state.json"),
+        JSON.stringify({
+          version: "0.1",
+          status: "verification_failed",
+          task: { description: "fix CSV export", type: "bugfix", created_at: new Date().toISOString() },
+          plan: { summary: "fix", files: [javaPath], risks: [], raw_xml: "<PLAN>fix</PLAN>" },
+          patches: [{ round: 1, patch: "", apply_status: "ok", files_changed: [javaPath] }],
+          verify_results: [{
+            round: 1,
+            results: [{
+              command: "maven_test",
+              status: "failed",
+              exit_code: 1,
+              output: `[ERROR] ${absJavaPath}:[5,35] ';' expected`,
+              duration_ms: 10,
+            }],
+          }],
+          repair_rounds: 0,
+        }, null, 2),
+        "utf-8",
+      );
+
+      const captured: string[] = [];
+      const captureClient = {
+        chat: async (req: any) => {
+          for (const m of req.messages ?? []) {
+            if (m.role === "user" && typeof m.content === "string") {
+              captured.push(m.content);
+            }
+          }
+          return {
+            id: "r1", object: "chat.completion", created: Date.now(), model: "deepseek-v4-pro",
+            choices: [{ index: 0, message: { role: "assistant" as const, content: "<DONE/>" }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      await runRepair({ cwd: tmp, client: captureClient, maxRounds: 1 });
+
+      const allUserContent = captured.join("\n---\n");
+      assert.ok(
+        allUserContent.includes("## Verification Failure Source Context"),
+        "repair task description should include a source-context section for compiler errors",
+      );
+      assert.ok(
+        allUserContent.includes(javaPath),
+        "source context should identify the failing Java file",
+      );
+      assert.ok(
+        allUserContent.includes("5 |     String header = columns.stream()"),
+        "source context should include the failing line with its line number",
+      );
+      assert.ok(
+        allUserContent.includes("line 5, column 35"),
+        "source context should include the compiler line and column",
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("injects Java codebase search results for case-sensitive compiler error identifiers", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
+    try {
+      const testPath = "backend/releasehub-application/src/test/java/io/releasehub/application/export/ExportAppServiceTest.java";
+      const enumPath = "backend/releasehub-domain/src/main/java/io/releasehub/domain/run/RunType.java";
+      fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
+      fs.mkdirSync(path.dirname(path.join(tmp, testPath)), { recursive: true });
+      fs.mkdirSync(path.dirname(path.join(tmp, enumPath)), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "java" },
+          verify: { test: "echo ok" },
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, testPath),
+        [
+          "package io.releasehub.application.export;",
+          "",
+          "import io.releasehub.domain.run.RunType;",
+          "",
+          "class ExportAppServiceTest {",
+          "  void usesRunType() {",
+          "    Object type = RunType.MERGE;",
+          "  }",
+          "}",
+          "",
+        ].join("\n"),
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, enumPath),
+        [
+          "package io.releasehub.domain.run;",
+          "",
+          "public enum RunType {",
+          "    WINDOW_ORCHESTRATION,",
+          "    ATTACH_ITERATION,",
+          "    VERSION_UPDATE",
+          "}",
+          "",
+        ].join("\n"),
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "task-state.json"),
+        JSON.stringify({
+          version: "0.1",
+          status: "verification_failed",
+          task: { description: "fix CSV export", type: "bugfix", created_at: new Date().toISOString() },
+          plan: { summary: "fix", files: [testPath], risks: [], raw_xml: "<PLAN>fix</PLAN>" },
+          patches: [{ round: 1, patch: "", apply_status: "ok", files_changed: [testPath] }],
+          verify_results: [{
+            round: 1,
+            results: [{
+              command: "maven_test",
+              status: "failed",
+              exit_code: 1,
+              output: `[ERROR] ${path.join(tmp, testPath)}:[7,26] cannot find symbol\n  symbol:   variable MERGE\n  location: class io.releasehub.domain.run.RunType`,
+              duration_ms: 10,
+            }],
+          }],
+          repair_rounds: 0,
+        }, null, 2),
+        "utf-8",
+      );
+
+      const captured: string[] = [];
+      const captureClient = {
+        chat: async (req: any) => {
+          for (const m of req.messages ?? []) {
+            if (m.role === "user" && typeof m.content === "string") {
+              captured.push(m.content);
+            }
+          }
+          return {
+            id: "r1", object: "chat.completion", created: Date.now(), model: "deepseek-v4-pro",
+            choices: [{ index: 0, message: { role: "assistant" as const, content: "<DONE/>" }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      await runRepair({ cwd: tmp, client: captureClient, maxRounds: 1 });
+
+      const allUserContent = captured.join("\n---\n");
+      assert.ok(
+        allUserContent.includes("## Codebase Search Results"),
+        "repair task description should include codebase search results for compiler identifiers",
+      );
+      assert.ok(
+        allUserContent.includes("RunType.java"),
+        "search context should include the Java enum definition file",
+      );
+      assert.ok(
+        allUserContent.includes("WINDOW_ORCHESTRATION"),
+        "search context should preserve Java case and include valid enum constants",
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("injects source context around Java stack trace frames into repair task description", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
+    try {
+      const testPath = "backend/releasehub-application/src/test/java/io/releasehub/application/export/ExportAppServiceTest.java";
+      const absTestPath = path.join(tmp, testPath);
+      fs.mkdirSync(path.dirname(absTestPath), { recursive: true });
+      fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "java" },
+          verify: { test: "echo ok" },
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      fs.writeFileSync(
+        absTestPath,
+        [
+          "package io.releasehub.application.export;",
+          "",
+          "class ExportAppServiceTest {",
+          "  Object createRunItem() {",
+          "    String id = null;",
+          "    return RunItem.rehydrate(id);",
+          "  }",
+          "}",
+          "",
+        ].join("\n"),
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "task-state.json"),
+        JSON.stringify({
+          version: "0.1",
+          status: "verification_failed",
+          task: { description: "fix CSV export", type: "bugfix", created_at: new Date().toISOString() },
+          plan: { summary: "fix", files: [testPath], risks: [], raw_xml: "<PLAN>fix</PLAN>" },
+          patches: [{ round: 1, patch: "", apply_status: "ok", files_changed: [testPath] }],
+          verify_results: [{
+            round: 1,
+            results: [{
+              command: "maven_test",
+              status: "failed",
+              exit_code: 1,
+              output: "java.lang.NullPointerException\n\tat io.releasehub.application.export.ExportAppServiceTest.createRunItem(ExportAppServiceTest.java:6)",
+              duration_ms: 10,
+            }],
+          }],
+          repair_rounds: 0,
+        }, null, 2),
+        "utf-8",
+      );
+
+      const captured: string[] = [];
+      const captureClient = {
+        chat: async (req: any) => {
+          for (const m of req.messages ?? []) {
+            if (m.role === "user" && typeof m.content === "string") {
+              captured.push(m.content);
+            }
+          }
+          return {
+            id: "r1", object: "chat.completion", created: Date.now(), model: "deepseek-v4-pro",
+            choices: [{ index: 0, message: { role: "assistant" as const, content: "<DONE/>" }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      await runRepair({ cwd: tmp, client: captureClient, maxRounds: 1 });
+
+      const allUserContent = captured.join("\n---\n");
+      assert.ok(allUserContent.includes("## Verification Failure Source Context"));
+      assert.ok(allUserContent.includes(testPath));
+      assert.ok(allUserContent.includes("6 |     return RunItem.rehydrate(id);"));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---- runHandoff Tests ----
@@ -1086,7 +1569,7 @@ Append a comment line
 - Trivial
 </RISKS>
 `;
-      const client = mockClientSequence([planResponse, V4_PATCH_DUMMY, V4_DONE]);
+      const client = mockClientSequence([planResponse, "<DONE/>", V4_PATCH_DUMMY, V4_DONE]);
       const state = await runFullPipeline({
         cwd: tmp, client, description: "Fix bug", taskType: "bugfix",
       });

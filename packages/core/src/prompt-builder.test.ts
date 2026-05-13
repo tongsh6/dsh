@@ -40,6 +40,12 @@ describe("buildSystemPrompt", () => {
     assert.ok(prompt.includes("REPAIR MODE"));
     assert.ok(!prompt.includes("Loop Protocol"));
   });
+
+  it("forbids no-op DONE responses in repair mode", () => {
+    const prompt = buildSystemPrompt("repair");
+    assert.ok(prompt.includes("Do NOT output <DONE/>"));
+    assert.ok(prompt.includes("at least one change block"));
+  });
 });
 
 describe("buildUserMessage", () => {

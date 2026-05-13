@@ -60,6 +60,16 @@ export const VERIFY_ASSERTION_SCHEMA = z.union([
     timeout_ms: z.number().int().positive().optional(),
     name: z.string().optional(),
   }),
+  z.object({
+    type: z.literal("maven_test"),
+    project_dir: z.string().min(1).optional(),
+    module: z.string().min(1),
+    tests: z.string().min(1).optional(),
+    also_make: z.boolean().optional(),
+    quiet: z.boolean().optional(),
+    timeout_ms: z.number().int().positive().optional(),
+    name: z.string().optional(),
+  }),
 ]);
 
 export type VerifyAssertion = z.infer<typeof VERIFY_ASSERTION_SCHEMA>;

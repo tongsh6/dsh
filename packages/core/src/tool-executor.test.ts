@@ -69,6 +69,12 @@ describe("isShellAllowed", () => {
     assert.ok(isShellAllowed("echo test | grep test"));
   });
 
+  it("rejects shell write attempts even when they look non-destructive", () => {
+    assert.ok(isShellAllowed("mkdir -p src/generated"));
+    assert.ok(isShellAllowed("touch src/generated/file.ts"));
+    assert.ok(isShellAllowed("cat > src/generated/file.ts"));
+  });
+
   it("allows fd duplication (2>&1) — not a file write", () => {
     // 2>&1 is "redirect stderr to wherever stdout goes" — a fd copy, not a file write.
     // Models commonly use `cmd 2>&1` to capture both streams; previously over-strict

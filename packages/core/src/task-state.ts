@@ -31,6 +31,8 @@ const patchRecordSchema = z.object({
   apply_status: z.enum(["ok", "failed", "skipped", "partial_ok"]),
   files_changed: z.array(z.string()),
   tool_rounds: z.array(toolRoundRecordSchema).optional(),
+  rolled_back: z.boolean().optional(),
+  rollback_reason: z.enum(["regression", "stagnation"]).optional(),
   // Set when patch loop produced ≥1 successful change but plan.files were not
   // fully covered. Carries the structured "missing files" signal forward to
   // repair (see spec docs/specs/2026-05-07-patch-completeness.md §3.4).
@@ -123,6 +125,9 @@ export const taskStateSchema = z.object({
   status: z.enum([
     "init",
     "planned",
+    "preflighting",
+    "preflighted",
+    "preflight_failed",
     "patched",
     "verified",
     "verification_failed",
@@ -142,10 +147,12 @@ export const taskStateSchema = z.object({
   patches: z.array(patchRecordSchema).default([]),
   patch_rounds: z.array(patchRoundSchema).default([]),
   tool_rounds: z.array(toolRoundRecordSchema).default([]),
+  preflight_results: z.array(verifyRoundSchema).default([]),
   verify_results: z.array(verifyRoundSchema).default([]),
   static_scan_runs: z.array(staticScanRunSchema).default([]),
   static_repair_results: z.array(staticRepairResultSchema).default([]),
   repair_rounds: z.number().default(0),
+  managed_files: z.array(z.string()).default([]),
   handoff_path: z.string().optional(),
 });
 
@@ -165,11 +172,14 @@ export type TaskStatus = TaskState["status"];
 
 const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   "init": ["planned"],
-  "planned": ["patched", "patch_failed"],
+  "planned": ["preflighting", "patched", "patch_failed"],
+  "preflighting": ["preflighted", "preflight_failed", "patch_failed"],
+  "preflighted": ["patched", "patch_failed"],
+  "preflight_failed": ["repairing", "repair_exhausted", "patched", "patch_failed"],
   "patched": ["verified", "verification_failed"],
   "verified": ["done"],
   "verification_failed": ["repairing", "repair_exhausted"],
-  "repairing": ["patched", "repair_exhausted"],
+  "repairing": ["preflighting", "patched", "repair_exhausted"],
   "repair_exhausted": ["done"],
   "patch_failed": ["repairing", "repair_exhausted", "verification_failed"],
   "done": [],
@@ -233,9 +243,11 @@ export function createTaskState(
     patches: [],
     patch_rounds: [],
     tool_rounds: [],
+    preflight_results: [],
     verify_results: [],
     static_scan_runs: [],
     static_repair_results: [],
     repair_rounds: 0,
+    managed_files: [],
   };
 }

@@ -91,6 +91,19 @@ describe("extractFilesBlock", () => {
     const files = extractFilesBlock(sampleResponse);
     assert.deepEqual(files, ["src/auth/token.ts", "src/auth/login.ts"]);
   });
+
+  it("strips markdown descriptions from file list entries", () => {
+    const files = extractFilesBlock(`<FILES>
+- docs/providers.md: create comprehensive provider guide
+- \`src/auth/token.ts\` — update token refresh flow
+- src/auth/login.ts - wire token refresh
+</FILES>`);
+    assert.deepEqual(files, [
+      "docs/providers.md",
+      "src/auth/token.ts",
+      "src/auth/login.ts",
+    ]);
+  });
 });
 
 describe("extractVerifyBlock", () => {

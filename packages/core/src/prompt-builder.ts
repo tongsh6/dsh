@@ -1,7 +1,7 @@
 import type { DeepSeekMessage } from "@dsh/provider";
 import type { ContextLayers } from "./context-builder.js";
 
-export type PromptPhase = "plan" | "patch" | "repair";
+export type PromptPhase = "plan" | "patch" | "repair" | "preflight";
 
 export interface PromptConfig {
   context: ContextLayers;
@@ -139,17 +139,17 @@ new content to insert here
 
 - **read_file(path)** — Read full file content. Use to confirm structure, line numbers, and exact text for SEARCH blocks.
 - **grep_files(pattern, include?)** — Search the codebase for a regex pattern. Use to find definitions, call sites, and imports. Filter by file type with include (e.g., "*.ts").
-- **exec_shell(command)** — Run a read-only shell command: tests, lint, typecheck, git status/diff/log, cat, grep, find, ls. WRITE commands (rm, mv, git commit/push) are rejected.
+- **exec_shell(command)** — Run a read-only shell command: targeted compile/test checks, git status/diff/log, cat, grep, find, ls. WRITE commands (mkdir, touch, cp, mv, redirection/heredoc, git commit/push) are rejected. To create or modify files, output a change block.
 
 ### Tool Usage Rules
 
-1. BASELINE FIRST — Before making any changes, use exec_shell to run the project's test suite to establish a baseline.
+1. INSPECT FIRST — Before making a change, read the exact file content you will modify. Do not run full test suites as a baseline unless the task specifically requires it.
 2. EXPLORE — Use read_file to confirm the current content of every file you plan to modify. Never assume file content from the task context alone.
 3. COPY VERBATIM — When writing SEARCH blocks, copy text exactly from read_file output. Do not retype from memory.
 4. CHECK CALLERS — If you change a function signature, use grep_files to find all call sites that need updating.
-5. COMPILE CHECK — After each change block, use exec_shell to run the project's compile/build check (compile-only, not full tests). Inspect build files (package.json, pom.xml, Makefile, etc.) to determine the correct compile command. If compilation fails, fix errors in the next round. System verification runs later — compile check is your fast feedback loop.
+5. OPTIONAL COMPILE CHECK — After a change block, run at most one targeted compile/test command if it will materially reduce risk. System verification runs after <DONE/>, so do not keep checking instead of finishing remaining files.
 6. BE EFFICIENT — Limit exploration + compile checks to 3-6 tool calls total. Use the most targeted tool for each question.
-7. ENVIRONMENT READINESS — In some projects, dependencies may not be installed. If you encounter "Command not found", "Module not found", or compilation errors about missing libraries, use exec_shell to run installation commands (e.g., \`pnpm install\`, \`mvn install -DskipTests\`) to set up the environment before proceeding with changes or tests.
+7. FILE WRITES — Never use exec_shell to create directories, create files, copy files, or write content. New files must use <CREATE>; existing-file edits must use <PATCH>, SEARCH/REPLACE, or <INSERT>.
 
 ## After-Apply Feedback
 
@@ -174,7 +174,7 @@ If a change fails, read the file again to check its current state, then try a di
 10. CREATE blocks MUST NOT be empty — every new file needs content
 11. When using <INSERT>, pick an anchor text that definitely EXISTS in the file
 12. Do NOT delete existing imports, functions, or code blocks unless necessary for the fix
-13. **AUTONOMOUS VERIFICATION**: You are responsible for verifying your work. Use \`exec_shell\` to discover and run the appropriate build/test commands for the project. Do not rely on external guidance for verification.
+13. **AUTONOMOUS VERIFICATION**: You may use \`exec_shell\` for one targeted check, but final verification is owned by the system after <DONE/>. Do not use shell commands to write files.
 
 ## Context Layers
 
@@ -228,6 +228,7 @@ This is a MULTI-TURN conversation. Use tool calls to diagnose the failure before
 **Final Turn (Repair):** Output XML blocks with your fix.
 
 Make at least 1 tool call to diagnose before attempting a fix.
+Do NOT output <DONE/> in repair mode. The previous verification has already failed; your final repair turn must include at least one change block (<PATCH>, <PATCH type="search">, <CREATE>, <INSERT>, <DELETE>, or <RENAME>) unless every failing verification result is already passing in the tool output you just observed.
 
 ## Available Tools (Repair)
 
@@ -251,9 +252,36 @@ You have access to tools for diagnosing verification failures:
 - Task Context: relevant file contents — base repairs on actual code
 - Dynamic Context: previous failed attempts and their verify errors — learn from these`;
 
+const PREFLIGHT_PROMPT = `You are a DeepSeek-native Coding Agent in PREFLIGHT MODE. Your goal is to ensure the project environment is ready for coding and verification.
+
+## Goal
+
+Identify and resolve environment issues (missing dependencies, incorrect tool versions, missing build artifacts) BEFORE starting code changes.
+
+## Protocol
+
+1. EXPLORE: Use \`exec_shell\` and \`grep_files\` to inspect build files (package.json, pom.xml, Makefile, etc.) and the directory structure.
+2. PREPARE: If dependencies are missing or the project needs an initial build, use \`exec_shell\` to run installation or setup commands (e.g., \`pnpm install\`, \`mvn install -DskipTests\`, \`make init\`).
+3. VERIFY: Use \`exec_shell\` to run a baseline build or test check to confirm the environment is healthy.
+4. DONE: Output \`<DONE/>\` when you believe the environment is ready for the task.
+
+## Rules
+
+1. Output ONLY tool calls or \`<DONE/>\`. Do NOT emit change blocks (CREATE/PATCH/DELETE) in this phase.
+2. Be efficient — target a 1-3 turn preflight loop.
+3. If the environment is already healthy (tests pass), output \`<DONE/>\` immediately.
+4. If you cannot fix the environment after several attempts, output \`<DONE/>\` anyway and explain the blocker.
+
+## Context Layers
+
+- Base Context: project rules and constraints
+- Repo Context: directory structure
+- Task Context: relevant file contents`;
+
 export function buildSystemPrompt(phase: PromptPhase = "patch"): string {
   if (phase === "plan") return PLAN_PROMPT;
   if (phase === "repair") return REPAIR_PROMPT;
+  if (phase === "preflight") return PREFLIGHT_PROMPT;
   return PATCH_PROMPT_V4;
 }
 

@@ -43,6 +43,13 @@ import {
   rankFiles,
   loadTopFiles,
   scanProjectFiles,
+  isGitRepo,
+  createCheckpoint,
+  applyRollback,
+  cleanupCheckpoints,
+  createFileCheckpoint,
+  applyFileRollback,
+  cleanupFileCheckpoints,
 } from "@dsh/repo";
 import { ALL_TOOL_DEFINITIONS } from "./tool-definitions.js";
 import { executeTool, formatToolResult } from "./tool-executor.js";
@@ -53,6 +60,7 @@ import type { ToolName } from "./tool-definitions.js";
 const MAX_PATCH_ROUNDS = 30;
 const MAX_CONSECUTIVE_INVALID = 3;
 const MAX_CONSECUTIVE_TOOLS_ONLY = 10;
+const TOOLS_ONLY_STALL_WARNING = 3;
 
 interface VerifySlotSelection {
   test?: boolean;
@@ -134,6 +142,57 @@ export function resolveVerifyAssertions(
   );
 }
 
+export function resolvePreflightAssertions(
+  verifyConfig: Record<string, unknown> | undefined,
+): VerifyAssertion[] {
+  if (!verifyConfig) return [];
+
+  const assertionsField = verifyConfig["preflight_assertions"];
+  if (Array.isArray(assertionsField) && assertionsField.length > 0) {
+    const parsed = assertionsField
+      .map((raw) => parseAssertion(raw))
+      .filter((a): a is VerifyAssertion => a !== null);
+    if (parsed.length > 0) return parsed;
+  }
+
+  const commandsField = verifyConfig["preflight_commands"];
+  if (!Array.isArray(commandsField)) return [];
+
+  return commandsField
+    .filter((command): command is string => typeof command === "string")
+    .map((command) => command.trim())
+    .filter((command) => command.length > 0)
+    .map((command) => ({ type: "shell" as const, command }));
+}
+
+function buildMissingFilesRetryMessage(): string {
+  return [
+    "Your response included a plan but did not include the mandatory <FILES> block.",
+    "The patch pipeline relies on <FILES> as a structured contract for completeness and repair.",
+    "Please respond again with:",
+    "<PLAN>...</PLAN>",
+    "<FILES>",
+    "- path/to/file.ext",
+    "</FILES>",
+    "<RISKS>...</RISKS>",
+  ].join("\n");
+}
+
+function buildPatchLoopStallWarning(state: TaskState, changedFiles: string[]): string {
+  const planFiles = state.plan?.files ?? [];
+  const uncovered = computeUncoveredPlanFiles(planFiles, [...new Set(changedFiles)]);
+  const target = uncovered[0] ?? planFiles[0] ?? "the next planned file";
+
+  return [
+    "## SYSTEM WARNING",
+    `You have already produced a change, then spent ${TOOLS_ONLY_STALL_WARNING} consecutive turns using tools.`,
+    "Stop using tools now. The next response MUST be exactly one change block, not tool calls.",
+    `Target the remaining planned file: ${target}`,
+    "Use <CREATE> for a new file, or <PATCH>/<PATCH type=\"search\"> for an existing file.",
+    "Do not use exec_shell to create directories or write files.",
+  ].join("\n");
+}
+
 function _totalCharCount(messages: DeepSeekMessage[]): number {
   let chars = 0;
   for (const m of messages) {
@@ -181,6 +240,14 @@ function applySingleChange(
     default:
       return { ok: false, files_changed: [], error: `unknown op: ${change.op}` };
   }
+}
+
+function normalizeToolArguments(raw: Record<string, unknown>): Record<string, string> {
+  const args: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    args[key] = typeof value === "string" ? value : JSON.stringify(value);
+  }
+  return args;
 }
 
 // ---- Types ----
@@ -232,18 +299,15 @@ export interface FullPipelineParams extends PipelineBase {
 
 async function buildLayers(
   cwd: string,
-  description: string,
-  taskType: string,
-  verificationGoal?: string,
+  state: TaskState,
 ): Promise<ContextLayers> {
   const config = loadDshConfig(cwd);
   const rules = loadRuleContents(cwd);
   const pi = assembleIntelligence(cwd);
   const repoContext = generateRepoContext(cwd, pi);
 
-  const state = createTaskState(description, taskType as TaskState["task"]["type"], verificationGoal);
   const allFiles = await scanProjectFiles(cwd);
-  const ranked = rankFiles(description, allFiles);
+  const ranked = rankFiles(state.task.description, allFiles);
   const taskFiles = loadTopFiles(cwd, ranked, 10);
 
   return assembleContext({ config, rules, repoContext, taskState: state, taskFiles });
@@ -300,6 +364,31 @@ async function runPostImplementationStaticScan(params: {
   return state;
 }
 
+// ---- Helpers for Transactional Self-Correction (PHASE-3-D) ----
+
+function performCheckpoint(cwd: string, id: string, managedFiles: string[]): boolean {
+  if (isGitRepo(cwd)) {
+    return createCheckpoint(cwd, id);
+  } else {
+    return createFileCheckpoint(cwd, id, managedFiles);
+  }
+}
+
+function performRollback(cwd: string, id: string): boolean {
+  if (isGitRepo(cwd)) {
+    return applyRollback(cwd);
+  } else {
+    return applyFileRollback(cwd, id);
+  }
+}
+
+function performCleanup(cwd: string): void {
+  if (isGitRepo(cwd)) {
+    cleanupCheckpoints(cwd);
+  }
+  cleanupFileCheckpoints(cwd);
+}
+
 // ---- runPlan ----
 
 export async function runPlan(params: PlanParams): Promise<TaskState> {
@@ -311,7 +400,7 @@ export async function runPlan(params: PlanParams): Promise<TaskState> {
     writeTaskState(cwd, state);
   }
 
-  const layers = await buildLayers(cwd, description, taskType, verificationGoal);
+  const layers = await buildLayers(cwd, state);
   const target = classify({ command: "plan" });
 
   const messages = buildMessages({ context: layers, taskDescription: description, phase: "plan" });
@@ -330,11 +419,20 @@ export async function runPlan(params: PlanParams): Promise<TaskState> {
     const risks = extractRisksBlock(content);
     const verifyCommands = extractVerifyBlock(content);
     const verifyStrategy = extractVerifyStrategyBlock(content);
+    const filesMissing = files.length === 0;
 
     if (!planRaw) {
       // Fallback: use entire response as plan if no <PLAN> block found
       const trimmed = content.trim();
       if (trimmed.length > 50) {
+        if (filesMissing) {
+          if (attempts < 2) {
+            messages.push({ role: "assistant", content });
+            messages.push({ role: "user", content: buildMissingFilesRetryMessage() });
+            continue;
+          }
+          throw new Error("DeepSeek 未返回有效的 FILES 块");
+        }
         state.plan = {
           summary: trimmed.split("\n")[0]?.replace(/^#+\s*/, "") ?? description,
           files,
@@ -359,6 +457,15 @@ export async function runPlan(params: PlanParams): Promise<TaskState> {
       throw new Error("DeepSeek 未返回有效的 PLAN 块");
     }
 
+    if (filesMissing) {
+      if (attempts < 2) {
+        messages.push({ role: "assistant", content });
+        messages.push({ role: "user", content: buildMissingFilesRetryMessage() });
+        continue;
+      }
+      throw new Error("DeepSeek 未返回有效的 FILES 块");
+    }
+
     state.plan = {
       summary: planRaw.split("\n")[0]?.replace(/^#+\s*/, "") ?? description,
       files,
@@ -371,6 +478,15 @@ export async function runPlan(params: PlanParams): Promise<TaskState> {
   }
 
   state = transition(state, "planned");
+  
+  // ---- Initialize managed_files (PHASE-3-D) ----
+  // managed_files = plan.files (intended) + actually changed files (realized)
+  if (state.plan?.files) {
+    const currentManaged = new Set(state.managed_files);
+    for (const f of state.plan.files) currentManaged.add(f);
+    state.managed_files = [...currentManaged];
+  }
+
   writeTaskState(cwd, state);
 
   return state;
@@ -383,11 +499,11 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
 
   let state = readTaskState(cwd);
   if (!state) throw new Error("尚未初始化。请先运行 dsh init");
-  if (state.status !== "planned" && state.status !== "repairing") {
-    throw new Error(`当前状态为 ${state.status}，需要 planned 或 repairing`);
+  if (state.status !== "planned" && state.status !== "repairing" && state.status !== "preflighted" && state.status !== "preflight_failed") {
+    throw new Error(`当前状态为 ${state.status}，需要 planned, repairing, preflighted 或 preflight_failed`);
   }
 
-  const layers = await buildLayers(cwd, state.task.description, state.task.type, state.task.verification_goal);
+  const layers = await buildLayers(cwd, state);
   const dynamic = buildDynamicContext(state.patches, state.verify_results, 2);
   const fullLayers = { ...layers, dynamic };
 
@@ -455,10 +571,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
         for (const tc of toolCalls ?? []) {
           let rawArgs: Record<string, unknown> = {};
           try { rawArgs = JSON.parse(tc.function.arguments) as Record<string, unknown>; } catch { /* keep empty */ }
-          const args: Record<string, string> = {};
-          for (const [k, v] of Object.entries(rawArgs)) {
-            args[k] = typeof v === "string" ? v : JSON.stringify(v);
-          }
+          const args = normalizeToolArguments(rawArgs);
           const result = executeTool(tc.function.name as ToolName, args, cwd, tc.id);
           console.log(`[pipeline] Tool: ${tc.function.name} args: ${JSON.stringify(args)} status: ${result.status}`);
           const formatted = formatToolResult(tc.function.name as ToolName, args, result);
@@ -473,6 +586,13 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
         record.tool_calls = callRecords;
         consecutiveInvalid = 0;
         consecutiveToolsOnly++;
+
+        if (hasProducedChange && consecutiveToolsOnly === TOOLS_ONLY_STALL_WARNING) {
+          messages.push({
+            role: "user",
+            content: buildPatchLoopStallWarning(state, allChangedFiles),
+          });
+        }
 
         if (consecutiveToolsOnly >= MAX_CONSECUTIVE_TOOLS_ONLY) {
           const reason = hasProducedChange
@@ -493,7 +613,20 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
         if (choice.message.reasoning_content) {
           record.reasoning_excerpt = choice.message.reasoning_content.slice(0, 500);
         }
+
+        // ---- Checkpoint (PHASE-3-D) ----
+        const checkpointId = `dsh-checkpoint-patch-round-${round}`;
+        if (!dryRun) {
+          performCheckpoint(cwd, checkpointId, state.managed_files);
+        }
+
         const result = applySingleChange(cwd, action.change, !!dryRun);
+
+        // ---- Rollback on failure (PHASE-3-D) ----
+        if (!result.ok && !dryRun) {
+          performRollback(cwd, checkpointId);
+        }
+
         record.change = {
           op: action.change.op,
           file: action.change.file,
@@ -501,7 +634,13 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
           apply_error: result.error,
           raw_block: action.change.raw_block,
         };
+
+        // ---- Track managed files (PHASE-3-D) ----
         if (result.ok && result.files_changed.length > 0) {
+          const currentManaged = new Set(state.managed_files);
+          for (const f of result.files_changed) currentManaged.add(f);
+          state.managed_files = [...currentManaged];
+
           allChangedFiles.push(...result.files_changed);
         }
         // Build progress-aware feedback message
@@ -734,7 +873,7 @@ export async function runRepair(params: RepairParams): Promise<TaskState> {
     throw new Error(`当前状态为 ${state.status}，需要 verification_failed 或 patch_failed`);
   }
 
-  const layers = await buildLayers(cwd, state.task.description, state.task.type);
+  const layers = await buildLayers(cwd, state);
 
   const config = loadDshConfig(cwd);
   if (config.verify && state.plan) {
@@ -772,6 +911,129 @@ export async function runRepair(params: RepairParams): Promise<TaskState> {
   return finalState;
 }
 
+// ---- runPreflight ----
+
+export interface PreflightParams {
+  cwd: string;
+  client: DeepSeekClient;
+}
+
+export async function runPreflight(params: PreflightParams): Promise<TaskState> {
+  const { cwd, client } = params;
+
+  let state = readTaskState(cwd);
+  if (!state) throw new Error("尚未初始化。请先运行 dsh init");
+
+  if (state.status !== "planned" && state.status !== "repairing") {
+    return state; // Only run preflight from planned or repairing
+  }
+
+  state = transition(state, "preflighting");
+  writeTaskState(cwd, state);
+
+  const config = loadDshConfig(cwd);
+  const initialPreflight = config.verify?.initial_preflight !== false;
+
+  if (!initialPreflight) {
+    state = transition(state, "preflighted");
+    writeTaskState(cwd, state);
+    return state;
+  }
+
+  const repoFiles = await scanProjectFiles(cwd);
+  const ranked = rankFiles(state.task.description, repoFiles);
+  const taskFiles = loadTopFiles(cwd, ranked, 10);
+  const repoContext = generateRepoContext(cwd, assembleIntelligence(cwd));
+  const rules = loadRuleContents(cwd);
+
+  const layers = assembleContext({
+    config,
+    rules,
+    repoContext,
+    taskState: state,
+    taskFiles,
+  });
+
+  const messages: DeepSeekMessage[] = buildMessages({
+    context: layers,
+    taskDescription: state.task.description,
+    phase: "preflight",
+  });
+
+  const MAX_PREFLIGHT_TURNS = 5;
+  for (let turn = 1; turn <= MAX_PREFLIGHT_TURNS; turn++) {
+    const response = await client.chat({
+      model: "deepseek-v4-pro",
+      messages,
+      thinking: true,
+      tools: ALL_TOOL_DEFINITIONS as unknown as Record<string, unknown>[],
+    });
+
+    const choice = response.choices[0];
+    if (!choice) break;
+
+    const content = choice.message.content;
+    const toolCalls = choice.message.tool_calls;
+
+    const assistantMsg: DeepSeekMessage = { role: "assistant", content, tool_calls: toolCalls };
+    if (choice.message.reasoning_content) assistantMsg.reasoning_content = choice.message.reasoning_content;
+    messages.push(assistantMsg);
+
+    if (toolCalls && toolCalls.length > 0) {
+      for (const tc of toolCalls) {
+        let rawArgs: Record<string, unknown> = {};
+        try { rawArgs = JSON.parse(tc.function.arguments) as Record<string, unknown>; } catch { /* keep empty */ }
+        const args = normalizeToolArguments(rawArgs);
+        const result = executeTool(tc.function.name as ToolName, args, cwd, tc.id);
+        const formatted = formatToolResult(tc.function.name as ToolName, args, result);
+        messages.push({ role: "tool", content: formatted, tool_call_id: tc.id });
+
+        // Record tool call in task state (using a special round for preflight)
+        const round = state.preflight_results.length + 1;
+        state.tool_rounds.push({
+          round: 1000 + round, // Use 1000+ offset to distinguish from patch rounds
+          calls: [{
+            name: tc.function.name,
+            arguments: args,
+            status: result.status,
+            summary: result.status === "success" ? result.content.slice(0, 200) : (result.error ?? "").slice(0, 200),
+          }],
+        });
+      }
+      writeTaskState(cwd, state);
+      continue;
+    }
+
+    if (content.includes("<DONE/>")) {
+      break;
+    }
+
+    // If no tools and no DONE, just end preflight
+    break;
+  }
+
+  // Preflight checks are environment/readiness probes only. Final acceptance
+  // assertions may depend on files that the patch has not created yet, so they
+  // intentionally run later in runVerify.
+  const assertions = resolvePreflightAssertions(config.verify);
+  if (assertions.length > 0) {
+    const results = runVerifyAssertions(assertions, cwd);
+    const round = state.preflight_results.length + 1;
+    state.preflight_results.push({ round, results });
+    
+    if (isAllPassed(results)) {
+      state = transition(state, "preflighted");
+    } else {
+      state = transition(state, "preflight_failed");
+    }
+  } else {
+    state = transition(state, "preflighted");
+  }
+
+  writeTaskState(cwd, state);
+  return state;
+}
+
 // ---- runHandoff ----
 
 export async function runHandoff(params: HandoffParams): Promise<string> {
@@ -790,6 +1052,7 @@ export async function runFullPipeline(params: FullPipelineParams): Promise<TaskS
   const { cwd, client, description, taskType, verificationGoal, auto = true, maxRepairRounds = 5 } = params;
 
   await runPlan({ cwd, client, description, taskType, verificationGoal });
+  await runPreflight({ cwd, client });
   let state = await runPatch({ cwd, client, auto });
 
   if (state.status === "patched") {
@@ -806,6 +1069,9 @@ export async function runFullPipeline(params: FullPipelineParams): Promise<TaskS
   if (state.status === "verification_failed" || state.status === "patch_failed") {
     state = await runRepair({ cwd, client, maxRounds: maxRepairRounds });
   }
+
+  // ---- Cleanup Checkpoints (PHASE-3-D) ----
+  performCleanup(cwd);
 
   await runHandoff({ cwd });
 
