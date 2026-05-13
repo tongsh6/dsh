@@ -1,6 +1,6 @@
 ---
 id: pie-phase-b-legacy-projection
-status: backlog
+status: in_review
 priority: p1
 type: refactor
 spec_ref: docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md
@@ -42,6 +42,6 @@ assignee: ai
 
 ## Notes
 
-- 本 task 不切换调用点。Phase C 才会让 4 处 detectTechStack 调用切到 assembleIntelligence + toLegacyTechStack 组合
-- scanner.ts 在本 task 结束时仍存在但已瘦身（只剩 detectTechStack / detectVerifyCommands 系）
-- generateRepoContext 签名变化是契约破坏 —— 4 处生产调用点会在 Step 6 顺手适配（同 commit 内）
+- **范围扩张说明（2026-05-13 实施时）**：因 `generateRepoContext` 签名变更（plan Step 5）必然破坏下游 typecheck，本 task 顺手切换了 5 处 `detectTechStack` 生产调用点（plan §Step 6 的 detectTechStack 部分提前完成）。task C 剩余范围：(a) `cli/init.ts` 的 `detectVerifyCommands` 调用切换到 `pickVerifyPlan` + pkg.scripts fallback（Step 7）；(b) `scanner.ts` 物理删除（Step 8）。
+- scanner.ts 在本 task 结束时仍存在但已大幅瘦身：删除了 VerifyCommands/RepoContext 类型、generateRepoContext 系，仅保留 detectTechStack（无生产调用点）+ detectVerifyCommands（cli/init 仍调）+ 其 helper。
+- `toLegacyTechStack` 加 cwd 参数：lock-file 探测（pnpm/yarn/npm/bun/poetry/pipenv/pip）必须 fs.exists 检查，不能纯反推 facts。签名变更影响 1 处 cli/init + 1 处 benchmark-runner（已切换）。

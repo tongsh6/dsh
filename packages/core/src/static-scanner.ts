@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { DeepSeekClient } from "@dsh/provider";
 import {
-  detectTechStack,
+  assembleIntelligence,
   generateRepoContext,
   loadRuleContents,
   loadTopFiles,
@@ -264,8 +264,8 @@ function buildStaticRepairContext(
 ) {
   const config = {};
   const rules = loadRuleContents(cwd);
-  const stack = detectTechStack(cwd);
-  const repoContext = generateRepoContext(cwd, stack);
+  const pi = assembleIntelligence(cwd);
+  const repoContext = generateRepoContext(cwd, pi);
   const rankedFiles = buildRankedFilesFromFindings(findings);
   const taskFiles = loadTopFiles(cwd, rankedFiles, MAX_REPAIR_CONTEXT_FILES);
 

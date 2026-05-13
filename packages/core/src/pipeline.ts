@@ -38,7 +38,7 @@ import type { TaskState, PatchRoundRecord, PatchRecord } from "./task-state.js";
 import { writeHandoff } from "./handoff-writer.js";
 import {
   loadRuleContents,
-  detectTechStack,
+  assembleIntelligence,
   generateRepoContext,
   rankFiles,
   loadTopFiles,
@@ -238,8 +238,8 @@ async function buildLayers(
 ): Promise<ContextLayers> {
   const config = loadDshConfig(cwd);
   const rules = loadRuleContents(cwd);
-  const stack = detectTechStack(cwd);
-  const repoContext = generateRepoContext(cwd, stack);
+  const pi = assembleIntelligence(cwd);
+  const repoContext = generateRepoContext(cwd, pi);
 
   const state = createTaskState(description, taskType as TaskState["task"]["type"], verificationGoal);
   const allFiles = await scanProjectFiles(cwd);

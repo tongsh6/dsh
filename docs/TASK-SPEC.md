@@ -304,7 +304,7 @@ spec/           ← 设计文档：描述"要做什么"和"为什么这样做"
 | `patchloop-p6-e2e-validation` | Patch Loop P6：端到端验证 + ship/回退决策 | in_progress | p1 | ai |
 | `patchloop-auto-termination` | Pipeline 自动终止 + 安全网（P1+P2）| in_progress | p1 | ai |
 | `pie-phase-a-facts-expansion` | PIE Phase A：Intelligence Facts 扩展 + project.yml 人工确认层 | in_review | p1 | ai |
-| `pie-phase-b-legacy-projection` | PIE Phase B：toLegacyTechStack 完整投影 + RepoContext 拆分 | backlog | p1 | ai |
+| `pie-phase-b-legacy-projection` | PIE Phase B：toLegacyTechStack 完整投影 + RepoContext 拆分 + 5 处调用点切换 | in_review | p1 | ai |
 | `pie-phase-c-callsite-switch` | PIE Phase C：5 处调用点切换 + scanner.ts 物理删除 | backlog | p1 | ai |
 | `pie-phase-d-new-capabilities` | PIE Phase D：dsh doctor + Project Card 注入 + ctxDirs 重构 | backlog | p1 | ai |
 | `pie-phase-e-validation` | PIE Phase E：24 fixture benchmark + A/B + 报告归档 | backlog | p1 | ai |

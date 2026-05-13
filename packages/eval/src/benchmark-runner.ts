@@ -5,7 +5,7 @@ import type { DeepSeekClient } from "@dsh/provider";
 import { detectProtocolOpsFromText, readTaskState } from "@dsh/core";
 import type { ProtocolOp } from "@dsh/core";
 import { runPlan, runPatch, runVerify, runRepair, runHandoff } from "@dsh/core";
-import { writeDshConfig, getBaseBranch, detectTechStack } from "@dsh/repo";
+import { writeDshConfig, getBaseBranch, assembleIntelligence, toLegacyTechStack } from "@dsh/repo";
 import { PROTOCOL_OP_SCHEMA } from "./task-fixtures.js";
 import type { LoadedFixture } from "./task-fixtures.js";
 
@@ -318,7 +318,7 @@ export async function runTask(
     const dshDir = path.join(repoPath, ".dsh");
     fs.rmSync(path.join(dshDir, "task-state.json"), { force: true });
     fs.mkdirSync(dshDir, { recursive: true });
-    const stack = detectTechStack(repoPath);
+    const stack = toLegacyTechStack(repoPath, assembleIntelligence(repoPath));
 
     // writeDshConfig merges with existing — only override verify + deepseek, preserve project metadata
     writeDshConfig(repoPath, {
