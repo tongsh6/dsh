@@ -1,8 +1,7 @@
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { TechStack } from "./scanner.js";
-import type { ProjectIntelligence } from "./intelligence.js";
+import type { ProjectIntelligence, TechStack } from "./intelligence.js";
 import { toLegacyTechStack } from "./intelligence.js";
 
 export interface VerifyCommands {

@@ -11,9 +11,29 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { TechStack, SubModule, VerifyCommands } from "./scanner.js";
+import type { VerifyCommands } from "./repo-context.js";
 import { readProjectYml } from "./project-yml.js";
 import type { ProjectYml } from "./project-yml.js";
+
+// ---- Legacy TechStack contract (formerly scanner.ts) ----
+// Kept here for downstream consumers (context-builder, cli/init); produced
+// solely via toLegacyTechStack(cwd, pi).
+
+export interface SubModule {
+  path: string;
+  language: string;
+  packageManager: string | null;
+  framework: string | null;
+}
+
+export interface TechStack {
+  language: string;
+  packageManager: string | null;
+  framework: string | null;
+  details: Record<string, string>;
+  /** Sub-modules detected in mixed projects (e.g., backend/ + frontend/) */
+  modules?: SubModule[];
+}
 
 // ---- Models ----
 
@@ -641,20 +661,67 @@ export function toProjectCard(pi: ProjectIntelligence): string {
 // ---- Projection: ProjectIntelligence → consumable views ----
 
 /**
- * Project verify plan from Capabilities. `unavailable` capabilities yield
- * null fields; downstream (e.g. cli/init) may fall back to package.json scripts.
+ * Project verify plan derived from ProjectIntelligence. For compiled languages
+ * (Java/Go/Rust) and known build systems (Maven/Gradle) the command comes
+ * straight from capabilities. For interpreted languages (TS/JS/Python) where
+ * the capability is "likely" with no canonical command, fall back to
+ * package.json scripts (Node) or convention commands with the resolved
+ * package manager prefix (Python).
  */
-export function pickVerifyPlan(pi: ProjectIntelligence): VerifyCommands {
-  const get = (key: "build" | "test" | "typecheck" | "lint"): string | null => {
+export function pickVerifyPlan(cwd: string, pi: ProjectIntelligence): VerifyCommands {
+  const fromCap = (key: "build" | "test" | "typecheck" | "lint"): string | null => {
     const cap = pi.capabilities.find((c) => c.key === key);
     if (!cap || cap.status === "unavailable") return null;
     return cap.command;
   };
+  const base: VerifyCommands = {
+    test: fromCap("test"),
+    lint: fromCap("lint"),
+    typecheck: fromCap("typecheck"),
+    build: fromCap("build"),
+  };
+
+  const lang = pi.language.mode === "auto" || pi.language.mode === "suggest"
+    ? pi.language.selected
+    : null;
+
+  if (lang === "typescript" || lang === "javascript") {
+    return fillNodeFallback(cwd, lang, base);
+  }
+  if (lang === "python") {
+    return fillPythonFallback(cwd, base);
+  }
+  return base;
+}
+
+function fillNodeFallback(cwd: string, lang: string, base: VerifyCommands): VerifyCommands {
+  const pkg = readJsonFileSafe(path.join(cwd, "package.json"));
+  const scripts = (pkg?.scripts as Record<string, unknown>) ?? {};
+  const findScript = (cands: string[]): string | null => {
+    for (const name of cands) {
+      if (typeof scripts[name] === "string") return scripts[name] as string;
+    }
+    return null;
+  };
   return {
-    test: get("test"),
-    lint: get("lint"),
-    typecheck: get("typecheck"),
-    build: get("build"),
+    test: base.test ?? findScript(["test", "jest", "vitest", "mocha"]),
+    lint: base.lint ?? findScript(["lint", "eslint"]),
+    typecheck: base.typecheck ?? (lang === "typescript"
+      ? findScript(["typecheck", "type-check", "tsc", "check-types"])
+      : null),
+    build: base.build ?? findScript(["build", "compile"]),
+  };
+}
+
+function fillPythonFallback(cwd: string, base: VerifyCommands): VerifyCommands {
+  const usePoetry = fs.existsSync(path.join(cwd, "poetry.lock"));
+  const prefix = usePoetry ? "poetry run " : "";
+  const testDir = fs.existsSync(path.join(cwd, "tests")) ? "tests/ -x" : "-x";
+  return {
+    test: base.test ?? `${prefix}pytest ${testDir}`.trim(),
+    lint: base.lint ?? `${prefix}ruff check .`.trim(),
+    typecheck: base.typecheck ?? `${prefix}mypy .`.trim(),
+    build: base.build,
   };
 }
 

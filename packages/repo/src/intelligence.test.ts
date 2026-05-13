@@ -409,7 +409,7 @@ describe("pickVerifyPlan", () => {
       touch(path.join(tmp, "src", "Baz.java"), "class Baz {}");
       fs.writeFileSync(path.join(tmp, "pom.xml"), "<project></project>", "utf-8");
       const pi = assembleIntelligence(tmp);
-      const plan = pickVerifyPlan(pi);
+      const plan = pickVerifyPlan(tmp, pi);
       assert.match(plan.test!, /mvn/);
       assert.match(plan.typecheck!, /mvn compile/);
       assert.match(plan.lint!, /checkstyle/);
@@ -417,17 +417,57 @@ describe("pickVerifyPlan", () => {
     });
   });
 
-  it("returns null fields when capabilities are likely (TS without resolved package manager)", () => {
+  it("returns null fields for bare TS project with no package.json scripts", () => {
     withTmp((tmp) => {
-      // 3 .ts files but no package.json → language ts (auto via file ext), build system blocked
+      // 3 .ts files but no package.json → language ts (auto via file ext), no scripts → null
       touch(path.join(tmp, "src", "a.ts"), "export const a = 1;");
       touch(path.join(tmp, "src", "b.ts"), "export const b = 2;");
       touch(path.join(tmp, "src", "c.ts"), "export const c = 3;");
       const pi = assembleIntelligence(tmp);
-      const plan = pickVerifyPlan(pi);
-      // ts capabilities are "likely" → command is null
+      const plan = pickVerifyPlan(tmp, pi);
       assert.equal(plan.test, null);
       assert.equal(plan.lint, null);
+    });
+  });
+
+  it("falls back to package.json scripts for TS project (test/lint/typecheck/build)", () => {
+    withTmp((tmp) => {
+      fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({
+        name: "x",
+        devDependencies: { typescript: "^5.0.0" },
+        scripts: {
+          test: "vitest run",
+          lint: "eslint .",
+          typecheck: "tsc --noEmit",
+          build: "tsc",
+        },
+      }), "utf-8");
+      fs.writeFileSync(path.join(tmp, "tsconfig.json"), "{}", "utf-8");
+      touch(path.join(tmp, "src", "a.ts"), "export const a = 1;");
+      touch(path.join(tmp, "src", "b.ts"), "export const b = 2;");
+      touch(path.join(tmp, "src", "c.ts"), "export const c = 3;");
+      const pi = assembleIntelligence(tmp);
+      const plan = pickVerifyPlan(tmp, pi);
+      assert.equal(plan.test, "vitest run");
+      assert.equal(plan.lint, "eslint .");
+      assert.equal(plan.typecheck, "tsc --noEmit");
+      assert.equal(plan.build, "tsc");
+    });
+  });
+
+  it("Python: poetry-lock present → commands prefixed with 'poetry run'", () => {
+    withTmp((tmp) => {
+      fs.writeFileSync(path.join(tmp, "pyproject.toml"), "[tool.poetry]\nname='x'\n", "utf-8");
+      fs.writeFileSync(path.join(tmp, "poetry.lock"), "", "utf-8");
+      fs.mkdirSync(path.join(tmp, "tests"));
+      touch(path.join(tmp, "a.py"), "x=1");
+      touch(path.join(tmp, "b.py"), "x=1");
+      touch(path.join(tmp, "c.py"), "x=1");
+      const pi = assembleIntelligence(tmp);
+      const plan = pickVerifyPlan(tmp, pi);
+      assert.match(plan.test!, /^poetry run pytest tests\/ -x/);
+      assert.match(plan.lint!, /^poetry run ruff/);
+      assert.match(plan.typecheck!, /^poetry run mypy/);
     });
   });
 
@@ -438,7 +478,7 @@ describe("pickVerifyPlan", () => {
       touch(path.join(tmp, "foo.go"), "package main");
       touch(path.join(tmp, "bar.go"), "package main");
       const pi = assembleIntelligence(tmp);
-      const plan = pickVerifyPlan(pi);
+      const plan = pickVerifyPlan(tmp, pi);
       assert.match(plan.test!, /go test/);
       assert.match(plan.typecheck!, /go vet/);
       assert.match(plan.lint!, /golangci-lint/);
