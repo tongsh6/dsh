@@ -1,5 +1,16 @@
 import type { TaskState } from "./task-state.js";
 import type { RuleFile, RepoContext, RankedFile } from "@dsh/repo";
+import { toProjectCard } from "@dsh/repo";
+
+/**
+ * Feature flag: inject Project Card (BLUEPRINT §2.6) into buildRepoContext.
+ * Default true; set DSH_INJECT_PROJECT_CARD=false at runtime to disable
+ * (used for A/B benchmark in Task E to isolate Project Card's effect on
+ * model behavior).
+ */
+function shouldInjectProjectCard(): boolean {
+  return process.env["DSH_INJECT_PROJECT_CARD"] !== "false";
+}
 
 export interface ContextLayers {
   base: string;
@@ -66,6 +77,11 @@ export function buildRepoContext(ctx: RepoContext): string {
       const fw = m.framework ? ` (${m.framework})` : "";
       parts.push(`  - ${m.path}/  ${m.language}${fw}`);
     }
+  }
+
+  if (shouldInjectProjectCard()) {
+    parts.push("");
+    parts.push(toProjectCard(ctx.intelligence));
   }
 
   parts.push("");
