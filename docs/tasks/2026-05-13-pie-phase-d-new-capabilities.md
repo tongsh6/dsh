@@ -1,6 +1,6 @@
 ---
 id: pie-phase-d-new-capabilities
-status: backlog
+status: in_review
 priority: p1
 type: feature
 spec_ref: docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md
@@ -44,6 +44,9 @@ assignee: ai
 
 ## Notes
 
-- Step 9 / 10 / 11 之间相对独立，可并行起 3 个 commit
-- Step 10 的 feature flag `DSH_INJECT_PROJECT_CARD` 是 Step 12 benchmark A/B 验证的关键钩子，不要省略
-- Step 11 中 `moduleRoots` 的传递路径在实施时按最小侵入选择（通过参数 / 通过 state context 都可），不强求一种
+- **实施时范围调整（2026-05-13）**：
+  - Step 9 (dsh doctor) + Step 10 (Project Card 注入) 完全独占文件实现；
+  - Step 11 (ctxDirs 重构) 涉及 `failure-detector.ts` + `repair-loop.ts`，这两个文件在另一会话（transactional rollback 工作）有大量 working tree 修改。用户授权基于当前 working tree 推进（"别的会话已结束，可以基于当前变动的代码进行推进"），因此 Step 11 commit 含别会话工作合入
+- **moduleRoots 传递路径**：选择"调用方现场 `moduleRoots(assembleIntelligence(cwd))`"。理由：(a) 与现有 `cwd` 参数对称；(b) repair-loop 每次只在 round 边界（≤30 次/任务）调用，毫秒级开销可忽略；(c) 避免把 pi 上下文塞进 RepairConfig
+- **issue #2 #3 真正消除**：grep 验证 `"/backend/"\|"/frontend/"` 在 failure-detector.ts / repair-loop.ts 中返回 0 行
+- **DetectParams.moduleRoots 设为 optional**：现有 test 不传 → 空数组 → basename fallback，行为不变；callers in repair-loop 显式传入 → 正确 strip path

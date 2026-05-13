@@ -16,6 +16,13 @@ export interface DetectParams {
   verifyOutput: string | null;
   patchApplyError: string | null;
   prevVerifyOutput?: string | null;
+  /**
+   * Project module roots (e.g. ["backend", "frontend", "src", "."]) used to
+   * strip absolute path prefixes from compilation error output. Sourced from
+   * `moduleRoots(assembleIntelligence(cwd))` in @dsh/repo. When omitted or
+   * empty, falls back to basename — equivalent to the pre-Intelligence behavior.
+   */
+  moduleRoots?: string[];
 }
 
 export interface SignatureChange {
@@ -534,26 +541,36 @@ const COMPILATION_ERROR_PATTERNS: Array<{ regex: RegExp; extract(parts: RegExpEx
   },
 ];
 
-function extractCompilationErrors(output: string): Array<{ file: string; line: string; col?: string; message: string }> {
+function extractCompilationErrors(
+  output: string,
+  moduleRoots: string[] = [],
+): Array<{ file: string; line: string; col?: string; message: string }> {
   const errors: Array<{ file: string; line: string; col?: string; message: string }> = [];
   const seen = new Set<string>();
+  // Path-strip markers derived from project module roots (DetectParams.moduleRoots).
+  // Format "/<root>/" so we match dir segments, not basename collisions.
+  // Empty moduleRoots → fall back to basename only.
+  const markers = moduleRoots.filter((r) => r && r !== ".").map((r) => `/${r}/`);
+
+  // Strip ANSI color codes to ensure regex matches filenames/lines correctly
+  // eslint-disable-next-line no-control-regex
+  const cleanOutput = output.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, "");
 
   for (const { regex, extract } of COMPILATION_ERROR_PATTERNS) {
     const globalRegex = regex.global ? regex : new RegExp(regex.source, regex.flags + "g");
     globalRegex.lastIndex = 0;
     let match: RegExpExecArray | null;
-    while ((match = globalRegex.exec(output)) !== null) {
+    while ((match = globalRegex.exec(cleanOutput)) !== null) {
       if (match[0].length === 0) globalRegex.lastIndex++;
       const entry = extract(match);
       if (!entry) continue;
       const key = `${entry.file}:${entry.line}:${entry.message.slice(0, 40)}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      // Strip absolute prefix: keep everything after the last "/backend/" or
-      // "/src/" segment, or fall back to the basename.
+      // Strip absolute prefix: keep everything after the last project-root
+      // segment; fall back to the basename when no marker matches.
       let rel: string = entry.file;
-      const ctxDirs = ["/backend/", "/frontend/", "/src/", "/lib/", "/app/", "/pkg/", "/cmd/"];
-      for (const dir of ctxDirs) {
+      for (const dir of markers) {
         const idx = rel.lastIndexOf(dir);
         if (idx !== -1) { rel = rel.slice(idx + 1); break; }
       }
@@ -570,10 +587,11 @@ function extractCompilationErrors(output: string): Array<{ file: string; line: s
 function detectCompilationError(params: DetectParams): FailureDetection | null {
   if (!params.verifyOutput) return null;
 
-  const errors = extractCompilationErrors(params.verifyOutput);
+  const roots = params.moduleRoots ?? [];
+  const errors = extractCompilationErrors(params.verifyOutput, roots);
   if (errors.length === 0) return null;
 
-  const prevErrors = params.prevVerifyOutput ? extractCompilationErrors(params.prevVerifyOutput) : [];
+  const prevErrors = params.prevVerifyOutput ? extractCompilationErrors(params.prevVerifyOutput, roots) : [];
   const delta = errors.length - prevErrors.length;
 
   const byFile = new Map<string, typeof errors>();
@@ -626,7 +644,39 @@ function detectCompilationError(params: DetectParams): FailureDetection | null {
 
 // ---- Main ----
 
+function detectDependencyMissing(params: DetectParams): FailureDetection | null {
+  if (!params.verifyOutput) return null;
+
+  const output = params.verifyOutput.toLowerCase();
+  const dependencyErrorPatterns = [
+    /could not resolve dependencies/i,
+    /module not found/i,
+    /cannot find module/i,
+    /failed to resolve/i,
+    /no such file or directory.*node_modules/i,
+  ];
+
+  const hasDependencyError = dependencyErrorPatterns.some((p) => p.test(output));
+
+  if (hasDependencyError) {
+    return {
+      mode: "dependency-missing",
+      description: "检测到依赖缺失或环境未就绪",
+      confidence: "high",
+      evidence: `验证输出包含依赖错误: ${params.verifyOutput.slice(0, 200)}`,
+      repairHint: [
+        "Your verification failed due to missing dependencies or an uninitialized environment.",
+        "You are allowed to run installation commands (e.g., `pnpm install`, `mvn install -DskipTests`, `pip install -r requirements.txt`) using `exec_shell`.",
+        "Fix the environment first before making further code changes.",
+      ].join("\n"),
+    };
+  }
+
+  return null;
+}
+
 const DETECTORS = [
+  detectDependencyMissing,
   detectOverconfidence,
   detectPatchDrift,
   detectScopeCreep,

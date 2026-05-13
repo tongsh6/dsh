@@ -1,4 +1,5 @@
 import { execSync } from "node:child_process";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import type { DeepSeekClient, DeepSeekMessage } from "@dsh/provider";
 import type { TaskState } from "./task-state.js";
@@ -19,6 +20,7 @@ import {
 import { ALL_TOOL_DEFINITIONS } from "./tool-definitions.js";
 import { executeTool, formatToolResult } from "./tool-executor.js";
 import type { ToolName } from "./tool-definitions.js";
+import { isGitRepo, createCheckpoint, applyRollback, assembleIntelligence, moduleRoots } from "@dsh/repo";
 
 export interface RepairConfig {
   client: DeepSeekClient;
@@ -43,6 +45,23 @@ function grepForErrorIdentifiers(
   changedFiles: string[],
   maxResults = 15,
 ): string | null {
+  const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const readLineWindow = (file: string, line: number, before = 0, after = 6): string[] => {
+    try {
+      const content = fs.readFileSync(path.join(cwd, file), "utf-8");
+      const lines = content.split(/\r?\n/);
+      const start = Math.max(1, line - before);
+      const end = Math.min(lines.length, line + after);
+      const out: string[] = [];
+      for (let n = start; n <= end; n++) {
+        out.push(`${file}:${n}: ${lines[n - 1] ?? ""}`.slice(0, 220));
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  };
+
   const patterns: RegExp[] = [
     /\b([a-z_][a-z0-9_]{3,})\b/gi,
     /\b([A-Z][a-zA-Z0-9]{3,})\b/g,
@@ -50,25 +69,27 @@ function grepForErrorIdentifiers(
     /File\s+"([^"]+)"/g,
   ];
 
-  const identifiers = new Set<string>();
+  const identifiers = new Map<string, string>();
   const stopWords = new Set(["the", "and", "but", "not", "are", "was", "were", "this", "that", "with", "from", "have", "been", "will"]);
 
   for (const pattern of patterns) {
     let match: RegExpExecArray | null;
     pattern.lastIndex = 0;
     while ((match = pattern.exec(verifyOutput)) !== null) {
-      const id = (match[1] ?? match[2])?.toLowerCase();
-      if (id && id.length >= 4 && !stopWords.has(id) && !/^\d+$/.test(id)) {
-        identifiers.add(id);
+      const rawId = match[1] ?? match[2];
+      const id = rawId?.trim();
+      const key = id?.toLowerCase();
+      if (id && key && id.length >= 4 && !stopWords.has(key) && !/^\d+$/.test(id)) {
+        identifiers.set(key, id);
       }
     }
   }
 
   if (identifiers.size === 0) return null;
 
-  const topIds = [...identifiers]
+  const topIds = [...identifiers.values()]
     .sort((a, b) => b.length - a.length)
-    .slice(0, 6);
+    .slice(0, 20);
 
   const excludeSet = new Set(changedFiles.map((f) => path.basename(f)));
   const results: string[] = [];
@@ -77,7 +98,7 @@ function grepForErrorIdentifiers(
     if (results.length >= maxResults) break;
     try {
       const output = execSync(
-        `grep -rn "${id}" . --include="*.py" --include="*.ts" --include="*.tsx" 2>/dev/null`,
+        `grep -rn "${id}" . --include="*.py" --include="*.ts" --include="*.tsx" --include="*.java" 2>/dev/null`,
         {
           cwd,
           encoding: "utf-8",
@@ -92,11 +113,21 @@ function grepForErrorIdentifiers(
         const m = line.match(/^\.?\/?(.+?):(\d+):(.*)$/);
         if (!m) continue;
         const file = m[1]!;
+        const lineNum = Number(m[2]);
         const content = (m[3] ?? "").trim();
         if (excludeSet.has(path.basename(file))) continue;
         if (file.includes("node_modules/") || file.includes(".dsh/") || file.includes("dist/") || file.includes("__pycache__/")) continue;
         if (content.startsWith("#") || content.startsWith("//")) continue;
         results.push(`${file}:${m[2]}: ${content.slice(0, 150)}`);
+        if (
+          file.endsWith(".java") &&
+          new RegExp(`\\b(?:class|interface|enum|record)\\s+${escapeRegExp(id)}\\b`).test(content)
+        ) {
+          for (const nearby of readLineWindow(file, lineNum, 0, 8).slice(1)) {
+            if (results.length >= maxResults) break;
+            results.push(nearby);
+          }
+        }
       }
     } catch {
       // no matches for this identifier
@@ -115,13 +146,178 @@ function grepForErrorIdentifiers(
   ].join("\n");
 }
 
+interface FailureSourceLocation {
+  file: string;
+  line: number;
+  col?: number;
+  message: string;
+}
+
+function isInsideDir(baseDir: string, targetPath: string): boolean {
+  const rel = path.relative(baseDir, targetPath);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+function extractFailureSourceLocations(verifyOutput: string): FailureSourceLocation[] {
+  const locations: FailureSourceLocation[] = [];
+  const seen = new Set<string>();
+  const patterns: RegExp[] = [
+    /\[ERROR\]\s+(.+?\.java):\[(\d+),(\d+)\]\s+([^\r\n]*)/g,
+    /^(.+?\.(?:ts|tsx|js|jsx))\((\d+),(\d+)\):\s+error\s+(?:TS\d+:)?\s*([^\r\n]*)/gm,
+    /^(.+?\.\w{1,6}):(\d+):(\d+):\s+error:\s+([^\r\n]*)/gm,
+    /File\s+"([^"]+\.py)",\s+line\s+(\d+)(?:,\s+in\s+([^\r\n]*))?/g,
+    /\bat\s+[\w.$]+\(([^():]+\.java):(\d+)\)/g,
+  ];
+
+  for (const pattern of patterns) {
+    pattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(verifyOutput)) !== null) {
+      const file = match[1];
+      const line = Number(match[2]);
+      if (!file || !Number.isFinite(line) || line <= 0) continue;
+      const colValue = match[3] && /^\d+$/.test(match[3]) ? Number(match[3]) : undefined;
+      const message = colValue !== undefined ? (match[4] ?? "") : (match[3] ?? "");
+      const key = `${file}:${line}:${colValue ?? ""}:${message}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      locations.push({
+        file,
+        line,
+        ...(colValue !== undefined ? { col: colValue } : {}),
+        message: message.trim(),
+      });
+      if (locations.length >= 5) return locations;
+    }
+  }
+
+  return locations;
+}
+
+function resolveSourcePath(
+  cwd: string,
+  rawFile: string,
+  knownFiles: string[],
+  projectRoots: string[],
+): { absPath: string; displayPath: string } | null {
+  const root = path.resolve(cwd);
+  const normalizedRaw = rawFile.replace(/\\/g, "/");
+  const candidates: Array<{ absPath: string; displayPath: string }> = [];
+
+  if (path.isAbsolute(rawFile)) {
+    const absPath = path.resolve(rawFile);
+    if (isInsideDir(root, absPath)) {
+      candidates.push({ absPath, displayPath: path.relative(root, absPath) });
+    }
+  } else {
+    candidates.push({ absPath: path.resolve(root, rawFile), displayPath: normalizedRaw });
+  }
+
+  // Project-root markers come from assembleIntelligence (moduleRoots view).
+  // Empty list → fall through to basename matching only.
+  const markers = projectRoots.filter((r) => r && r !== ".").map((r) => `/${r}/`);
+  for (const marker of markers) {
+    const idx = normalizedRaw.lastIndexOf(marker);
+    if (idx === -1) continue;
+    const rel = normalizedRaw.slice(idx + 1);
+    candidates.push({ absPath: path.resolve(root, rel), displayPath: rel });
+  }
+
+  const rawBase = path.basename(normalizedRaw);
+  for (const known of knownFiles) {
+    const normalizedKnown = known.replace(/\\/g, "/");
+    if (
+      normalizedKnown === normalizedRaw ||
+      normalizedKnown.endsWith(normalizedRaw) ||
+      normalizedKnown.endsWith(rawBase)
+    ) {
+      candidates.push({ absPath: path.resolve(root, known), displayPath: normalizedKnown });
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (!isInsideDir(root, candidate.absPath)) continue;
+    try {
+      const stat = fs.statSync(candidate.absPath);
+      if (stat.isFile()) return candidate;
+    } catch {
+      // try next candidate
+    }
+  }
+
+  return null;
+}
+
+function buildSourceWindow(absPath: string, line: number, col?: number): string | null {
+  let content: string;
+  try {
+    content = fs.readFileSync(absPath, "utf-8");
+  } catch {
+    return null;
+  }
+
+  const lines = content.split(/\r?\n/);
+  if (line < 1 || line > lines.length) return null;
+
+  const start = Math.max(1, line - 5);
+  const end = Math.min(lines.length, line + 5);
+  const width = String(end).length;
+  const output: string[] = [];
+  for (let n = start; n <= end; n++) {
+    const marker = n === line ? ">" : " ";
+    output.push(`${marker} ${String(n).padStart(width, " ")} | ${lines[n - 1] ?? ""}`);
+    if (n === line && col && col > 0) {
+      output.push(`  ${" ".repeat(width)} | ${" ".repeat(Math.max(0, col - 1))}^`);
+    }
+  }
+  return output.join("\n");
+}
+
+function buildFailureSourceContext(
+  cwd: string,
+  verifyOutput: string,
+  knownFiles: string[],
+  projectRoots: string[],
+): string | null {
+  const locations = extractFailureSourceLocations(verifyOutput);
+  if (locations.length === 0) return null;
+
+  const parts: string[] = [
+    "## Verification Failure Source Context",
+    "Compiler-reported locations with current source lines. Use these exact lines when writing the repair patch.",
+  ];
+
+  let included = 0;
+  const seenFiles = new Set<string>();
+  for (const location of locations) {
+    const resolved = resolveSourcePath(cwd, location.file, knownFiles, projectRoots);
+    if (!resolved) continue;
+    const window = buildSourceWindow(resolved.absPath, location.line, location.col);
+    if (!window) continue;
+    const headingKey = `${resolved.displayPath}:${location.line}:${location.col ?? ""}`;
+    if (seenFiles.has(headingKey)) continue;
+    seenFiles.add(headingKey);
+
+    parts.push("");
+    parts.push(`### ${resolved.displayPath}`);
+    parts.push(`Error location: line ${location.line}${location.col ? `, column ${location.col}` : ""}${location.message ? ` - ${location.message}` : ""}`);
+    parts.push("```");
+    parts.push(window);
+    parts.push("```");
+    included++;
+  }
+
+  return included > 0 ? parts.join("\n") : null;
+}
+
 export async function runRepairLoop(
   state: TaskState,
   config: RepairConfig,
 ): Promise<TaskState> {
   let current = transition(state, "repairing");
+  let round = 1;
 
-  for (let round = 1; round <= config.maxRounds; round++) {
+  while (round <= config.maxRounds) {
     // Re-enter repairing state for rounds 2+
     if (current.status === "verification_failed") {
       current = transition(current, "repairing");
@@ -153,6 +349,7 @@ export async function runRepairLoop(
         verifyOutput,
         patchApplyError: prevPatch?.apply_status === "failed" ? prevPatch.patch : null,
         prevVerifyOutput,
+        moduleRoots: moduleRoots(assembleIntelligence(config.cwd)),
       });
 
       // Detect if stuck on same error
@@ -174,6 +371,21 @@ export async function runRepairLoop(
       }
 
       failureHints = buildRepairHints(detections);
+
+      if (prevPatch?.rolled_back) {
+        const rollbackHint = [
+          "### 🚨 PHYSICAL ROLLBACK EXECUTED",
+          `**Your change in Round ${prevPatch.round} was PHYSICALLY ROLLED BACK because it caused a ${(prevPatch.rollback_reason ?? "unknown error").toUpperCase()}.**`,
+          "The codebase has been restored to the clean state BEFORE that change. The buggy code is GONE.",
+          "",
+          "**MANDATORY ACTION:**",
+          "1. **Analyze why your last logic was flawed.** Do not simply retry a variation of the same code.",
+          "2. **Read the relevant files again** using `read_file` to verify the restored state.",
+          "3. **Take a different approach.** If you caused a regression, your assumptions about the code structure or dependencies were likely wrong.",
+          "4. In your Root Cause Analysis, explain specifically why the previous approach failed and how the new approach avoids the same pitfall.",
+        ].join("\n");
+        failureHints = failureHints ? failureHints + "\n\n" + rollbackHint : rollbackHint;
+      }
     }
 
     // Detect signature changes and inject caller context
@@ -190,12 +402,19 @@ export async function runRepairLoop(
     // Search codebase for identifiers from verify errors
     let searchContext: string | null = null;
     const prevVerifyOutput = prevVerify?.results.map((r) => r.output).join("\n") ?? null;
+    let failureSourceContext: string | null = null;
     if (prevVerifyOutput) {
       searchContext = grepForErrorIdentifiers(
         config.cwd,
         prevVerifyOutput,
         prevPatch?.files_changed ?? [],
         15,
+      );
+      failureSourceContext = buildFailureSourceContext(
+        config.cwd,
+        prevVerifyOutput,
+        [...(current.plan?.files ?? []), ...(prevPatch?.files_changed ?? [])],
+        moduleRoots(assembleIntelligence(config.cwd)),
       );
     }
 
@@ -252,6 +471,8 @@ export async function runRepairLoop(
       "",
       callSiteContext ?? "",
       "",
+      failureSourceContext ?? "",
+      "",
       searchContext ?? "",
       "",
       "Original task: " + current.task.description,
@@ -266,6 +487,8 @@ export async function runRepairLoop(
     // Tool call loop for repair (max 5 rounds — diagnosis then fix)
     const MAX_REPAIR_TOOL_ROUNDS = 5;
     let content = "";
+    const repairToolRounds: import("./task-state.js").ToolRoundRecord[] = [];
+
     for (let tr = 0; tr <= MAX_REPAIR_TOOL_ROUNDS; tr++) {
       const response = await config.client.chat({
         model: "deepseek-v4-pro",
@@ -283,13 +506,26 @@ export async function runRepairLoop(
         const assistantMsg: DeepSeekMessage = { role: "assistant", content, tool_calls: toolCalls };
         if (choice.message.reasoning_content) assistantMsg.reasoning_content = choice.message.reasoning_content;
         messages.push(assistantMsg);
+        
+        const callRecords: import("./task-state.js").ToolCallRecord[] = [];
         for (const tc of toolCalls) {
-          let args: Record<string, string> = {};
-          try { args = JSON.parse(tc.function.arguments) as Record<string, string>; } catch { /* keep empty */ }
+          let rawArgs: Record<string, unknown> = {};
+          try { rawArgs = JSON.parse(tc.function.arguments) as Record<string, unknown>; } catch { /* keep empty */ }
+          const args: Record<string, string> = {};
+          for (const [k, v] of Object.entries(rawArgs)) {
+            args[k] = typeof v === "string" ? v : JSON.stringify(v);
+          }
           const result = executeTool(tc.function.name as ToolName, args, config.cwd, tc.id);
           const formatted = formatToolResult(tc.function.name as ToolName, args, result);
           messages.push({ role: "tool", content: formatted, tool_call_id: tc.id });
+          callRecords.push({
+            name: tc.function.name,
+            arguments: args,
+            status: result.status,
+            summary: result.status === "success" ? result.content.slice(0, 200) : (result.error ?? "").slice(0, 200),
+          });
         }
+        repairToolRounds.push({ round: tr + 1, calls: callRecords });
         continue;
       }
       break;
@@ -300,6 +536,12 @@ export async function runRepairLoop(
     let applyError: string | null = null;
     let patched = false;
     let filesChanged: string[] = [];
+    let rolledBack = false;
+
+    // ---- Checkpoint (PHASE-3-D) ----
+    if (isGitRepo(config.cwd)) {
+      createCheckpoint(config.cwd, `dsh-checkpoint-repair-round-${round}`);
+    }
 
     try {
       const changes = parseChanges(content);
@@ -313,6 +555,14 @@ export async function runRepairLoop(
       const applyResult = applyChanges(config.cwd, changes, false);
       patched = applyResult.success;
       filesChanged = [...applyResult.createdFiles, ...applyResult.renamedFiles, ...applyResult.patchedFiles, ...applyResult.deletedFiles];
+
+      // ---- Track managed files (PHASE-3-D) ----
+      if (patched && filesChanged.length > 0) {
+        const currentManaged = new Set(current.managed_files);
+        for (const f of filesChanged) currentManaged.add(f);
+        current.managed_files = [...currentManaged];
+      }
+
       if (!applyResult.success) {
         applyError = applyResult.error ?? "unknown apply error";
       }
@@ -327,6 +577,7 @@ export async function runRepairLoop(
       patch: patchText ?? "",
       apply_status: patched ? "ok" : "failed",
       files_changed: filesChanged,
+      tool_rounds: repairToolRounds.length > 0 ? repairToolRounds : undefined,
     });
 
     // Run verification
@@ -358,6 +609,38 @@ export async function runRepairLoop(
         verified = isAllPassed(results);
         verifyOutput = formatResults(results);
         current.verify_results.push({ round, results });
+
+        // ---- Regression Detection & Rollback (PHASE-3-D) ----
+        if (!verified && isGitRepo(config.cwd)) {
+          const prevVerify = current.verify_results.at(-2) ?? current.preflight_results.at(-1);
+          const prevVerifyOutput = prevVerify?.results.map((r) => r.output).join("\n") ?? null;
+
+          const detections = detectFailures({
+            response: patchText ?? "",
+            planFiles: current.plan?.files ?? [],
+            actualChangedFiles: filesChanged,
+            verifyOutput,
+            patchApplyError: null,
+            prevVerifyOutput,
+            moduleRoots: moduleRoots(assembleIntelligence(config.cwd)),
+          });
+
+          const hasRegression = detections.some((d) => d.mode === "compilation-error" && d.evidence.includes("REGRESSION"));
+          const isStagnant = verifyOutput && prevVerifyOutput && verifyOutput.slice(0, 500) === prevVerifyOutput.slice(0, 500);
+
+          if (hasRegression || isStagnant) {
+            const reason = hasRegression ? "regression" : "stagnation";
+            console.log(`[repair-loop] ${reason} detected. Rolling back.`);
+            applyRollback(config.cwd);
+            rolledBack = true;
+            const last = current.patches.at(-1);
+            if (last) {
+              last.rolled_back = true;
+              last.rollback_reason = reason;
+            }
+          }
+        }
+
         current = transition(
           current,
           verified ? "verified" : "verification_failed",
@@ -380,6 +663,11 @@ export async function runRepairLoop(
     writeTaskState(config.cwd, current);
 
     if (verified) break;
+    
+    // Only increment effective round if we didn't roll back (physical regression/stagnation)
+    if (!rolledBack) {
+      round++;
+    }
   }
 
   if (current.status === "verification_failed" || current.status === "repairing") {
