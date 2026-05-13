@@ -317,6 +317,11 @@ function checkSourcePaths(
 ): ErrorRecord[] {
   const errors: ErrorRecord[] = [];
   for (const row of ledger) {
+    // Source path is "historical pointer" once the row is resolved/cancelled —
+    // the originally-referenced file may have been legitimately deleted or
+    // refactored away (e.g. scanner.ts retired in Task C of pie-phase2-tier1).
+    // Path-existence check only applies to entries still under active tracking.
+    if (row.status === "resolved" || row.status === "cancelled") continue;
     const m = row.source.match(/^(spec|report|code):(.+?)(?::(\d+))?$/);
     if (!m) {
       errors.push({
