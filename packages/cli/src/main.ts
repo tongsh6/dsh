@@ -7,6 +7,7 @@ import { verifyCommand } from "./commands/verify.js";
 import { repairCommand } from "./commands/repair.js";
 import { handoffCommand } from "./commands/handoff.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { runCommand } from "./commands/run.js";
 
 const cli = cac("dsh");
 
@@ -50,6 +51,13 @@ cli
   .option("--write", "Write a .dsh/project.yml draft from current decisions")
   .option("--force", "Overwrite existing .dsh/project.yml (use with --write)")
   .action((opts) => doctorCommand(opts));
+
+cli
+  .command("run <description>", "Run plan → patch → verify → repair → handoff")
+  .option("--type <type>", "Task type: bugfix, feature, refactor, test, docs")
+  .option("--dry-run", "Generate patch without applying changes")
+  .option("--max-repair-rounds <n>", "Max repair rounds", { default: 5 })
+  .action((description, opts) => runCommand(description, opts));
 
 cli.help();
 cli.version("0.1.0");
