@@ -6,6 +6,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
   cleanBenchmarkWorktree,
+  cleanBenchmarkWorktreeHard,
   normalizeVerificationCommands,
   compileFixtureVerifications,
   createEmptyResult,
@@ -478,5 +479,154 @@ describe("detectProtocolOpsFromText", () => {
     const ops = detectProtocolOpsFromText(text);
     assert.ok(ops.includes("PATCH"));
     assert.ok(ops.includes("SEARCH_REPLACE"));
+  });
+});
+
+// ---- cleanBenchmarkWorktreeHard — strong cleanup for replicated A/B benchmark ----
+
+function makeMiniRepo(): { cwd: string; baselineRef: string; cleanup: () => void } {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-clean-hard-"));
+  // Init repo + initial commit
+  execSync("git init -q", { cwd: tmp });
+  execSync("git config user.email 'test@dsh' && git config user.name 'test'", { cwd: tmp });
+  fs.writeFileSync(path.join(tmp, "README.md"), "baseline\n", "utf-8");
+  fs.writeFileSync(path.join(tmp, ".gitignore"), "target/\ndist/\nnode_modules/\n.dsh/\n", "utf-8");
+  execSync("git add -A && git commit -q -m 'baseline'", { cwd: tmp });
+  const baselineRef = execSync("git rev-parse HEAD", { cwd: tmp, encoding: "utf-8" }).trim();
+  return {
+    cwd: tmp, baselineRef,
+    cleanup: () => fs.rmSync(tmp, { recursive: true, force: true }),
+  };
+}
+
+describe("cleanBenchmarkWorktreeHard", () => {
+  it("resets dirty tracked files and removes untracked files", () => {
+    const { cwd, baselineRef, cleanup } = makeMiniRepo();
+    try {
+      // Pollute: modify tracked file + add untracked
+      fs.writeFileSync(path.join(cwd, "README.md"), "DIRTY\n");
+      fs.writeFileSync(path.join(cwd, "scratch.txt"), "untracked\n");
+
+      cleanBenchmarkWorktreeHard(cwd, baselineRef);
+
+      // README restored, scratch.txt removed
+      assert.equal(fs.readFileSync(path.join(cwd, "README.md"), "utf-8"), "baseline\n");
+      assert.equal(fs.existsSync(path.join(cwd, "scratch.txt")), false);
+    } finally { cleanup(); }
+  });
+
+  it("rm -rf .dsh runtime directory entirely (not just task-state.json)", () => {
+    const { cwd, baselineRef, cleanup } = makeMiniRepo();
+    try {
+      fs.mkdirSync(path.join(cwd, ".dsh", "handoff"), { recursive: true });
+      fs.mkdirSync(path.join(cwd, ".dsh", "snapshots"), { recursive: true });
+      fs.writeFileSync(path.join(cwd, ".dsh", "config.yml"), "stale\n");
+      fs.writeFileSync(path.join(cwd, ".dsh", "task-state.json"), "{}\n");
+      fs.writeFileSync(path.join(cwd, ".dsh", "handoff", "report.md"), "old\n");
+
+      cleanBenchmarkWorktreeHard(cwd, baselineRef);
+
+      assert.equal(fs.existsSync(path.join(cwd, ".dsh")), false);
+    } finally { cleanup(); }
+  });
+
+  it("removes top-level + submodule build outputs (target/dist/.next/etc)", () => {
+    const { cwd, baselineRef, cleanup } = makeMiniRepo();
+    try {
+      fs.mkdirSync(path.join(cwd, "target", "classes"), { recursive: true });
+      fs.mkdirSync(path.join(cwd, "dist"), { recursive: true });
+      fs.mkdirSync(path.join(cwd, ".next"), { recursive: true });
+      fs.mkdirSync(path.join(cwd, "backend", "target"), { recursive: true });
+      fs.mkdirSync(path.join(cwd, "frontend", "dist"), { recursive: true });
+      fs.writeFileSync(path.join(cwd, "target", "x.class"), "");
+      fs.writeFileSync(path.join(cwd, "backend", "target", "y.jar"), "");
+
+      cleanBenchmarkWorktreeHard(cwd, baselineRef);
+
+      for (const p of ["target", "dist", ".next", "backend/target", "frontend/dist"]) {
+        assert.equal(fs.existsSync(path.join(cwd, p)), false, `${p} should be removed`);
+      }
+    } finally { cleanup(); }
+  });
+
+  it("recursively cleans Python __pycache__ and .pyc files", () => {
+    const { cwd, baselineRef, cleanup } = makeMiniRepo();
+    try {
+      fs.mkdirSync(path.join(cwd, "src", "deep", "nested", "__pycache__"), { recursive: true });
+      fs.writeFileSync(path.join(cwd, "src", "deep", "nested", "__pycache__", "x.pyc"), "");
+      fs.writeFileSync(path.join(cwd, "src", "stray.pyc"), "");
+      fs.mkdirSync(path.join(cwd, ".pytest_cache"), { recursive: true });
+      fs.mkdirSync(path.join(cwd, ".mypy_cache"), { recursive: true });
+
+      cleanBenchmarkWorktreeHard(cwd, baselineRef);
+
+      assert.equal(fs.existsSync(path.join(cwd, "src", "deep", "nested", "__pycache__")), false);
+      assert.equal(fs.existsSync(path.join(cwd, "src", "stray.pyc")), false);
+      assert.equal(fs.existsSync(path.join(cwd, ".pytest_cache")), false);
+      assert.equal(fs.existsSync(path.join(cwd, ".mypy_cache")), false);
+    } finally { cleanup(); }
+  });
+
+  it("does NOT cross node_modules into __pycache__ cleanup (preserves deps)", () => {
+    const { cwd, baselineRef, cleanup } = makeMiniRepo();
+    try {
+      // node_modules is gitignored AND should be preserved by hard cleanup
+      // (re-installing deps × 144 trials would add 2-4 hr wallclock).
+      fs.mkdirSync(path.join(cwd, "node_modules", "fake-pkg"), { recursive: true });
+      fs.writeFileSync(path.join(cwd, "node_modules", "fake-pkg", "index.js"), "module.exports={}");
+      // Plant a __pycache__ INSIDE node_modules — should NOT be touched
+      fs.mkdirSync(path.join(cwd, "node_modules", "fake-pkg", "__pycache__"), { recursive: true });
+
+      cleanBenchmarkWorktreeHard(cwd, baselineRef);
+
+      assert.equal(fs.existsSync(path.join(cwd, "node_modules", "fake-pkg", "index.js")), true);
+      assert.equal(fs.existsSync(path.join(cwd, "node_modules", "fake-pkg", "__pycache__")), true);
+    } finally { cleanup(); }
+  });
+
+  it("is idempotent on already-clean cwd (no throw, no side effects)", () => {
+    const { cwd, baselineRef, cleanup } = makeMiniRepo();
+    try {
+      // Run twice — second should noop without error
+      cleanBenchmarkWorktreeHard(cwd, baselineRef);
+      cleanBenchmarkWorktreeHard(cwd, baselineRef);
+      assert.equal(fs.readFileSync(path.join(cwd, "README.md"), "utf-8"), "baseline\n");
+    } finally { cleanup(); }
+  });
+
+  it("groupIdToClean=null/undefined skips Maven local repo step", () => {
+    const { cwd, baselineRef, cleanup } = makeMiniRepo();
+    try {
+      // Should run without trying to access ~/.m2
+      assert.doesNotThrow(() => cleanBenchmarkWorktreeHard(cwd, baselineRef));
+      assert.doesNotThrow(() => cleanBenchmarkWorktreeHard(cwd, baselineRef, null));
+      assert.doesNotThrow(() => cleanBenchmarkWorktreeHard(cwd, baselineRef, undefined));
+    } finally { cleanup(); }
+  });
+
+  it("groupIdToClean targets only the specified subtree under ~/.m2/repository/", () => {
+    const { cwd, baselineRef, cleanup } = makeMiniRepo();
+    // Stage a fake ~/.m2 layout in a tmp HOME
+    const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-fake-home-"));
+    const m2 = path.join(fakeHome, ".m2", "repository");
+    const targetGroup = path.join(m2, "io", "releasehub", "x");
+    const otherGroup = path.join(m2, "io", "other", "x");
+    fs.mkdirSync(targetGroup, { recursive: true });
+    fs.mkdirSync(otherGroup, { recursive: true });
+    fs.writeFileSync(path.join(targetGroup, "x.jar"), "");
+    fs.writeFileSync(path.join(otherGroup, "x.jar"), "");
+
+    const origHome = process.env["HOME"];
+    process.env["HOME"] = fakeHome;
+    try {
+      cleanBenchmarkWorktreeHard(cwd, baselineRef, "io/releasehub");
+      assert.equal(fs.existsSync(targetGroup), false, "target groupId should be cleaned");
+      assert.equal(fs.existsSync(otherGroup), true, "unrelated groupId should be preserved");
+    } finally {
+      if (origHome === undefined) delete process.env["HOME"];
+      else process.env["HOME"] = origHome;
+      fs.rmSync(fakeHome, { recursive: true, force: true });
+      cleanup();
+    }
   });
 });

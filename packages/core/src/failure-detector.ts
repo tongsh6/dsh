@@ -541,7 +541,10 @@ const COMPILATION_ERROR_PATTERNS: Array<{ regex: RegExp; extract(parts: RegExpEx
   },
 ];
 
-function extractCompilationErrors(
+// Exported for regression testing — task pie-phase-d-new-capabilities AC #10/#11.
+// Internal callers should go through detectFailures(params) which threads moduleRoots
+// from DetectParams. Direct use is only for path-strip behavior unit testing.
+export function extractCompilationErrors(
   output: string,
   moduleRoots: string[] = [],
 ): Array<{ file: string; line: string; col?: string; message: string }> {

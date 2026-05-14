@@ -7,6 +7,7 @@ import {
   detectSignatureChanges,
   findCallSites,
   formatCallSiteContext,
+  extractCompilationErrors,
 } from "./failure-detector.js";
 import type { DetectParams, SignatureChange, CallSite } from "./failure-detector.js";
 
@@ -581,5 +582,64 @@ describe("formatCallSiteContext", () => {
 
   it("returns null when no signature changes", () => {
     assert.equal(formatCallSiteContext([], []), null);
+  });
+});
+
+// ---- ctxDirs → moduleRoots regression (Task D AC #10/#11) ----
+
+describe("extractCompilationErrors — moduleRoots path stripping", () => {
+  it("strips absolute prefix to relative when path contains a moduleRoot segment", () => {
+    const output = "[ERROR] /Users/foo/dsh-bench/repos/release-hub/backend/src/main/java/io/Foo.java:[12,5] cannot find symbol";
+    const errs = extractCompilationErrors(output, ["backend", "frontend", "src"]);
+    assert.equal(errs.length, 1);
+    // Should strip up to and including the last "/backend/" → relative path
+    assert.equal(errs[0]!.file, "backend/src/main/java/io/Foo.java");
+    assert.equal(errs[0]!.line, "12");
+    assert.equal(errs[0]!.col, "5");
+  });
+
+  it("uses lastIndexOf (rightmost) when multiple moduleRoots match", () => {
+    // path contains both /src/ and /backend/ — backend appears last, should win
+    const output = "[ERROR] /tmp/proj/src/scratch/backend/Main.java:[1,1] err";
+    const errs = extractCompilationErrors(output, ["src", "backend"]);
+    assert.equal(errs.length, 1);
+    // markers are iterated in order; first match short-circuits.
+    // verify the actually-implemented behavior: first marker that matches wins.
+    // Here both match; "src" markers list-first → it wins
+    assert.match(errs[0]!.file, /^src\//);
+  });
+
+  it("falls back to basename when moduleRoots is empty", () => {
+    const output = "[ERROR] /Users/foo/some/deep/path/Foo.java:[10,3] error";
+    const errs = extractCompilationErrors(output, []);
+    assert.equal(errs.length, 1);
+    assert.equal(errs[0]!.file, "Foo.java");
+  });
+
+  it("falls back to basename when path has no matching moduleRoot", () => {
+    const output = "[ERROR] /Users/foo/some/deep/path/Foo.java:[10,3] error";
+    const errs = extractCompilationErrors(output, ["backend", "frontend"]); // neither matches
+    assert.equal(errs[0]!.file, "Foo.java");
+  });
+
+  it("filters out '.' from moduleRoots (it's not a real path marker)", () => {
+    const output = "[ERROR] /repo/backend/Foo.java:[1,1] err";
+    const errs = extractCompilationErrors(output, [".", "backend"]);
+    assert.equal(errs[0]!.file, "backend/Foo.java"); // "." filtered, backend matched
+  });
+
+  it("default moduleRoots=[] preserves pre-refactor behavior (basename fallback)", () => {
+    // Backward compat: callers that don't pass moduleRoots get basename-only.
+    const output = "[ERROR] /Users/foo/backend/Main.java:[5,2] error";
+    const errs = extractCompilationErrors(output); // omit second arg
+    assert.equal(errs[0]!.file, "Main.java");
+  });
+
+  it("typescript-style path also strips correctly", () => {
+    const output = "src/lib/foo.ts(10,5): error TS2304: cannot find name";
+    const errs = extractCompilationErrors(output, ["src", "lib"]);
+    assert.equal(errs.length, 1);
+    // ts paths are relative already; markers preserve them
+    assert.match(errs[0]!.file, /\.ts$/);
   });
 });

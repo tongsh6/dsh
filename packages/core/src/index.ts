@@ -136,6 +136,7 @@ export {
   runFullPipeline,
   runPreflight,
 } from "./pipeline.js";
+export { injectCardContext } from "./inject-card-context.js";
 export type {
   PlanParams,
   PatchParams,

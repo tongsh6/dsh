@@ -1,14 +1,21 @@
 import type { TaskState } from "./task-state.js";
 import type { RuleFile, RepoContext, RankedFile } from "@dsh/repo";
 import { toProjectCard } from "@dsh/repo";
+import { injectCardContext } from "./inject-card-context.js";
 
 /**
  * Feature flag: inject Project Card (BLUEPRINT §2.6) into buildRepoContext.
- * Default true; set DSH_INJECT_PROJECT_CARD=false at runtime to disable
- * (used for A/B benchmark in Task E to isolate Project Card's effect on
- * model behavior).
+ *
+ * Priority (high → low):
+ *   1. AsyncLocalStorage context (per-trial isolation, race-free) —
+ *      benchmark scripts use this to control on/off without env contamination.
+ *   2. `DSH_INJECT_PROJECT_CARD=false` env var — CLI user escape hatch
+ *      (single-process, no concurrent contexts, race-free in practice).
+ *   3. Default: true.
  */
 function shouldInjectProjectCard(): boolean {
+  const fromAls = injectCardContext.getStore();
+  if (fromAls !== undefined) return fromAls;
   return process.env["DSH_INJECT_PROJECT_CARD"] !== "false";
 }
 

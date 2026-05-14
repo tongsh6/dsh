@@ -25,6 +25,7 @@ import {
   runTask,
   cleanBenchmarkWorktreeHard,
 } from "../packages/eval/dist/benchmark-runner.js";
+import { injectCardContext } from "../packages/core/dist/inject-card-context.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -203,13 +204,18 @@ async function main(): Promise<void> {
         continue;
       }
 
-      // Set Card injection flag
-      if (t.config === "card_off") process.env["DSH_INJECT_PROJECT_CARD"] = "false";
-      else delete process.env["DSH_INJECT_PROJECT_CARD"];
+      // Card injection flag isolated via AsyncLocalStorage — no env mutation
+      // (env mutation across concurrent workers caused the race condition
+      // that may have biased the previous 144-trial dataset).
+      const injectFlag = t.config !== "card_off";
 
-      // Run task
+      // Run task within ALS context — runTask's async chain (and its
+      // descendants buildRepoContext etc.) observe this flag, independent
+      // of other concurrent workers' flags.
       try {
-        const result = await runTask(t.fixture, repoPath, client, { skipBranchSetup: false });
+        const result = await injectCardContext.run(injectFlag, () =>
+          runTask(t.fixture, repoPath, client, { skipBranchSetup: false })
+        );
         const completedAt = new Date().toISOString();
         results.push({
           fixtureId: t.fixture.id, config: t.config, rep: t.rep, trialIndex: myIndex,
