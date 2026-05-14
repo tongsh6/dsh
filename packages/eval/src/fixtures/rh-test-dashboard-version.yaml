@@ -40,8 +40,12 @@ verifications:
   - type: file_exists
     file: backend/releasehub-application/src/test/java/io/releasehub/application/version/VersionUpdateAppServiceTest.java
     name: version_test_file_exists
-  - type: shell
-    command: cd backend && mvn test -pl releasehub-application -am -Dtest="DashboardAppServiceTest,VersionUpdateAppServiceTest" -q -DfailIfNoTests=true
+  - type: maven_test
+    project_dir: backend
+    module: releasehub-application
+    tests: DashboardAppServiceTest,VersionUpdateAppServiceTest
+    also_make: true
+    quiet: true
     name: maven_test_passes
 architectureRules:
   - 使用 JUnit 5 + Mockito (@ExtendWith(MockitoExtension.class)) + AssertJ
