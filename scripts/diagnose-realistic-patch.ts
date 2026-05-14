@@ -2,7 +2,7 @@
 // 不修任何业务代码。
 
 import { DeepSeekClient } from "../packages/provider/dist/client.js";
-import { readApiKey, loadDshConfig, loadRuleContents, detectTechStack, generateRepoContext, rankFiles, loadTopFiles, scanProjectFiles, writeDshConfig } from "../packages/repo/dist/index.js";
+import { readApiKey, loadDshConfig, loadRuleContents, assembleIntelligence, toLegacyTechStack, generateRepoContext, rankFiles, loadTopFiles, scanProjectFiles, writeDshConfig } from "../packages/repo/dist/index.js";
 import { ALL_TOOL_DEFINITIONS } from "../packages/core/dist/tool-definitions.js";
 import { assembleContext } from "../packages/core/dist/context-builder.js";
 import { buildMessages } from "../packages/core/dist/prompt-builder.js";
@@ -29,7 +29,8 @@ const taskDescription = (m?.[1] ?? "").replace(/^  /gm, "").trim();
 console.log(`taskDescription length: ${taskDescription.length}`);
 
 // Ensure .dsh exists like benchmark does
-const stack = detectTechStack(REPO);
+const intelligence = assembleIntelligence(REPO);
+const stack = toLegacyTechStack(REPO, intelligence);
 fs.mkdirSync(path.join(REPO, ".dsh"), { recursive: true });
 writeDshConfig(REPO, {
   project: { name: "loamlog", language: stack.language, package_manager: stack.packageManager ?? "unknown" },
@@ -40,7 +41,7 @@ writeDshConfig(REPO, {
 // Mirror buildLayers from pipeline.ts
 const config = loadDshConfig(REPO);
 const rules = loadRuleContents(REPO);
-const repoContext = generateRepoContext(REPO, stack);
+const repoContext = generateRepoContext(REPO, intelligence);
 const state = createTaskState(taskDescription, "bugfix");
 const allFiles = await scanProjectFiles(REPO);
 const ranked = rankFiles(taskDescription, allFiles);

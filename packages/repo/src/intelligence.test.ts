@@ -231,26 +231,26 @@ describe("deriveCapabilities", () => {
     assert.equal(patch.status, "likely");
   });
 
-  it("emits lint capability — available for Maven", () => {
+  it("does not emit unproven lint command for Maven", () => {
     const lang = { key: "x", selected: "java", mode: "auto" as const, confidence: 0.95, reason: ["pom"], alternatives: [] };
     const build = { key: "x", selected: "maven", mode: "auto" as const, confidence: 0.95, reason: ["pom"], alternatives: [] };
     const caps = deriveCapabilities(lang, build);
     const lint = caps.find((c) => c.key === "lint")!;
-    assert.equal(lint.status, "available");
-    assert.match(lint.command!, /mvn.*checkstyle/);
+    assert.equal(lint.status, "likely");
+    assert.equal(lint.command, null);
   });
 
-  it("emits lint capability — available for Gradle / Go / Rust", () => {
+  it("does not emit unproven lint commands for Gradle / Go / Rust", () => {
     const auto = (v: string) => ({ key: "x", selected: v, mode: "auto" as const, confidence: 0.95, reason: ["x"], alternatives: [] });
-    for (const [lang, bld, expectCmd] of [
-      ["java", "gradle", /gradle.*checkstyle/i],
-      ["go", null, /golangci-lint/],
-      ["rust", null, /cargo clippy/],
+    for (const [lang, bld] of [
+      ["java", "gradle"],
+      ["go", null],
+      ["rust", null],
     ] as const) {
       const caps = deriveCapabilities(auto(lang), bld ? auto(bld) : { key: "x", selected: null, mode: "blocked" as const, confidence: 0, reason: [], alternatives: [] });
       const lint = caps.find((c) => c.key === "lint")!;
-      assert.equal(lint.status, "available", `${lang}/${bld}: expected available`);
-      assert.match(lint.command!, expectCmd);
+      assert.equal(lint.status, "likely", `${lang}/${bld}: expected likely`);
+      assert.equal(lint.command, null);
     }
   });
 
@@ -412,7 +412,7 @@ describe("pickVerifyPlan", () => {
       const plan = pickVerifyPlan(tmp, pi);
       assert.match(plan.test!, /mvn/);
       assert.match(plan.typecheck!, /mvn compile/);
-      assert.match(plan.lint!, /checkstyle/);
+      assert.equal(plan.lint, null);
       assert.match(plan.build!, /mvn package/);
     });
   });
@@ -471,6 +471,41 @@ describe("pickVerifyPlan", () => {
     });
   });
 
+  it("returns null Python commands when only source files exist without project evidence", () => {
+    withTmp((tmp) => {
+      touch(path.join(tmp, "a.py"), "x=1");
+      touch(path.join(tmp, "b.py"), "x=1");
+      touch(path.join(tmp, "c.py"), "x=1");
+      const pi = assembleIntelligence(tmp);
+      const plan = pickVerifyPlan(tmp, pi);
+      assert.equal(plan.test, null);
+      assert.equal(plan.lint, null);
+      assert.equal(plan.typecheck, null);
+      assert.equal(plan.build, null);
+    });
+  });
+
+  it("honors .dsh/project.yml verifyOverride commands", () => {
+    withTmp((tmp) => {
+      fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
+      fs.writeFileSync(path.join(tmp, ".dsh", "project.yml"), [
+        "language: python",
+        "verifyOverride:",
+        "  test: python -m unittest",
+        "  lint: null",
+        "  typecheck: pyright",
+      ].join("\n"), "utf-8");
+      touch(path.join(tmp, "a.py"), "x=1");
+      touch(path.join(tmp, "b.py"), "x=1");
+      touch(path.join(tmp, "c.py"), "x=1");
+      const pi = assembleIntelligence(tmp);
+      const plan = pickVerifyPlan(tmp, pi);
+      assert.equal(plan.test, "python -m unittest");
+      assert.equal(plan.lint, null);
+      assert.equal(plan.typecheck, "pyright");
+    });
+  });
+
   it("returns Go commands when language=go auto", () => {
     withTmp((tmp) => {
       fs.writeFileSync(path.join(tmp, "go.mod"), "module foo\ngo 1.21\n", "utf-8");
@@ -481,7 +516,7 @@ describe("pickVerifyPlan", () => {
       const plan = pickVerifyPlan(tmp, pi);
       assert.match(plan.test!, /go test/);
       assert.match(plan.typecheck!, /go vet/);
-      assert.match(plan.lint!, /golangci-lint/);
+      assert.equal(plan.lint, null);
     });
   });
 });

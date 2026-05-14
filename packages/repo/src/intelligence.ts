@@ -371,7 +371,24 @@ function projectYmlToFacts(yml: ProjectYml): ProjectFact[] {
   if (yml.language) facts.push({ key: "project_yml.language", value: yml.language, source: src, confidence: "high" });
   if (yml.buildSystem) facts.push({ key: "project_yml.buildSystem", value: yml.buildSystem, source: src, confidence: "high" });
   if (yml.framework) facts.push({ key: "project_yml.framework", value: yml.framework, source: src, confidence: "high" });
-  // modules / verifyOverride are consumed by toLegacyTechStack / pickVerifyPlan extensions in Phase B/D.
+  for (const module of yml.modules ?? []) {
+    if (module.buildSystem) {
+      facts.push({ key: `submodule.${module.path}.${module.buildSystem}`, value: true, source: src, confidence: "high" });
+    }
+    if (module.language) {
+      facts.push({ key: `submodule.${module.path}.lang.${module.language}`, value: true, source: src, confidence: "high" });
+    }
+    if (module.framework) {
+      facts.push({ key: `framework.submodule.${module.path}.${module.framework}`, value: true, source: src, confidence: "high" });
+    }
+  }
+  if (yml.verifyOverride) {
+    for (const key of ["build", "test", "typecheck", "lint"] as const) {
+      if (Object.prototype.hasOwnProperty.call(yml.verifyOverride, key)) {
+        facts.push({ key: `project_yml.verify.${key}`, value: yml.verifyOverride[key] ?? null, source: src, confidence: "high" });
+      }
+    }
+  }
   return facts;
 }
 
@@ -534,22 +551,22 @@ export function deriveCapabilities(
     caps.push({ key: "build", status: "available", command: "mvn package -DskipTests -q", reason: "pom.xml + maven" });
     caps.push({ key: "test", status: "available", command: "mvn test -q", reason: "pom.xml + maven" });
     caps.push({ key: "typecheck", status: "available", command: "mvn compile -q", reason: "pom.xml + maven" });
-    caps.push({ key: "lint", status: "available", command: "mvn checkstyle:check -q", reason: "pom.xml + maven" });
+    caps.push({ key: "lint", status: "likely", command: null, reason: "maven lint depends on configured plugins" });
   } else if (bld === "gradle") {
     caps.push({ key: "build", status: "available", command: "gradle build", reason: "build.gradle" });
     caps.push({ key: "test", status: "available", command: "gradle test", reason: "build.gradle" });
     caps.push({ key: "typecheck", status: "available", command: "gradle compileJava", reason: "build.gradle" });
-    caps.push({ key: "lint", status: "available", command: "gradle checkstyleMain", reason: "build.gradle" });
+    caps.push({ key: "lint", status: "likely", command: null, reason: "gradle lint depends on configured plugins" });
   } else if (lang === "go") {
     caps.push({ key: "build", status: "available", command: "go build ./...", reason: "go.mod" });
     caps.push({ key: "test", status: "available", command: "go test ./...", reason: "go.mod" });
     caps.push({ key: "typecheck", status: "available", command: "go vet ./...", reason: "go.mod" });
-    caps.push({ key: "lint", status: "available", command: "golangci-lint run", reason: "go.mod" });
+    caps.push({ key: "lint", status: "likely", command: null, reason: "go lint command depends on project tooling" });
   } else if (lang === "rust") {
     caps.push({ key: "build", status: "available", command: "cargo build", reason: "Cargo.toml" });
     caps.push({ key: "test", status: "available", command: "cargo test", reason: "Cargo.toml" });
     caps.push({ key: "typecheck", status: "available", command: "cargo check", reason: "Cargo.toml" });
-    caps.push({ key: "lint", status: "available", command: "cargo clippy", reason: "Cargo.toml" });
+    caps.push({ key: "lint", status: "likely", command: null, reason: "rust lint command depends on project tooling" });
   } else if (lang === "python" || lang === "typescript" || lang === "javascript") {
     // For interpreted / script-based languages, capabilities depend on package manager
     // Phase 1: report "likely" but don't assume commands; Phase 2 adds package-manager resolution
@@ -701,13 +718,13 @@ export function pickVerifyPlan(cwd: string, pi: ProjectIntelligence): VerifyComm
     ? pi.language.selected
     : null;
 
+  let plan = base;
   if (lang === "typescript" || lang === "javascript") {
-    return fillNodeFallback(cwd, lang, base);
+    plan = fillNodeFallback(cwd, lang, base);
+  } else if (lang === "python") {
+    plan = fillPythonFallback(cwd, base);
   }
-  if (lang === "python") {
-    return fillPythonFallback(cwd, base);
-  }
-  return base;
+  return applyVerifyOverride(cwd, plan);
 }
 
 function fillNodeFallback(cwd: string, lang: string, base: VerifyCommands): VerifyCommands {
@@ -730,6 +747,15 @@ function fillNodeFallback(cwd: string, lang: string, base: VerifyCommands): Veri
 }
 
 function fillPythonFallback(cwd: string, base: VerifyCommands): VerifyCommands {
+  const hasPythonProjectEvidence =
+    fs.existsSync(path.join(cwd, "pyproject.toml")) ||
+    fs.existsSync(path.join(cwd, "requirements.txt")) ||
+    fs.existsSync(path.join(cwd, "poetry.lock")) ||
+    fs.existsSync(path.join(cwd, "uv.lock")) ||
+    fs.existsSync(path.join(cwd, "Pipfile"));
+
+  if (!hasPythonProjectEvidence) return base;
+
   const usePoetry = fs.existsSync(path.join(cwd, "poetry.lock"));
   const prefix = usePoetry ? "poetry run " : "";
   const testDir = fs.existsSync(path.join(cwd, "tests")) ? "tests/ -x" : "-x";
@@ -739,6 +765,20 @@ function fillPythonFallback(cwd: string, base: VerifyCommands): VerifyCommands {
     typecheck: base.typecheck ?? `${prefix}mypy .`.trim(),
     build: base.build,
   };
+}
+
+function applyVerifyOverride(cwd: string, plan: VerifyCommands): VerifyCommands {
+  const yml = readProjectYmlSafe(cwd);
+  const override = yml?.verifyOverride;
+  if (!override) return plan;
+
+  const next: VerifyCommands = { ...plan };
+  for (const key of ["build", "test", "typecheck", "lint"] as const) {
+    if (Object.prototype.hasOwnProperty.call(override, key)) {
+      next[key] = override[key] ?? null;
+    }
+  }
+  return next;
 }
 
 /**

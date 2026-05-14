@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { ProjectYmlSchema, readProjectYml, writeProjectYml, projectYmlPath, renderProjectYml } from "./project-yml.js";
-import { assembleIntelligence } from "./intelligence.js";
+import { assembleIntelligence, toLegacyTechStack } from "./intelligence.js";
 
 function withTmp<T>(fn: (tmp: string) => T): T {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-project-yml-"));
@@ -123,6 +123,29 @@ describe("assembleIntelligence override via project.yml", () => {
       const pi = assembleIntelligence(tmp);
       // pom.xml still drives the decision normally
       assert.equal(pi.buildSystem.selected, "maven");
+    });
+  });
+
+  it("uses project.yml modules as manual submodule facts", () => {
+    withTmp((tmp) => {
+      writeProjectYml(tmp, {
+        language: "java",
+        buildSystem: "maven",
+        modules: [
+          { path: "frontend", language: "typescript", buildSystem: "npm", framework: "vue" },
+        ],
+      });
+      fs.mkdirSync(path.join(tmp, "frontend"), { recursive: true });
+      fs.writeFileSync(path.join(tmp, "frontend", "pnpm-lock.yaml"), "lockfileVersion: 9\n", "utf-8");
+      const pi = assembleIntelligence(tmp);
+      const stack = toLegacyTechStack(tmp, pi);
+      assert.equal(stack.language, "java");
+      assert.equal(stack.packageManager, "maven");
+      assert.equal(stack.modules?.length, 1);
+      assert.equal(stack.modules?.[0]?.path, "frontend");
+      assert.equal(stack.modules?.[0]?.language, "typescript");
+      assert.equal(stack.modules?.[0]?.packageManager, "pnpm");
+      assert.equal(stack.modules?.[0]?.framework, "vue");
     });
   });
 });

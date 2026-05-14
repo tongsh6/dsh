@@ -1514,6 +1514,65 @@ describe("runRepair", () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it("injects stuck-on-error diagnosis after repeated verify output", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
+    try {
+      fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "python" },
+          verify: { test: "echo still failing && exit 1" },
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      fs.writeFileSync(path.join(tmp, "dummy.py"), "x = 1\n", "utf-8");
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "task-state.json"),
+        JSON.stringify({
+          version: "0.1",
+          status: "verification_failed",
+          task: { description: "fix repeated failure", type: "bugfix", created_at: new Date().toISOString() },
+          plan: { summary: "fix", files: ["dummy.py"], risks: [], raw_xml: "<PLAN>fix</PLAN>" },
+          patches: [{ round: 1, patch: "", apply_status: "ok", files_changed: ["dummy.py"] }],
+          verify_results: [
+            { round: 1, results: [{ command: "pytest", status: "failed", exit_code: 1, output: "AssertionError: same failure", duration_ms: 10 }] },
+            { round: 2, results: [{ command: "pytest", status: "failed", exit_code: 1, output: "AssertionError: same failure", duration_ms: 11 }] },
+          ],
+          repair_rounds: 2,
+        }, null, 2),
+        "utf-8",
+      );
+
+      const captured: string[] = [];
+      const captureClient = {
+        chat: async (req: any) => {
+          for (const m of req.messages ?? []) {
+            if (m.role === "user" && typeof m.content === "string") {
+              captured.push(m.content);
+            }
+          }
+          return {
+            id: "r1", object: "chat.completion", created: Date.now(), model: "deepseek-v4-pro",
+            choices: [{ index: 0, message: { role: "assistant" as const, content: "<DONE/>" }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      await runRepair({ cwd: tmp, client: captureClient, maxRounds: 1 });
+
+      const allUserContent = captured.join("\n---\n");
+      assert.ok(allUserContent.includes("stuck-on-error"));
+      assert.ok(allUserContent.includes("CRITICAL: Your last attempt did NOT change the error output."));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---- runHandoff Tests ----
@@ -1576,6 +1635,74 @@ Append a comment line
       assert.equal(state.status, "verified");
       const handoffDir = path.join(tmp, ".dsh", "handoff");
       assert.ok(fs.existsSync(handoffDir));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("writes a handoff path when verification succeeds", async () => {
+    const tmp = await setupTempDir();
+    try {
+      const planResponse = `
+<PLAN>
+## Goal
+Fix dummy file
+</PLAN>
+<FILES>
+- dummy.py
+</FILES>
+<RISKS>
+- Trivial
+</RISKS>
+`;
+      const client = mockClientSequence([planResponse, "<DONE/>", V4_PATCH_DUMMY, V4_DONE]);
+      const state = await runFullPipeline({
+        cwd: tmp, client, description: "Fix bug", taskType: "bugfix",
+      });
+      assert.equal(state.status, "verified");
+      assert.ok(state.handoff_path, "handoff_path should be returned on final state");
+      assert.ok(fs.existsSync(state.handoff_path!));
+      const saved = readTaskState(tmp);
+      assert.equal(saved?.handoff_path, state.handoff_path);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("still writes a handoff when verification commands are missing", async () => {
+    const tmp = await setupTempDir();
+    try {
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "python" },
+          verify: {},
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      const planResponse = `
+<PLAN>
+## Goal
+Fix dummy file
+</PLAN>
+<FILES>
+- dummy.py
+</FILES>
+<RISKS>
+- Trivial
+</RISKS>
+`;
+      const client = mockClientSequence([planResponse, "<DONE/>", V4_PATCH_DUMMY, V4_DONE]);
+      const state = await runFullPipeline({
+        cwd: tmp, client, description: "Fix bug", taskType: "bugfix",
+      });
+      assert.equal(state.status, "patched");
+      assert.ok(state.handoff_path, "missing verify commands should not skip handoff");
+      assert.ok(fs.existsSync(state.handoff_path!));
+      const saved = readTaskState(tmp);
+      assert.equal(saved?.handoff_path, state.handoff_path);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

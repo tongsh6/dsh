@@ -292,6 +292,7 @@ export interface FullPipelineParams extends PipelineBase {
   taskType: "bugfix" | "feature" | "refactor" | "test" | "docs";
   verificationGoal?: string;
   auto?: boolean;
+  dryRun?: boolean;
   maxRepairRounds?: number;
 }
 
@@ -1049,20 +1050,23 @@ export async function runHandoff(params: HandoffParams): Promise<string> {
 // ---- runFullPipeline ----
 
 export async function runFullPipeline(params: FullPipelineParams): Promise<TaskState> {
-  const { cwd, client, description, taskType, verificationGoal, auto = true, maxRepairRounds = 5 } = params;
+  const { cwd, client, description, taskType, verificationGoal, auto = true, dryRun, maxRepairRounds = 5 } = params;
 
   await runPlan({ cwd, client, description, taskType, verificationGoal });
   await runPreflight({ cwd, client });
-  let state = await runPatch({ cwd, client, auto });
+  let state = await runPatch({ cwd, client, auto, dryRun });
 
   if (state.status === "patched") {
     try {
       state = await runVerify({ cwd });
     } catch (e) {
       if (e instanceof Error && e.message.includes("没有配置验证命令")) {
-        return state;
+        // Verification cannot run, but the full pipeline should still clean up
+        // transient checkpoints and write an auditable handoff.
       }
-      throw e;
+      else {
+        throw e;
+      }
     }
   }
 
@@ -1073,7 +1077,9 @@ export async function runFullPipeline(params: FullPipelineParams): Promise<TaskS
   // ---- Cleanup Checkpoints (PHASE-3-D) ----
   performCleanup(cwd);
 
-  await runHandoff({ cwd });
+  const handoffPath = await runHandoff({ cwd });
+  state = { ...state, handoff_path: handoffPath };
+  writeTaskState(cwd, state);
 
   return state;
 }
