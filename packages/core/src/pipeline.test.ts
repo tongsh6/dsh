@@ -513,6 +513,106 @@ const V4_PATCH_FILE_B = `<PATCH>
     }
   });
 
+  it("pauses tools after initial analysis paralysis so the model must emit a change block", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      const toolsSeen: boolean[] = [];
+      let callIndex = 0;
+      const toolResponse: DeepSeekResponse = {
+        id: "tool",
+        object: "chat.completion",
+        created: Date.now(),
+        model: "deepseek-v4-pro",
+        choices: [{
+          index: 0,
+          message: {
+            role: "assistant",
+            content: "",
+            tool_calls: [{
+              id: "t1",
+              type: "function",
+              function: { name: "read_file", arguments: '{"path":"dummy.py"}' },
+            }],
+          },
+          finish_reason: "tool_calls",
+        }],
+        usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 },
+      };
+
+      const client = {
+        chat: async (request: any) => {
+          toolsSeen.push(Array.isArray(request.tools));
+          callIndex++;
+          const content = callIndex === 11
+            ? V4_PATCH_FILE_A
+            : callIndex === 12
+              ? V4_DONE
+              : null;
+          if (content) {
+            return {
+              id: `r${callIndex}`,
+              object: "chat.completion",
+              created: Date.now(),
+              model: "deepseek-v4-pro",
+              choices: [{ index: 0, message: { role: "assistant" as const, content }, finish_reason: "stop" as const }],
+              usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 },
+            };
+          }
+          return toolResponse;
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      const state = await runPatch({ cwd: tmp, client, auto: true });
+
+      assert.equal(state.status, "patched");
+      assert.equal(toolsSeen[9], true);
+      assert.equal(toolsSeen[10], false);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects tool calls returned while initial-stall tools are paused", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      const toolResponse: DeepSeekResponse = {
+        id: "tool",
+        object: "chat.completion",
+        created: Date.now(),
+        model: "deepseek-v4-pro",
+        choices: [{
+          index: 0,
+          message: {
+            role: "assistant",
+            content: "",
+            tool_calls: [{
+              id: "t1",
+              type: "function",
+              function: { name: "read_file", arguments: '{"path":"dummy.py"}' },
+            }],
+          },
+          finish_reason: "tool_calls",
+        }],
+        usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 },
+      };
+      const client = {
+        chat: async () => toolResponse,
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      const state = await runPatch({ cwd: tmp, client, auto: true });
+
+      assert.equal(state.status, "patch_failed");
+      assert.ok(state.patch_rounds.length < 30);
+      assert.ok(state.patch_rounds.some((r) =>
+        r.action === "invalid" && r.invalid_reason?.includes("tool calls are paused")
+      ));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("tool → change → done → patched with all round types recorded", async () => {
     const tmp = await setupTempDir("planned");
     try {

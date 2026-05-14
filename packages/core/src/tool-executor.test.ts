@@ -4,7 +4,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { executeTool, isShellAllowed, formatToolResult } from "./tool-executor.js";
-import type { ToolName } from "./tool-definitions.js";
 
 describe("isShellAllowed", () => {
   it("allows pnpm test commands", () => {
@@ -137,6 +136,30 @@ describe("executeTool with read_file", () => {
     assert.ok(result.content.includes("hello world"));
     assert.ok(result.content.includes("line 2"));
     assert.ok(result.content.includes("test.txt"));
+  });
+
+  it("reads a line range when offset and limit are provided", () => {
+    const filePath = "range.txt";
+    fs.writeFileSync(path.join(tmpDir, filePath), "one\ntwo\nthree\nfour", "utf-8");
+
+    const result = executeTool("read_file", { path: filePath, offset: "2", limit: "2" }, tmpDir);
+
+    assert.equal(result.status, "success");
+    assert.ok(result.content.includes("lines 2-3 of 4"));
+    assert.ok(result.content.includes("two\nthree"));
+    assert.ok(!result.content.includes("one\n"));
+    assert.ok(!result.content.includes("four"));
+  });
+
+  it("reads from offset to end when limit is omitted", () => {
+    const filePath = "range-to-end.txt";
+    fs.writeFileSync(path.join(tmpDir, filePath), "one\ntwo\nthree", "utf-8");
+
+    const result = executeTool("read_file", { path: filePath, offset: "2" }, tmpDir);
+
+    assert.equal(result.status, "success");
+    assert.ok(result.content.includes("two\nthree"));
+    assert.ok(!result.content.includes("one\n"));
   });
 
   it("returns error when file does not exist", () => {
@@ -330,10 +353,26 @@ describe("executeTool with exec_shell", () => {
 
 describe("executeTool with unknown tool", () => {
   it("returns error for unknown tool name", () => {
-    const result = executeTool("unknown_tool" as ToolName, {}, "/tmp");
+    const result = executeTool("unknown_tool", {}, "/tmp");
 
     assert.equal(result.status, "error");
     assert.ok(result.error?.includes("未知工具"));
+  });
+
+  it("explains that protocol blocks are not callable tools", () => {
+    const result = executeTool("CREATE", {}, "/tmp");
+
+    assert.equal(result.status, "error");
+    assert.match(result.error ?? "", /not a callable tool/);
+    assert.match(result.error ?? "", /<CREATE>/);
+    assert.match(result.error ?? "", /no tool_calls/);
+  });
+
+  it("maps lowercase create tool hallucinations to CREATE block guidance", () => {
+    const result = executeTool("create", {}, "/tmp");
+
+    assert.equal(result.status, "error");
+    assert.match(result.error ?? "", /<CREATE>/);
   });
 });
 

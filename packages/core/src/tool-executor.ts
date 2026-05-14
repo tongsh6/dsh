@@ -2,7 +2,7 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { EXEC_SHELL_ALLOW_LIST, EXEC_SHELL_BLOCK_PATTERNS } from "./tool-definitions.js";
-import type { ToolName, ToolResult } from "./tool-definitions.js";
+import type { ToolResult } from "./tool-definitions.js";
 
 const READ_FILE_MAX_BYTES = 50_000;
 const GREP_MAX_RESULTS = 30;
@@ -10,6 +10,7 @@ const GREP_RESULT_LINE_MAX_CHARS = 200;
 const GREP_TIMEOUT_MS = 10_000;
 const EXEC_SHELL_TIMEOUT_MS = 120_000;
 const EXEC_SHELL_MAX_OUTPUT = 100_000;
+const PROTOCOL_BLOCK_NAMES = new Set(["CREATE", "PATCH", "INSERT", "DELETE", "RENAME"]);
 
 const SKIP_DIRS = /\/node_modules\/|\/\.git\/|\/dist\/|\/\.dsh\/|\/__pycache__\/|\/\.next\/|\/build\/|\/coverage\//i;
 
@@ -65,7 +66,13 @@ export function isShellAllowed(command: string): string | null {
   return null;
 }
 
-function readFileImpl(filePath: string, cwd: string): string {
+function parsePositiveInt(value: string | undefined): number | null {
+  if (!value) return null;
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function readFileImpl(filePath: string, cwd: string, offset?: string, limit?: string): string {
   if (!isSafePath(filePath)) {
     return `错误: 路径不安全 — "${filePath}"。必须使用相对路径，不能包含 ..`;
   }
@@ -82,6 +89,21 @@ function readFileImpl(filePath: string, cwd: string): string {
   }
 
   const content = fs.readFileSync(absPath, "utf-8");
+  const offsetLine = parsePositiveInt(offset);
+  const limitLines = parsePositiveInt(limit);
+
+  if (offsetLine !== null || limitLines !== null) {
+    const lines = content.split("\n");
+    const start = Math.max((offsetLine ?? 1) - 1, 0);
+    const end = limitLines !== null ? Math.min(start + limitLines, lines.length) : lines.length;
+    const selected = lines.slice(start, end).join("\n");
+    return [
+      `### ${filePath} (lines ${start + 1}-${end} of ${lines.length})`,
+      "```",
+      selected,
+      "```",
+    ].join("\n");
+  }
 
   if (stat.size > READ_FILE_MAX_BYTES) {
     const lines = content.split("\n");
@@ -229,7 +251,7 @@ function execShellImpl(command: string, cwd: string): ToolResult {
 }
 
 export function executeTool(
-  name: ToolName,
+  name: string,
   args: Record<string, string>,
   cwd: string,
   callId: string = "test-call-id",
@@ -240,7 +262,7 @@ export function executeTool(
       if (!filePath) {
         return { callId, status: "error", content: "", error: "缺少必填参数 path" };
       }
-      const content = readFileImpl(filePath, cwd);
+      const content = readFileImpl(filePath, cwd, args["offset"], args["limit"]);
       const isError = content.startsWith("错误:");
       return {
         callId,
@@ -274,18 +296,32 @@ export function executeTool(
       return { ...result, callId };
     }
 
-    default:
+    default: {
+      const upper = name.toUpperCase();
+      if (PROTOCOL_BLOCK_NAMES.has(upper) || name === "create_file" || name === "create") {
+        const blockName = upper === "CREATE_FILE" ? "CREATE" : upper;
+        return {
+          callId,
+          status: "error",
+          content: "",
+          error:
+            `${name} is not a callable tool. To modify files, put a ` +
+            `<${blockName}>...</${blockName}> change block directly in assistant content ` +
+            "with no tool_calls. Available callable tools are read_file, grep_files, and exec_shell.",
+        };
+      }
       return {
         callId,
         status: "error",
         content: "",
         error: `未知工具: ${name}`,
       };
+    }
   }
 }
 
 export function formatToolResult(
-  name: ToolName,
+  name: string,
   args: Record<string, string>,
   result: ToolResult,
 ): string {

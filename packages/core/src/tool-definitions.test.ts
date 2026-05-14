@@ -15,6 +15,8 @@ describe("tool definitions", () => {
     assert.equal(READ_FILE_DEF.function.name, "read_file");
     assert.ok(READ_FILE_DEF.function.description.length > 10);
     assert.ok(READ_FILE_DEF.function.parameters.properties["path"]);
+    assert.ok(READ_FILE_DEF.function.parameters.properties["offset"]);
+    assert.ok(READ_FILE_DEF.function.parameters.properties["limit"]);
     assert.deepEqual(READ_FILE_DEF.function.parameters.required, ["path"]);
   });
 

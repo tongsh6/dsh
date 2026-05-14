@@ -193,6 +193,19 @@ function buildPatchLoopStallWarning(state: TaskState, changedFiles: string[]): s
   ].join("\n");
 }
 
+function buildInitialPatchLoopStallWarning(state: TaskState): string {
+  const planFiles = state.plan?.files ?? [];
+  const target = planFiles[0] ?? "the first planned file";
+
+  return [
+    "## SYSTEM WARNING",
+    `You have spent ${MAX_CONSECUTIVE_TOOLS_ONLY} consecutive turns using tools without producing any change.`,
+    "Tool access is now paused for the next turn. The next response MUST be exactly one change block, not tool calls.",
+    `Start with: ${target}`,
+    "Use <CREATE> for a new file, or <PATCH>/<PATCH type=\"search\"> for an existing file.",
+  ].join("\n");
+}
+
 function _totalCharCount(messages: DeepSeekMessage[]): number {
   let chars = 0;
   for (const m of messages) {
@@ -528,11 +541,14 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   while (round < MAX_PATCH_ROUNDS) {
     round++;
 
+    const toolsPausedForInitialStall = !hasProducedChange && consecutiveToolsOnly >= MAX_CONSECUTIVE_TOOLS_ONLY;
     const response = await client.chat({
       model: target.model,
       messages,
       thinking: target.thinking,
-      tools: ALL_TOOL_DEFINITIONS as unknown as Record<string, unknown>[],
+      ...(toolsPausedForInitialStall
+        ? {}
+        : { tools: ALL_TOOL_DEFINITIONS as unknown as Record<string, unknown>[] }),
     });
 
     const choice = response.choices[0];
@@ -544,8 +560,13 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
 
     // If model returned tool_calls but content also parses as invalid,
     // prioritize tool execution (spec note: avoid spurious invalid counts)
-    let action = parsePatchTurn(content, hasToolCalls);
-    if (action.kind === "invalid" && hasToolCalls) {
+    let action = toolsPausedForInitialStall && hasToolCalls
+      ? {
+          kind: "invalid" as const,
+          reason: "tool calls are paused after analysis paralysis; output one change block",
+        }
+      : parsePatchTurn(content, hasToolCalls);
+    if (action.kind === "invalid" && hasToolCalls && !toolsPausedForInitialStall) {
       action = { kind: "tools" };
     }
 
@@ -598,11 +619,13 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
         if (consecutiveToolsOnly >= MAX_CONSECUTIVE_TOOLS_ONLY) {
           const reason = hasProducedChange
             ? `连续超过 ${MAX_CONSECUTIVE_TOOLS_ONLY} 轮仅调用工具而未产生代码块，任务自动终止以防止 Token 浪费。请总结已完成部分进入验证。`
-            : `初始调研轮次超过 ${MAX_CONSECUTIVE_TOOLS_ONLY} 轮且未产生任何代码修改，判定为 Analysis Paralysis。请停止调研并开始实施第一步。`;
+            : `初始调研轮次达到 ${MAX_CONSECUTIVE_TOOLS_ONLY} 轮且未产生任何代码修改，判定为 Analysis Paralysis。请停止调研并开始实施第一步。`;
           
           messages.push({
             role: "user",
-            content: `## SYSTEM WARNING\n${reason}`,
+            content: hasProducedChange
+              ? `## SYSTEM WARNING\n${reason}`
+              : buildInitialPatchLoopStallWarning(state),
           });
         }
         break;

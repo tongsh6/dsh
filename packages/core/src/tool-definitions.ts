@@ -39,6 +39,14 @@ export const READ_FILE_DEF: ToolDefinition = {
           type: "string",
           description: "相对于项目根目录的文件路径，例如 packages/core/src/verifier.ts",
         },
+        offset: {
+          type: "string",
+          description: "可选，1-based 起始行号；用于读取大文件的一段内容",
+        },
+        limit: {
+          type: "string",
+          description: "可选，最多读取多少行；需与 offset 一起使用",
+        },
       },
       required: ["path"],
     },
