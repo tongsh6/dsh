@@ -1,6 +1,6 @@
 # DSH 项目事实台账
 
-> 状态: active | 最后更新: 2026-05-13
+> 状态: active | 最后更新: 2026-05-14
 >
 > 任何新会话 AI 或新人进入项目后，**请先阅读本文件**，以便快速恢复项目状态基线。
 
@@ -14,6 +14,12 @@
 - **议题 C (goal-driven-verify)**: ✅ P1-P2 已实施，代码已合并（config redaction + autonomous verification prompts + PLAN retry + scope 软化 + DONE 接受放松）。
 - **议题 D (transactional-self-correction)**: ✅ P1 已实施并通过本地测试（双轨 checkpoint + managed_files + 物理回滚 + ANSI 剥离）；loam smoke PASS，rh smoke `260513-013656` PASS，repairSuccess 1/1。
 - **目标**: testsPassed > 60%.
+
+### 验证分层原则
+- **单元/类型/静态验证是日常反馈**：代码修改后优先跑相关 package test、typecheck、lint/build，验证局部合同和编译质量。
+- **定向 smoke 是 blocker 闭环验证**：只有当改动触及某个真实 fixture blocker，或需要证明一个具体端到端路径已收敛时，才跑对应单 fixture smoke。
+- **benchmark 是阶段性能力评估**：全量或多 fixture benchmark 用于阶段收口、指标对比、跨 fixture 回归排查、对外宣称 testsPassed/repairSuccess 提升；不要把 benchmark 当成每次代码修改后的常规验证。
+- **记录要求**：任何 benchmark 运行都应说明目的、baseline、结论和下一步；如果只是验证本地代码正确性，应选择更小的测试命令。
 
 ### Phase 2 终态（已退出，归档参考）
 - [x] 静态扫描 Phase 2-3（Top N 可解释选择）
@@ -39,7 +45,7 @@
 - 并行 benchmark：✅ `--parallel=N` 已上线（git worktree + semaphore pool）
 - 关键 bug 已修：CLOSE_WAIT body 超时、failure-detector regex 无限循环、`.m2` 旧 jar NoSuchMethodError
 - ready 议题：24 fixture 全量 benchmark 验证（P0）、`fixture-false-positive-audit`（P1）
-- 下一步：跑 24 fixture 全量 benchmark，对比 `260509-165142` 的 testsPassed / repairSuccess 净效应 → ledger 同步
+- 下一步：阶段收口时跑 24 fixture 全量 benchmark，对比 `260509-165142` 的 testsPassed / repairSuccess 净效应 → ledger 同步
 
 ## 2. 已完成事项
 
@@ -79,8 +85,8 @@
 
 | 事项 | 当前状态 | 阻塞点 | 下一步 |
 |------|---------|--------|--------|
-| 议题 A+C benchmark 验证 | 🔧 单 fixture smoke 已通过 | loam smoke PASS；rh smoke `260513-013656` PASS，说明验证命令/文件存在/编译/运行期 fixture blocker 已在该 fixture 上收敛 | 跑 24 fixture 全量 benchmark，确认无回归 |
-| 议题 D (transactional-self-correction) benchmark 验证 | 代码已实施，本地测试通过，单 fixture 验证通过 | loam smoke PASS；rh smoke repairSuccess 1/1，但全量 repairSuccess 净效应未知 | 跑 24 fixture 全量确认 testsPassed / repairSuccess 净效应 |
+| 议题 A+C benchmark 验证 | 🔧 单 fixture smoke 已通过 | loam smoke PASS；rh smoke `260513-013656` PASS，说明验证命令/文件存在/编译/运行期 fixture blocker 已在该 fixture 上收敛 | 阶段收口时跑 24 fixture 全量 benchmark，确认无回归；日常改动优先跑 targeted tests |
+| 议题 D (transactional-self-correction) benchmark 验证 | 代码已实施，本地测试通过，单 fixture 验证通过 | loam smoke PASS；rh smoke repairSuccess 1/1，但全量 repairSuccess 净效应未知 | 阶段收口时跑 24 fixture 全量确认 testsPassed / repairSuccess 净效应 |
 | 修复循环成功率提升 | 🔧 已定位但不阻塞 | 全量 `260509-165142`：repairSuccess 0/12。议题 D 的事务回滚是突破 0% 的关键杠杆 | 议题 D P1 实施后重跑 benchmark 验证 |
 | rh Java PASS 提升 | 🔧 单 fixture smoke 已突破 | rh 2/9(22%)→3/9(33%) 的旧 blocker 已修；`rh-bugfix-csv-export` 最新 smoke PASS，但 rh 全量净效应未知 | 跑 rh/24 fixture 全量，确认其他 rh PARTIAL 是否同步改善 |
 
