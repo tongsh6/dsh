@@ -1,6 +1,6 @@
 ---
 id: pie-phase-e-validation
-status: backlog
+status: in_review
 priority: p1
 type: test
 spec_ref: docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md

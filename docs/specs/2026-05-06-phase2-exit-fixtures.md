@@ -1,10 +1,12 @@
 # Phase 2 退出 — Fixture 补齐 SPEC
 
-> 状态: draft v0.5 | 日期: 2026-05-06 | 作者: loong
+> 状态: draft v0.6 | 日期: 2026-05-14 | 作者: loong / ai
 >
 > 目标: 把 Phase 2 仅剩的两条退出条件（v0.4 协议操作覆盖率、多语言）补齐到可勾选状态。
 >
 > v0.5 变更: 增加 controlled benchmark suite 策略；loamlog / release-hub / pi-proof-forge 作为正在推进项目时，Phase 2 严格退出只基于专用 benchmark 分支 + 固定提交，不跟随 live main。
+>
+> v0.6 变更（doc-lag 回补）：§3.3 第 2 条 + §3.5 + §4.6 与 commit `f97aae3` 实施现状对齐。原 §4.6 设计的 3 个"双侧单 fixture" (F9/F10/F11)，`f97aae3` 实施时拆为 3 个 "单侧成对 fixture" (`<scenario>-{backend,frontend}`) 共 6 个 yaml，但 spec 未同步更新。本版本回补此差异，**不改 fixture 实现**。
 
 ## 1. 问题定义
 
@@ -106,7 +108,11 @@ BLUEPRINT.md L170 把 release-hub 误归为 TypeScript：
 ### 3.3 严格 benchmark 约束
 
 1. **不依赖隐式前置文件**：新 fixture 只使用目标 repo 中已 tracked 的真实文件。不能要求人工在 bench repo 放置未跟踪占位文件；`git clean -fd` 会删除它们。
-2. **rh 混合 fixture 定义**：计入 Java+Vue 多语言条件的 rh fixture 必须同时修改 `backend/**/*.java` 和 `frontend/**/*.ts|vue`，并且验证命令必须同时检查两侧。
+2. **rh 混合 fixture 定义**（v0.6 扩展）：计入 Java+Vue 多语言条件的 rh fixture 必须形成 "backend + frontend pair"，二选一：
+   - **(a) 双侧单 fixture**：单 fixture 同时修改 `backend/**/*.java` 和 `frontend/**/*.ts|vue`，验证命令两侧都检查；或
+   - **(b) 单侧成对 fixture**：两个独立 fixture，分别只改 backend / 只改 frontend，但共享同一业务场景（如同一 dashboard 字段的后端实现 + 前端展示），通过 fixture id 前缀 `<scenario>-{backend,frontend}` 标识 pair 关系。每个 yaml 的 `designGoal` 字段必须显式标注"rh 混合对 X 侧"。
+   - **计数规则**：在"Java+Vue 混合 ≥3" 退出条件下，每 pair 计为 1 个混合 fixture（不是 2 个）。
+   - **实施决策（commit `f97aae3`）**：F9/F10/F11 均按 (b) 实施。理由：(i) 测分阶段能力，模型在纯 Java vs 纯 TS+Vue 上的信号可拆解；(ii) 双侧 fixture 失败时 verify 定位困难，单侧 fixture 易于诊断；(iii) parallel 调度粒度更细，减少 tail latency；(iv) 与 spec §3.3 第 3 条 "fixture 仍应写成少量明确命令" 协同（双侧 verify 链过长）。
 3. **验证命令真实执行**：benchmark runner 已支持将全部 `verificationCommands` 组合成一条 `&&` 链执行；fixture 仍应写成少量明确命令，避免只有第一条生效的旧问题。
 4. **协议实测验收**：DELETE/RENAME 的单一目标 fixture 必须在 `actualProtocolOps` 中出现目标操作；否则即使文件结果正确，也不能算协议覆盖达标。
 5. **shell 可移植**：验证命令不使用 process substitution；需要比较 HEAD 内容时使用 POSIX-safe 管道或 `cmp`。
@@ -136,13 +142,15 @@ loamlog、release-hub、pi-proof-forge 都是正在推进的真实项目，直�
 | INSERT | 1 新建 | 2 复合 | 其中 1 个来自 rh 混合 fixture |
 | DELETE | 1 新建 | 2 复合 | 其中 1 个来自 rh 混合 cleanup |
 | RENAME | 1 新建 | 2 复合 | 其中 1 个来自 rh 混合 rename |
-| **rh Java+Vue 混合** | — | 3 新建 | 每个都必须 Java + Vue 双侧改动 |
+| **rh Java+Vue 混合** | — | 3 新建（按 §3.3 计为 3 pair） | 每对必须 Java + Vue 双侧覆盖（双侧单 fixture 或单侧成对 fixture，二选一） |
 
-总新建 yaml：1（INSERT 单一）+ 1（DELETE 单一）+ 1（RENAME 单一）+ 2（非 rh 复合）+ 3（rh Java+Vue 混合）= **8 个新 fixture**。
+设计层 yaml 总数：1（INSERT 单一）+ 1（DELETE 单一）+ 1（RENAME 单一）+ 2（非 rh 复合）+ 3（rh Java+Vue 混合）= **8 个 yaml**。
 
-最终新建总数：**8 个新 fixture**；调整标注：**3 个 fixture** (`pi-docs-check-tools`, `loam-bugfix-cli-error-handling`, `pi-test-error-handler`)。
+**实施层 yaml 总数（v0.6 回补）**：commit `f97aae3` 按 §3.3 (b) 把 3 个 rh 混合 fixture 拆为 3 pair × 2 单侧 = 6 个 yaml；其它 5 个保持。实施总新建 yaml：5 + 6 = **11 个**。
 
-新 fixture 池规模：13 + 8 = **21 个 fixture**。
+调整标注：**3 个 fixture** (`pi-docs-check-tools`, `loam-bugfix-cli-error-handling`, `pi-test-error-handler`)。
+
+新 fixture 池规模：**设计** 13 + 8 = 21；**实施** 13 + 11 = **24 个 fixture**（pair 按 §3.3 计为 3，总数仍满足 21 设计语义）。
 
 ## 4. Fixture 详细设计
 
@@ -253,7 +261,15 @@ loamlog、release-hub、pi-proof-forge 都是正在推进的真实项目，直�
   - 任务语义明确为重命名且内容不变；370 行测试文件用 RENAME 比 CREATE+DELETE 经济得多
   - 继续保持 `.test.ts` 后缀，避免测试发现机制变化成为噪音
 
-### 4.6 rh Java+Vue 混合 fixture（3 个，承担多语言条件）
+### 4.6 rh Java+Vue 混合 fixture（3 个 pair，承担多语言条件）
+
+> 设计层描述 3 个**双侧单 fixture** (F9/F10/F11)。实施层 (commit `f97aae3`) 按 §3.3 (b) 拆为 3 个 **单侧成对 fixture**：
+>   - F9 `rh-mixed-dashboard-generated-at` → `-backend.yaml` + `-frontend.yaml`
+>   - F10 `rh-mixed-remove-starter-ping-demo` → `-backend.yaml` + `-frontend.yaml`
+>   - F11 `rh-mixed-rename-common-dialog-and-settings-controller` → `rh-mixed-rename-entity-dialog-frontend.yaml` + `rh-mixed-rename-settings-controller-backend.yaml`
+>
+> 实施 yaml 共 6 个，但按 §3.3 (b) 计数规则共 3 个 pair，等价于 3 个混合 fixture。设计目标和验证目标保持不变；只是同一业务场景在 yaml 层被拆解为 backend/frontend 两份独立任务。
+
 
 #### F9: `rh-mixed-dashboard-generated-at`（新建）
 
@@ -389,3 +405,4 @@ loamlog、release-hub、pi-proof-forge 都是正在推进的真实项目，直�
 | 2026-05-06 | v0.3 | 补充两枚失败 fixture 根因；确认 benchmark untracked 清理缺失为工具实现根因；修正协议覆盖为 2/6、rh 混合 fixture 为 0/3 |
 | 2026-05-06 | v0.4 | 吸收 fixture 设计 review：runner 支持多验证命令；rh 3 个 fixture 全部改为 Java+Vue 混合；所有新 fixture 改用真实 tracked 文件；验证命令去掉 process substitution |
 | 2026-05-06 | v0.5 | 采用专用 benchmark 分支 + 固定 commit 作为 Phase 2 严格基线；新增 fixture 元数据 `benchmarkRef` / `preflightFiles` / `designGoal` / `verificationGoal` |
+| 2026-05-14 | v0.6 | doc-lag 回补：§3.3 第 2 条扩展 "rh 混合 fixture 定义" 接纳实施现状的 "单侧成对 fixture"（(b) 选项 + 计数规则）；§3.5 fixture 数量预算补"实施层 24 个 yaml = 3 pair 计为 3"；§4.6 标题与说明对齐 commit `f97aae3` 实施现状（3 个 pair × 2 单侧 = 6 yaml）。**不改 fixture 实现**，只让文档与代码现状对齐。本次回补由 PIE Phase E benchmark 审计触发（fixture 拆分发现于 N=3 实证策略审视），ledger §8 加 debt `phase2-exit-fixture-doc-lag` 跟踪此次治理修正。 |
