@@ -607,7 +607,20 @@ function decideWithOverride(
 
 // ---- Views ----
 
-export function toProjectCard(pi: ProjectIntelligence): string {
+export interface ProjectCardOptions {
+  /**
+   * When true, capability commands (e.g. "mvn test -q") are rendered next to
+   * the capability key. When false (default), only status + evidence are
+   * rendered — required for LLM prompt injection per
+   * docs/specs/2026-05-10-goal-driven-verification.md §3 Phase 1 ("Agent must
+   * derive verification commands autonomously, not be handed pre-baked shell
+   * strings"). dsh doctor (human-facing) passes true; context-builder
+   * (LLM-facing) leaves false.
+   */
+  includeCommands?: boolean;
+}
+
+export function toProjectCard(pi: ProjectIntelligence, opts: ProjectCardOptions = {}): string {
   const lines: string[] = ["## Project Card", ""];
 
   // Known
@@ -652,7 +665,10 @@ export function toProjectCard(pi: ProjectIntelligence): string {
   lines.push("**Capabilities**");
   for (const c of pi.capabilities) {
     const icon = c.status === "available" ? "✓" : c.status === "likely" ? "~" : "✗";
-    lines.push(`${icon} ${c.key}: ${c.status}${c.command ? ` (${c.command})` : ""} — ${c.reason}`);
+    // Default: command字符串隐藏（LLM 安全），仅 dsh doctor 显式 includeCommands:true
+    // 时才暴露具体命令。见 ProjectCardOptions 文档。
+    const cmd = opts.includeCommands && c.command ? ` (${c.command})` : "";
+    lines.push(`${icon} ${c.key}: ${c.status}${cmd} — ${c.reason}`);
   }
 
   return lines.join("\n");

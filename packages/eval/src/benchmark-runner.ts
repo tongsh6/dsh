@@ -281,6 +281,99 @@ export function cleanBenchmarkWorktree(cwd: string): void {
   gitQuiet(cwd, "clean -fd");
 }
 
+/**
+ * Stronger cleanup for replicated/randomized benchmark trials where state leak
+ * between trials would invalidate the experiment. See spec
+ * docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md §5.2 + Task E.
+ *
+ * Cleans:
+ *   - Git working tree (reset --hard + clean -fd)
+ *   - .dsh runtime state (handoff/, static-scan/, snapshots/, config.yml, task-state.json)
+ *   - Build outputs in tracked-source directories: target/, build/, dist/, .next/, .turbo/, coverage/
+ *   - Python bytecode caches: __pycache__/, .pytest_cache/, .mypy_cache/, .ruff_cache/, *.pyc
+ *   - Fixture-local Maven install artifacts in ~/.m2/repository/<groupId> when groupIdToClean is set
+ *     (mitigates stale-jar inheritance across replicated trials when the
+ *     fixture's patch loop writes via `mvn install -DskipTests`).
+ *
+ * Preserves: node_modules/, .m2/repository (except groupIdToClean), .gradle/caches/, .venv/
+ * (re-installing 24×3×2 trials would add 2-4 hr wallclock).
+ *
+ * @param cwd Repo working tree.
+ * @param baselineRef Git ref to reset --hard to (e.g. fixture.benchmarkRef.commit).
+ * @param groupIdToClean Optional Maven groupId path (e.g. "io/releasehub") whose
+ *   ~/.m2/repository/<groupId> tree is removed; null/undefined skips this step.
+ */
+export function cleanBenchmarkWorktreeHard(
+  cwd: string,
+  baselineRef: string,
+  groupIdToClean?: string | null,
+): void {
+  // 1. Git: reset to baseline + remove untracked
+  gitQuietFile(cwd, ["reset", "--hard", baselineRef]);
+  gitQuietFile(cwd, ["clean", "-fd"]);
+
+  // 2. dsh runtime: full .dsh wipe
+  const dshDir = path.join(cwd, ".dsh");
+  if (fs.existsSync(dshDir)) {
+    fs.rmSync(dshDir, { recursive: true, force: true });
+  }
+
+  // 3. Build outputs (in tracked dirs, may not be gitignored)
+  for (const dir of ["target", "build", "dist", ".next", ".turbo", "coverage", "out"]) {
+    const p = path.join(cwd, dir);
+    if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+  }
+
+  // 3.1 Submodule-level build outputs (e.g. backend/target, frontend/dist for rh-mixed)
+  for (const sub of ["backend", "frontend"]) {
+    for (const dir of ["target", "build", "dist", ".next", "coverage", "node_modules/.cache"]) {
+      const p = path.join(cwd, sub, dir);
+      if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+    }
+  }
+
+  // 4. Python caches (recursive)
+  for (const cache of [".pytest_cache", ".mypy_cache", ".ruff_cache"]) {
+    const p = path.join(cwd, cache);
+    if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+  }
+  cleanPythonByteCode(cwd);
+
+  // 5. Maven local repo for fixture-specific groupId
+  if (groupIdToClean) {
+    const m2Path = path.join(process.env["HOME"] ?? "", ".m2", "repository", groupIdToClean);
+    if (fs.existsSync(m2Path)) fs.rmSync(m2Path, { recursive: true, force: true });
+  }
+
+  // 6. Verify clean
+  const status = execFileSync("git", ["status", "--porcelain"], { cwd, encoding: "utf-8" });
+  if (status.trim() !== "") {
+    throw new Error(
+      `cleanBenchmarkWorktreeHard: git status not clean after cleanup:\n${status}`,
+    );
+  }
+}
+
+function cleanPythonByteCode(cwd: string): void {
+  function walk(dir: string, depth: number): void {
+    if (depth > 6) return;
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (e.name === "node_modules" || e.name === ".git") continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory() && e.name === "__pycache__") {
+        fs.rmSync(p, { recursive: true, force: true });
+      } else if (e.isFile() && e.name.endsWith(".pyc")) {
+        try { fs.unlinkSync(p); } catch { /* ignore */ }
+      } else if (e.isDirectory()) {
+        walk(p, depth + 1);
+      }
+    }
+  }
+  walk(cwd, 0);
+}
+
 export function normalizeVerificationCommands(commands: string[]): string[] {
   return commands.map((cmd) => cmd.trim()).filter(Boolean);
 }

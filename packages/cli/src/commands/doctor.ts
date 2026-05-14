@@ -36,7 +36,8 @@ export async function doctorCommand(opts: DoctorOptions): Promise<void> {
     }
   }
 
-  console.log(toProjectCard(pi));
+  // doctor is human-facing — show full capability commands
+  console.log(toProjectCard(pi, { includeCommands: true }));
 
   if (!opts.write) return;
 
