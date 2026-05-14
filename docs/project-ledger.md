@@ -6,14 +6,16 @@
 
 ## 1. 当前阶段目标
 
-**Phase 3（工具化）**。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
+**Phase 3（工具化 / 验证闭环攻坚）**。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 
 ### Phase 3 核心演进
 - **议题 A (dsh-autonomous-env)**: ✅ P1-P2 已实施（去保姆化 + runPreflight 状态机 + prompt 增强 + 命令白名单 + repair 扩容 + fixture 验证命令修正）。
 - **议题 B (verify-protocol-structured)**: ✅ P1-P6 已实施，结构化验证协议上线。
 - **议题 C (goal-driven-verify)**: ✅ P1-P2 已实施，代码已合并（config redaction + autonomous verification prompts + PLAN retry + scope 软化 + DONE 接受放松）。
 - **议题 D (transactional-self-correction)**: ✅ P1 已实施并通过本地测试（双轨 checkpoint + managed_files + 物理回滚 + ANSI 剥离）；loam smoke PASS，rh smoke `260513-013656` PASS，repairSuccess 1/1。
+- **Phase 3 起点基线**: testsPassed 11/24 = 45%（`260508-003359` / `260509-165142`）。
 - **目标**: testsPassed > 60%.
+- **最新 replicated benchmark evidence**: Project Card on `60/72 = 83.3%` over 24 fixtures × 3 reps — `docs/reports/knowledge/20260514-pie-phase2-3-baseline.md`；该结果已超过 Phase 3 `>60%` 目标，但 3 个 hard-fail fixture 仍需根因分析。
 
 ### 验证分层原则
 - **单元/类型/静态验证是日常反馈**：代码修改后优先跑相关 package test、typecheck、lint/build，验证局部合同和编译质量。
@@ -34,9 +36,9 @@
 
 ### Phase 3 起点
 - baseline（原始）: testsPassed 11/24 (45%) — `260508-003359`
-- baseline（议题 B P6 修正后）: testsPassed 8/24 (33%) — `260508-223235`
 - **最新稳定全量**: testsPassed 11/24 (45%) — `260509-165142`（parallel=3, 2087s, 3x 加速）
   - pi: 5/7 (71%), loam: 4/8 (50%), rh: 2/9 (22%)
+- **最新 replicated evidence**: Project Card on `60/72 = 83.3%`（24 fixtures × 3 reps），约等价 `20/24`；详见 `docs/reports/knowledge/20260514-pie-phase2-3-baseline.md`
 - **rh debug 后**: 3/9 (33%) — `260509-181614`。NoSuchMethodError 已修（mvn install），剩余 PARTIAL 是模型输出不完整（1/2 files changed）
 - 目标: testsPassed >60%
 - 议题 B（`verify-protocol-structured`）：✅ P1-P6 已实施完成
@@ -44,17 +46,17 @@
 - 议题 D P1：✅ 已实施并通过 `pnpm run test` / `pnpm run typecheck` / `pnpm run lint`；loam smoke `260512-225408` PASS；rh smoke `260513-013656` PASS（源文件+测试文件已存在，结构化 Maven 验证触发，patch loop DONE=✓，repair 修复首轮测试失败后最终 Maven 通过）
 - 并行 benchmark：✅ `--parallel=N` 已上线（git worktree + semaphore pool）
 - 关键 bug 已修：CLOSE_WAIT body 超时、failure-detector regex 无限循环、`.m2` 旧 jar NoSuchMethodError
-- ready 议题：24 fixture 全量 benchmark 验证（P0）、`fixture-false-positive-audit`（P1）
-- 下一步：阶段收口时跑 24 fixture 全量 benchmark，对比 `260509-165142` 的 testsPassed / repairSuccess 净效应 → ledger 同步
+- ready 议题：Phase 3 failure matrix（P0）、3 个 hard-fail fixture 根因分析（P1）、最小 `dsh run`（P2）
+- 下一步：先维护 failure matrix，再定点复现 `pi-bugfix-count-defs`、`rh-refactor-branch-orchestrator`、`rh-test-dashboard-version`，避免无证据泛化优化
 
 ## 2. 已完成事项
 
 | 事项 | 完成时间 | 证据路径 | 验证方式 | 备注 |
 |------|---------|---------|---------|------|
 | Phase 1 MVP 闭环 | 2026-05-02 | `packages/core/src/pipeline.ts` | 386 测试通过 | Plan→Patch→Verify→Repair→Handoff |
-| CLI 6 命令 | 2026-05-02 | `packages/cli/src/commands/` | 23 CLI 测试通过 | init/plan/patch/verify/repair/handoff |
+| CLI 命令集 | 2026-05-02 起 | `packages/cli/src/commands/` | CLI 测试通过 | init/plan/patch/verify/repair/handoff/doctor/run |
 | DeepSeek API 客户端 | 2026-05-02 | `packages/provider/src/client.ts` | 23 测试通过 | 含 tools 参数支持 |
-| 项目扫描器（多语言） | 2026-05-03 | `packages/repo/src/scanner.ts` | 45 测试通过 | LANGUAGE_REGISTRY |
+| ProjectIntelligence 项目识别 | 2026-05-14 | `packages/repo/src/intelligence.ts` | repo 测试通过 | Fact → Candidate → Decision → Capability；`scanner.ts` 已退役 |
 | 配置统一加载 | 2026-05-02 | `packages/repo/src/config-loader.ts` | 测试通过 | 单点读写架构 |
 | Patch 协议解析 | 2026-05-02 | `packages/core/src/patch-parser.ts` | 271 core 测试通过 | 6 种操作 + 5 级回退匹配 |
 | 静态扫描 Top N | 2026-05-02 | `packages/core/src/static-topn.ts` | 测试通过 | 6 维加权评分 |
@@ -85,10 +87,9 @@
 
 | 事项 | 当前状态 | 阻塞点 | 下一步 |
 |------|---------|--------|--------|
-| 议题 A+C benchmark 验证 | 🔧 单 fixture smoke 已通过 | loam smoke PASS；rh smoke `260513-013656` PASS，说明验证命令/文件存在/编译/运行期 fixture blocker 已在该 fixture 上收敛 | 阶段收口时跑 24 fixture 全量 benchmark，确认无回归；日常改动优先跑 targeted tests |
-| 议题 D (transactional-self-correction) benchmark 验证 | 代码已实施，本地测试通过，单 fixture 验证通过 | loam smoke PASS；rh smoke repairSuccess 1/1，但全量 repairSuccess 净效应未知 | 阶段收口时跑 24 fixture 全量确认 testsPassed / repairSuccess 净效应 |
-| 修复循环成功率提升 | 🔧 已定位但不阻塞 | 全量 `260509-165142`：repairSuccess 0/12。议题 D 的事务回滚是突破 0% 的关键杠杆 | 议题 D P1 实施后重跑 benchmark 验证 |
-| rh Java PASS 提升 | 🔧 单 fixture smoke 已突破 | rh 2/9(22%)→3/9(33%) 的旧 blocker 已修；`rh-bugfix-csv-export` 最新 smoke PASS，但 rh 全量净效应未知 | 跑 rh/24 fixture 全量，确认其他 rh PARTIAL 是否同步改善 |
+| Phase 3 failure matrix | 已建立 | 最新 replicated evidence 已整理为 hard-fail / high-variance 矩阵 | 依据矩阵定点复现，不做无证据泛化优化 |
+| hard-fail fixture 根因分析 | 待定点复现 | `pi-bugfix-count-defs`、`rh-refactor-branch-orchestrator`、`rh-test-dashboard-version` 在 N=3 Card on/off 下全 FAIL | 按 failure matrix 逐个复现，不做泛化 prompt 重写 |
+| 最小 `dsh run` | 已补 CLI 入口 | core 已有 `runFullPipeline`，CLI 已提供一键入口 | 继续通过 CLI 测试和真实 dry-run/smoke 验证输出体验 |
 
 ## 5. 已废弃事项
 
@@ -100,9 +101,9 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|---------|
-| P0 | 议题 D P1 全量 benchmark 验证（transactional-self-correction） | D P1 已本地验证，loam smoke PASS，rh smoke `260513-013656` repairSuccess 1/1；需要全量确认 repair 成功率是否稳定突破 0% 且 testsPassed 无回归 | 24 fixture 全量记录 testsPassed / repairSuccess，并与 `260509-165142` 对比 |
-| P1 | fixture-false-positive-audit | 13 旧 fixture 验证命令覆盖缺口审计 | 全量审计完成 + false-positive 修正 |
-| P2 | rh backend 模型输出完整性 | rh debug 后 3 个 fixture 仍是 PARTIAL，原因是模型只改了 1/2 expected files | rh ≥ 5/9 PASS |
+| P0 | `rh-test-dashboard-version` Maven verify 修复 | failure matrix 中最具体的 `wrong_verification_command`，预计收益 +1 fixture | 单 fixture 复现；修正 Maven verify 命令；fixture 不再因 upstream no-tests / Maven 拓扑误伤失败 |
+| P1 | `rh-refactor-branch-orchestrator` patch apply failure 根因分析 | hard-fail fixture 中存在 `<empty>` / failed patch 和 2/5 文件覆盖问题，是最大 `patch_apply_failure` 样本 | 复盘 failed patch turn；形成小范围 guard 或 fixture 拆分方案 |
+| P1 | `pi-bugfix-count-defs` semantic failure 根因分析 | hard-fail fixture 中的稳定 `semantic_incorrect` 样本，需确认是上下文缺口还是模型能力上限 | 单 fixture 复现；明确 source-context hint / fixture 说明是否足够 |
 
 ## 7. 关键证据索引
 
@@ -112,6 +113,8 @@
 | 产品蓝图 | `BLUEPRINT.md` | 7 阶段演进 + Phase 2 退出条件 |
 | 任务规范 | `docs/TASK-SPEC.md` | 任务格式、生命周期、三层体系 |
 | 最新全量 Benchmark | `docs/reports/runlogs/260509-165142/` | 24 fixtures, parallel=3, 2087s, testsPassed 11/24 (45%) |
+| 最新 replicated Benchmark | `docs/reports/knowledge/20260514-pie-phase2-3-baseline.md` | N=3 randomized hard cleanup；Project Card on 60/72 (83.3%) |
+| Phase 3 Failure Matrix | `docs/reports/knowledge/20260514-phase3-failure-matrix.md` | hard-fail / high-variance fixture 分类与下一轮修复顺序 |
 | 最新 smoke Benchmark | `docs/reports/runlogs/260512-225408/` + `docs/reports/runlogs/260513-013656/` | loam PASS；rh PASS，repairSuccess 1/1 |
 | rh Debug Benchmark | `docs/reports/runlogs/260509-174358/` + `260509-181614/` | rh 9 fixtures, mvn clean compile→mvn install 修复 NoSuchMethodError |
 | 决策知识库 | `docs/reports/knowledge/` | Phase 退出审查、session 总结、benchmark 分析报告、对比报告（提交到 Git） |
@@ -120,9 +123,9 @@
 | 工具系统 Spec | `docs/specs/2026-05-04-tool-system.md` | 工具系统完整设计 |
 | 工具采纳修复 Spec | `docs/specs/2026-05-04-tool-adoption-fix.md` | 本次修复设计 |
 | 核心源码 | `packages/core/src/` | pipeline, patch-parser, repair-loop, tools |
-| CLI 源码 | `packages/cli/src/` | 6 条命令 |
+| CLI 源码 | `packages/cli/src/` | init/plan/patch/verify/repair/handoff/doctor/run |
 | Provider 源码 | `packages/provider/src/` | DeepSeek API 客户端 |
-| Repo 源码 | `packages/repo/src/` | 扫描器、配置加载、文件排序 |
+| Repo 源码 | `packages/repo/src/` | ProjectIntelligence、配置加载、文件排序 |
 | Eval 源码 | `packages/eval/src/` | Benchmark 执行器、fixtures |
 | CI 配置 | `.github/workflows/` | scan, benchmark, codeql, gitleaks |
 | 自主环境 Spec | `docs/specs/2026-05-10-autonomous-env-verification.md` | 议题 A：剥离保姆层 + 环境自愈 |
@@ -196,6 +199,9 @@
 | debt | benchmark-spec-threshold-revision | spec:docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md | spec §5.2 "testsPassed ±2 阈值"假设 deterministic + 行为零漂移，对 stochastic LLM benchmark 不适用。实测 +9~+18 改善方向超出阈值，但都朝好的方向。建议 v0.7 修订为 "N≥3 hard cleanup; Wilson 95% CI 不退化 ≥ 2σ; 高方差 fixture 单独标注" | spec 修订 PR；本期 PIE Phase E 完成 | P1 | waiting | 2026-05-14 |
 | debt | blueprint-evaluation-methodology-v1.1 | code:BLUEPRINT.md | BLUEPRINT §2.5 评测体系演进路线缺"如何做严肃实证"的方法论。N=3 randomized + hard cleanup 是实证最低门坎，应写入 v1.1 演进路线作为 Phase 2.5 持续要求 | BLUEPRINT v1.2 修订 | P1 | waiting | 2026-05-14 |
 | bug | benchmark-hardfail-fixtures-3x | report:docs/reports/knowledge/20260514-pie-phase2-3-baseline.md | 3 个 fixture 在 N=3 hard cleanup × Card on/off 6 次跑全 FAIL: pi-bugfix-count-defs / rh-refactor-branch-orchestrator / rh-test-dashboard-version。根因待调查（任务难度、Python AST 推断、Spring DI 重组、Maven 拓扑等假设） | 每个 fixture 单独 task 根因分析；当前模型能力上限或 fixture 设计 bug 二选一 | P2 | waiting | 2026-05-14 |
+| bug | rh-test-dashboard-version-maven-verify | report:docs/reports/knowledge/20260514-phase3-failure-matrix.md | `rh-test-dashboard-version` 在 replicated benchmark 中 0/6；测试文件存在断言通过，但 Maven verify 命令失败，疑似 `-am` + `-DfailIfNoTests=true` 触发 upstream no-tests / Maven 拓扑误伤 | `node run-benchmark.ts --filter=rh-test-dashboard-version --parallel=1` 复现后，调整 fixture verify 命令并跑 eval tests + single fixture benchmark | P0 | waiting | 2026-05-15 |
+| bug | rh-refactor-branch-orchestrator-patch-apply | report:docs/reports/knowledge/20260514-phase3-failure-matrix.md | `rh-refactor-branch-orchestrator` 在 replicated benchmark 中 0/6；大型跨 service refactor 常见 `<empty>` / failed patch，或只改 2/5 expected files 后 repair exhausted | 复盘 failed patch turn；优先小范围 patch emission guard 或 fixture 拆分，不做大 prompt 重写 | P1 | waiting | 2026-05-15 |
+| bug | pi-bugfix-count-defs-semantic | report:docs/reports/knowledge/20260514-phase3-failure-matrix.md | `pi-bugfix-count-defs` 在 replicated benchmark 中 0/6；模型主要修改 checker 计数逻辑但 verify 仍失败，疑似 expected definitions/source-context 不足或 Python AST 语义边界误判 | 单 fixture 复现；审阅目标测试与 verify output，证明上下文缺口后再补 source-context hint | P1 | waiting | 2026-05-15 |
 | debt | benchmark-wallclock-optimization | code:scripts/benchmark-pie-replicated.ts | 144 trial 跑了 18.8 hr 挂钟（vs 估算 5-6 hr），parallel 利用率 < 33%。优化方向：LPT 调度 + fixture-level parallel（同 repo 内 fixture 互不冲突时可并行）+ outlier 时长上限 | 下次 N≥3 benchmark 前优化；非阻塞 | P3 | waiting | 2026-05-14 |
 | deferred | verify-plan-model-enhancement | spec:docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md | §7.3 中显式排除的剩余范围：多模块独立 verify plan、test selectivity 等 verify 模型增强；本 spec 只做 cli/init 写 config 时的 capabilities → VerifyCommands 投影 | benchmark 数据揭示 verify plan 在多模块项目 / test selectivity 场景出现需求时启动 | P3 | waiting | 2026-05-13 |
 | debt | tracked-items-resolved-path-check | spec:docs/specs/2026-05-05-tracked-items-governance.md | 治理 spec 设计盲区：CI source path 校验未区分 status；status=resolved/cancelled 后原始文件可合理重构/删除（如 scanner.ts 在 Task C 退役），但 CI 仍报 source-path-missing。当下已在 scripts/check-tracked-items.ts 加单行跳过；治理 spec 需同步更新 §「source 字段语义」 | 治理 spec 修订 PR；至少 2 次同类历史条目 path 失效时驱动 | P3 | waiting | 2026-05-13 |

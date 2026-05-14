@@ -160,11 +160,13 @@ Phase 1 (止血)              Phase 2 (模型)              Phase 3 (替换)
 
 当前 `scanner.ts` 的 `detectTechStack` + `detectVerifyCommands` 存在一类系统性缺陷：**把关联关系当成等价关系**。看到 `.java` 文件 → 推断 Maven；看到 `.py` 文件 → 推断 pip；packageManager 为 null 时 verify 命令默认 Maven。这些不是"识别"，而是"猜测并假装确定"。
 
-**Phase 1 目标（当前立即执行）**：消除 3 个已知危险默认推断；引入最小的 `ProjectIntelligence` 抽象（Fact / Candidate / Decision / Capability 四模型），通过 `toLegacyTechStack` 投影兼容现有调用链路。新增 `toProjectCard` 给 LLM 注入"已知 / 未知 / 禁止推断"的结构化上下文。
+**当前实现状态（2026-05-14）**：`scanner.ts` 已退役，生产路径通过 `assembleIntelligence` 生成 `ProjectIntelligence`；`init` 使用 `pickVerifyPlan` 投影验证命令；`pipeline` 通过 `generateRepoContext(cwd, pi)` 注入 RepoContext；LLM 上下文默认包含 Project Card，并可通过 `DSH_INJECT_PROJECT_CARD=false` 关闭。
 
-**Phase 2 目标**：完整 Fact 收集器（文件系统 + 构建描述符 + wrapper 脚本 + 源码语法版本推断）；Candidate 生成器实现多候选排序 + 置信度计算；`dsh doctor` 命令输出候选判断和能力状态；`.dsh/project.yml` 人工确认层。
+**Phase 1 目标（已完成）**：消除 3 个已知危险默认推断；引入最小的 `ProjectIntelligence` 抽象（Fact / Candidate / Decision / Capability 四模型），通过 `toLegacyTechStack` 投影兼容现有调用链路。新增 `toProjectCard` 给 LLM 注入"已知 / 未知 / 禁止推断"的结构化上下文。
 
-**Phase 3 目标**：`detectVerifyCommands` 退役，verify plan 从 `ProjectCapability` 推导；scanner 内部改为 `assembleIntelligence` 驱动；LLM context 统一使用 Project Card。
+**Phase 2 目标（已完成）**：完整 Fact 收集器（文件系统 + 构建描述符 + wrapper 脚本 + 源码语法版本推断）；Candidate 生成器实现多候选排序 + 置信度计算；`dsh doctor` 命令输出候选判断和能力状态；`.dsh/project.yml` 人工确认层。
+
+**Phase 3 目标（主路径已完成，继续验收）**：`detectVerifyCommands` 退役，verify plan 从 `ProjectCapability` 推导；项目识别统一由 `assembleIntelligence` 驱动；LLM context 统一使用 Project Card。当前剩余工作集中在 benchmark failure matrix、hard-fail fixture 根因分析和 verify plan 精细化，不扩展 TUI、MCP、多 Provider 或子 Agent。
 
 **与主阶段的关系**：本维度是横切关注点——Phase 1 止血与 Phase 3（工具化）并行推进，Phase 2 与 Phase 4（Agent Loop）重叠。它不是独立的 Phase 8，而是对现有 scanner/verify/context 三个模块的渐进式加固。
 

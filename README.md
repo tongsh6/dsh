@@ -1,15 +1,19 @@
-# DSH — DeepSeek-native Coding Harness
+# DSH — DeepSeek-native, benchmark-gated, verify-first Coding Harness
 
-一个围绕 DeepSeek 模型行为深度优化的终端编程助手，覆盖从任务理解、代码生成、验证修复到知识沉淀的完整闭环。
+一个围绕 DeepSeek 模型行为深度优化的终端编程助手，覆盖从任务理解、代码生成、验证修复到交接沉淀的验证闭环。
 
 **核心流程:** Plan → Patch → Verify → Repair → Handoff
+**当前阶段:** Phase 3（工具化 / 验证闭环攻坚）
+**Phase 3 起点基线:** testsPassed 11/24 = 45%（`260508-003359` / `260509-165142`）
+**Phase 3 目标:** testsPassed > 60%
+**最新实证:** 2026-05-14 N=3 replicated benchmark：Project Card on `60/72 = 83.3%`，约等价 `20/24`，详见 `docs/reports/knowledge/20260514-pie-phase2-3-baseline.md`
 
 ## 快速开始
 
 ### 安装
 
 ```bash
-git clone git@github.com:loong/dsh.git
+git clone https://github.com/tongsh6/dsh.git
 cd dsh
 pnpm install
 pnpm -r run build
@@ -39,18 +43,18 @@ dsh handoff                                 # 生成交接报告
 或一键运行全流程：
 
 ```bash
-dsh plan "添加用户注销接口" && dsh patch --auto && dsh verify
+dsh run "添加用户注销接口" --max-repair-rounds 5
 ```
 
 ## 模块结构
 
 ```
 packages/
-├── cli/        # CLI 入口，6 个命令（init/plan/patch/verify/repair/handoff）
+├── cli/        # CLI 入口，8 个命令（init/plan/patch/verify/repair/handoff/doctor/run）
 ├── core/       # 核心引擎 — 流水线、协议解析、修复循环、静态治理、工具系统
-├── provider/   # DeepSeek API 客户端（~300 行），thinking/non-thinking 路由
-├── repo/       # 项目分析 — 技术栈检测、文件排序、规则加载、Git 辅助
-└── eval/       # Benchmark 执行器，任务夹具，10 维度评分
+├── provider/   # DeepSeek API 客户端，thinking/non-thinking 路由
+├── repo/       # 项目分析 — ProjectIntelligence、RepoContext、文件排序、规则加载、Git 辅助
+└── eval/       # Benchmark 执行器、任务夹具、评分与报告
 ```
 
 ## 技术栈
@@ -81,6 +85,8 @@ pnpm run scan         # 全量质量门禁（lint + typecheck + test）
 ## 当前状态
 
 - **版本:** 0.1.0（活跃开发中）
-- **阶段:** Phase 3（工具化 — 质量爬坡）
-- **当前基线:** testsPassed 8/24 (33% 修正后)，目标 >60%
-- **最新特性:** Verify 协议结构化（议题 B）已上线；Project Intelligence Engine Phase 1 已落地
+- **定位:** DeepSeek-native, benchmark-gated, verify-first Coding Harness
+- **阶段:** Phase 3（工具化 / 验证闭环攻坚）
+- **当前基线:** testsPassed 11/24 = 45%
+- **目标:** testsPassed >60%
+- **最新特性:** 结构化 Verify、Repair Loop、ProjectIntelligence 主路径、Project Card 默认注入、Benchmark replicated evidence 已落地

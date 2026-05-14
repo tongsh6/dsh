@@ -1,6 +1,6 @@
-# DSH — DeepSeek-native Coding Harness
+# DSH — DeepSeek-native, benchmark-gated, verify-first Coding Harness
 
-A DeepSeek-native coding agent runtime optimized for long-context engineering tasks.
+A DeepSeek-native, benchmark-gated coding harness optimized for verify-first engineering tasks.
 
 **Core loop:** Plan → Patch → Verify → Repair → Handoff
 
@@ -25,11 +25,11 @@ A DeepSeek-native coding agent runtime optimized for long-context engineering ta
 
 ```
 packages/
-├── cli/        # CLI entry point, 6 commands (init/plan/patch/verify/repair/handoff)
+├── cli/        # CLI entry point, 8 commands (init/plan/patch/verify/repair/handoff/doctor/run)
 │               # Thin wrapper: parses args → calls core pipeline → prints results
 ├── core/       # Central engine — pipeline, patch-parser, repair-loop, static scan governance
 ├── provider/   # DeepSeek API HTTP client (~200 lines), thinking/non-thinking router
-├── repo/       # Project analysis — scanner, file-ranker, rule-loader, git helpers
+├── repo/       # Project analysis — ProjectIntelligence, RepoContext, file ranking, rules, git helpers
 └── eval/       # Benchmark runner, task fixtures, 10-dimension scoring
 ```
 
@@ -68,6 +68,9 @@ pnpm run lint             # ESLint across all packages
 ## Project State
 
 - **Version:** 0.1.0 (active development)
+- **Current phase:** Phase 3 (tooling / verification-loop hardening)
+- **Baseline:** testsPassed 11/24 = 45%; target >60%
+- **Latest evidence:** 2026-05-14 replicated benchmark, Project Card on 60/72 = 83.3%
 - **Task tracking:** `docs/TASK-SPEC.md` — defines task format, lifecycle, and spec→plan→task hierarchy
 - **Active tasks:** see `docs/TASK-SPEC.md` §6 index
 - **Specs:** `docs/specs/`
