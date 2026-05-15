@@ -2,11 +2,13 @@
  * PIE Phase E — Replicated A/B Benchmark
  *
  * Design (responding to N=1 anecdote vs CONSTITUTION §5 实证驱动):
- *   - 24 fixture × 3 replications × 2 configs (Project Card on/off) = 144 trials
+ *   - all benchmark fixtures × replications × 2 configs (Project Card on/off)
  *   - Randomized order with seed (avoids time-confounded ON/OFF segregation)
  *   - Hard cleanup per trial (cleanBenchmarkWorktreeHard) — no state leak between reps
- *   - Cross-repo parallel (3 worker, one per repo) since repos can run independently;
- *     intra-repo serial since each repo's working tree can only host one trial at a time
+ *   - Cross-repo parallel by default, with optional per-repo worktree lanes
+ *     (`--lanes-per-repo=N`) scheduled by LPT using historical duration estimates.
+ *     Repos that require shared Maven local-repo cleanup stay single-lane to
+ *     avoid deleting artifacts while another lane is running Maven.
  *
  * Output: docs/reports/runlogs/<runId>-pie-replicated/
  *   - results.json — array of {fixtureId, config, rep, ...TaskResult}
@@ -14,7 +16,8 @@
  *
  * Usage:
  *   ./packages/core/node_modules/.bin/tsx scripts/benchmark-pie-replicated.ts \
- *     [--reps=N (default 3)] [--filter=<prefix>] [--seed=<int>]
+ *     [--reps=N (default 3)] [--filter=<prefix>] [--seed=<int>] \
+ *     [--lanes-per-repo=N (default 1)] [--estimate-results=<results.json>]
  */
 
 import { DeepSeekClient } from "../packages/provider/dist/client.js";
@@ -46,6 +49,12 @@ const filterArg = args.find((a) => a.startsWith("--filter="));
 const FILTER = filterArg ? filterArg.slice(9) : null;
 const seedArg = args.find((a) => a.startsWith("--seed="));
 const SEED = seedArg ? parseInt(seedArg.slice(7), 10) : Date.now();
+const lanesArg = args.find((a) => a.startsWith("--lanes-per-repo="));
+const LANES_PER_REPO = lanesArg ? Math.max(1, parseInt(lanesArg.slice(17), 10)) : 1;
+const estimateResultsArg = args.find((a) => a.startsWith("--estimate-results="));
+const DEFAULT_ESTIMATE_RESULTS = path.join(REPORTS_ROOT, "260514020257-pie-replicated", "results.json");
+const ESTIMATE_RESULTS = estimateResultsArg ? path.resolve(estimateResultsArg.slice(19)) : DEFAULT_ESTIMATE_RESULTS;
+const DEFAULT_TRIAL_ESTIMATE_MS = 5 * 60 * 1000;
 
 const CONFIGS = ["card_on", "card_off"] as const;
 type Config = (typeof CONFIGS)[number];
@@ -93,6 +102,21 @@ interface Trial {
   repoPath: string;
 }
 
+interface ScheduledLane<T> {
+  laneIndex: number;
+  estimatedMs: number;
+  trials: T[];
+}
+
+interface WorkerLane {
+  repoName: string;
+  sourceRepoPath: string;
+  lanePath: string;
+  laneIndex: number;
+  estimatedMs: number;
+  trials: Trial[];
+}
+
 interface TrialResult extends Record<string, unknown> {
   fixtureId: string;
   config: Config;
@@ -103,12 +127,100 @@ interface TrialResult extends Record<string, unknown> {
   elapsedMs: number;
 }
 
+export function loadDurationEstimates(resultsPath: string): Map<string, number> {
+  const estimates = new Map<string, number>();
+  if (!fs.existsSync(resultsPath)) return estimates;
+
+  let rows: unknown;
+  try {
+    rows = JSON.parse(fs.readFileSync(resultsPath, "utf-8"));
+  } catch {
+    return estimates;
+  }
+  if (!Array.isArray(rows)) return estimates;
+
+  const buckets = new Map<string, number[]>();
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const record = row as Record<string, unknown>;
+    const fixtureId = typeof record["fixtureId"] === "string" ? record["fixtureId"] : null;
+    const elapsedMs = typeof record["elapsedMs"] === "number"
+      ? record["elapsedMs"]
+      : typeof record["durationMs"] === "number"
+        ? record["durationMs"]
+        : null;
+    if (!fixtureId || !elapsedMs || elapsedMs <= 0) continue;
+    const list = buckets.get(fixtureId) ?? [];
+    list.push(elapsedMs);
+    buckets.set(fixtureId, list);
+  }
+
+  for (const [fixtureId, values] of buckets.entries()) {
+    estimates.set(fixtureId, values.reduce((sum, value) => sum + value, 0) / values.length);
+  }
+  return estimates;
+}
+
+export function scheduleLpt<T extends { fixture: { id: string } }>(
+  trials: T[],
+  laneCount: number,
+  estimates: ReadonlyMap<string, number>,
+  defaultEstimateMs = DEFAULT_TRIAL_ESTIMATE_MS,
+): ScheduledLane<T>[] {
+  const count = Math.max(1, laneCount);
+  const lanes: ScheduledLane<T>[] = Array.from({ length: count }, (_, laneIndex) => ({
+    laneIndex,
+    estimatedMs: 0,
+    trials: [],
+  }));
+
+  const weighted = trials.map((trial, index) => ({
+    trial,
+    index,
+    estimatedMs: estimates.get(trial.fixture.id) ?? defaultEstimateMs,
+  }));
+  weighted.sort((a, b) => b.estimatedMs - a.estimatedMs || a.index - b.index);
+
+  for (const item of weighted) {
+    const lane = lanes.reduce((best, candidate) =>
+      candidate.estimatedMs < best.estimatedMs ? candidate : best,
+    );
+    lane.trials.push(item.trial);
+    lane.estimatedMs += item.estimatedMs;
+  }
+
+  return lanes;
+}
+
+function createLaneWorktree(sourceRepoPath: string, lanePath: string): void {
+  fs.rmSync(lanePath, { recursive: true, force: true });
+  fs.mkdirSync(path.dirname(lanePath), { recursive: true });
+  execFileSync("git", ["worktree", "add", "--detach", lanePath, "HEAD"], {
+    cwd: sourceRepoPath,
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 60_000,
+  });
+}
+
+function removeLaneWorktree(sourceRepoPath: string, lanePath: string): void {
+  try {
+    execFileSync("git", ["worktree", "remove", "--force", lanePath], {
+      cwd: sourceRepoPath,
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 60_000,
+    });
+  } catch {
+    fs.rmSync(lanePath, { recursive: true, force: true });
+  }
+}
+
 async function main(): Promise<void> {
   const runId = new Date()
     .toISOString()
     .replace(/[-:T]/g, "")
     .replace(/\..*/, "")
     .slice(2);
+  const startedAt = new Date().toISOString();
   const runDir = path.join(REPORTS_ROOT, `${runId}-pie-replicated`);
   fs.mkdirSync(runDir, { recursive: true });
 
@@ -121,6 +233,7 @@ async function main(): Promise<void> {
   console.log(`Loaded ${benchFixtures.length} fixtures × ${REPS} reps × ${CONFIGS.length} configs`);
   console.log(`Total trials: ${benchFixtures.length * REPS * CONFIGS.length}`);
   console.log(`Seed: ${SEED}`);
+  console.log(`Lanes per repo: ${LANES_PER_REPO}`);
 
   // ---- Build trial list ----
   const trials: Trial[] = [];
@@ -146,7 +259,7 @@ async function main(): Promise<void> {
   const rng = mulberry32(SEED);
   const shuffled = shuffle(trials, rng);
 
-  // ---- Group by repo (one worker per repo, intra-repo serial) ----
+  // ---- Group by repo, then split each repo into one or more serial lanes ----
   const byRepo = new Map<string, Trial[]>();
   for (const t of shuffled) {
     const list = byRepo.get(t.repoPath) ?? [];
@@ -154,15 +267,56 @@ async function main(): Promise<void> {
     byRepo.set(t.repoPath, list);
   }
 
+  const durationEstimates = loadDurationEstimates(ESTIMATE_RESULTS);
+  if (durationEstimates.size > 0) {
+    console.log(`Loaded duration estimates for ${durationEstimates.size} fixtures from ${ESTIMATE_RESULTS}`);
+  } else {
+    console.log(`No duration estimates found at ${ESTIMATE_RESULTS}; using default trial weights`);
+  }
+
+  const worktreesRoot = path.join(BENCH_ROOT, "worktrees", `${runId}-pie-replicated`);
+  const workerLanes: WorkerLane[] = [];
+  for (const [repoPath, repoTrials] of byRepo.entries()) {
+    const repoName = path.basename(repoPath);
+    const effectiveLanes = REPO_MAVEN_GROUPID[repoName] ? 1 : LANES_PER_REPO;
+    if (effectiveLanes < LANES_PER_REPO) {
+      console.warn(`Repo ${repoName}: using 1 lane because Maven local-repo cleanup is not safe to parallelize`);
+    }
+    const scheduled = scheduleLpt(repoTrials, effectiveLanes, durationEstimates);
+    for (const lane of scheduled) {
+      const lanePath = lane.laneIndex === 0
+        ? repoPath
+        : path.join(worktreesRoot, `${repoName}-lane-${lane.laneIndex}`);
+      workerLanes.push({
+        repoName,
+        sourceRepoPath: repoPath,
+        lanePath,
+        laneIndex: lane.laneIndex,
+        estimatedMs: lane.estimatedMs,
+        trials: lane.trials,
+      });
+    }
+  }
+
   // Write metadata
   fs.writeFileSync(path.join(runDir, "metadata.json"), JSON.stringify({
     runId, seed: SEED, reps: REPS, configs: CONFIGS,
-    dshCommit: gitShortHash(), startedAt: new Date().toISOString(),
+    lanesPerRepo: LANES_PER_REPO,
+    estimateResults: fs.existsSync(ESTIMATE_RESULTS) ? ESTIMATE_RESULTS : null,
+    dshCommit: gitShortHash(), startedAt,
     fixtureCount: benchFixtures.length,
     totalTrials: trials.length,
     repoBreakdown: Object.fromEntries(
       [...byRepo.entries()].map(([p, ts]) => [path.basename(p), ts.length]),
     ),
+    lanes: workerLanes.map((lane) => ({
+      repo: lane.repoName,
+      laneIndex: lane.laneIndex,
+      trials: lane.trials.length,
+      estimatedMs: lane.estimatedMs,
+      worktree: lane.lanePath,
+      requestedLanesPerRepo: LANES_PER_REPO,
+    })),
   }, null, 2));
 
   // ---- Init DeepSeek client ----
@@ -178,14 +332,19 @@ async function main(): Promise<void> {
   const resultsPath = path.join(runDir, "results.json");
   let trialIndex = 0;
 
-  // ---- Per-repo worker (intra-repo serial) ----
-  const workers = [...byRepo.entries()].map(async ([repoPath, repoTrials]) => {
-    for (const t of repoTrials) {
+  for (const lane of workerLanes.filter((l) => l.laneIndex > 0)) {
+    createLaneWorktree(lane.sourceRepoPath, lane.lanePath);
+  }
+
+  // ---- Per-lane worker (repo lane serial; multiple lanes per repo optional) ----
+  const workers = workerLanes.map(async (lane) => {
+    for (const t of lane.trials) {
+      const repoPath = lane.lanePath;
       const myIndex = ++trialIndex;
       const startedAt = new Date().toISOString();
       const tStart = Date.now();
 
-      console.log(`\n[${myIndex}/${trials.length}] ${t.fixture.id} (rep ${t.rep + 1}/${REPS}, ${t.config}) on ${path.basename(repoPath)}`);
+      console.log(`\n[${myIndex}/${trials.length}] ${t.fixture.id} (rep ${t.rep + 1}/${REPS}, ${t.config}) on ${lane.repoName}/lane-${lane.laneIndex}`);
 
       // Hard cleanup
       const baselineRef = t.fixture.benchmarkRef?.commit ?? t.fixture.benchmarkRef?.branch ?? "HEAD";
@@ -214,7 +373,7 @@ async function main(): Promise<void> {
       // of other concurrent workers' flags.
       try {
         const result = await injectCardContext.run(injectFlag, () =>
-          runTask(t.fixture, repoPath, client, { skipBranchSetup: false })
+          runTask(t.fixture, repoPath, client, { skipBranchSetup: true })
         );
         const completedAt = new Date().toISOString();
         results.push({
@@ -238,7 +397,14 @@ async function main(): Promise<void> {
     }
   });
 
-  await Promise.all(workers);
+  try {
+    await Promise.all(workers);
+  } finally {
+    for (const lane of workerLanes.filter((l) => l.laneIndex > 0).reverse()) {
+      removeLaneWorktree(lane.sourceRepoPath, lane.lanePath);
+    }
+    fs.rmSync(worktreesRoot, { recursive: true, force: true });
+  }
 
   // Final summary
   const passOn = results.filter((r) => r.config === "card_on" && r.testsPassed).length;
@@ -252,13 +418,28 @@ async function main(): Promise<void> {
 
   fs.writeFileSync(path.join(runDir, "metadata.json"), JSON.stringify({
     runId, seed: SEED, reps: REPS, configs: CONFIGS,
+    lanesPerRepo: LANES_PER_REPO,
+    estimateResults: fs.existsSync(ESTIMATE_RESULTS) ? ESTIMATE_RESULTS : null,
     dshCommit: gitShortHash(),
-    startedAt: JSON.parse(fs.readFileSync(path.join(runDir, "metadata.json"), "utf-8")).startedAt,
+    startedAt,
     completedAt: new Date().toISOString(),
     fixtureCount: benchFixtures.length,
     totalTrials: trials.length,
+    repoBreakdown: Object.fromEntries(
+      [...byRepo.entries()].map(([p, ts]) => [path.basename(p), ts.length]),
+    ),
+    lanes: workerLanes.map((lane) => ({
+      repo: lane.repoName,
+      laneIndex: lane.laneIndex,
+      trials: lane.trials.length,
+      estimatedMs: lane.estimatedMs,
+      worktree: lane.lanePath,
+      requestedLanesPerRepo: LANES_PER_REPO,
+    })),
     summary: { card_on_pass: passOn, card_on_total: totalOn, card_off_pass: passOff, card_off_total: totalOff },
   }, null, 2));
 }
 
-await main();
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main();
+}
