@@ -186,6 +186,7 @@ export class DeepSeekClient {
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+    let bodyTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     if (signal) {
       signal.addEventListener("abort", () => controller.abort());
@@ -214,12 +215,12 @@ export class DeepSeekClient {
       // half-closed connection that undici's body reader never detects as EOF.
       const json = (await Promise.race([
         res.json(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => {
+        new Promise<never>((_, reject) => {
+          bodyTimeoutId = setTimeout(() => {
             controller.abort();
             reject(new DOMException("Body read timed out", "AbortError"));
-          }, this.timeoutMs),
-        ),
+          }, this.timeoutMs);
+        }),
       ])) as DeepSeekResponse;
       return json;
     } catch (e) {
@@ -231,6 +232,7 @@ export class DeepSeekClient {
         `Network error: ${e instanceof Error ? e.message : String(e)}`,
       );
     } finally {
+      if (bodyTimeoutId) clearTimeout(bodyTimeoutId);
       clearTimeout(timeoutId);
     }
   }

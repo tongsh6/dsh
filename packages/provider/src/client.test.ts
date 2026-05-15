@@ -202,6 +202,53 @@ describe("DeepSeekClient", () => {
       assert.equal(toolCalls![0]!.function.name, "read_file");
       assert.equal(toolCalls![0]!.function.arguments, '{"path":"src/foo.ts"}');
     });
+
+    it("clears both request and body-read timeouts after a successful response", async () => {
+      const originalSetTimeout = globalThis.setTimeout;
+      const originalClearTimeout = globalThis.clearTimeout;
+      const timeoutIds: unknown[] = [];
+      const clearedIds: unknown[] = [];
+
+      globalThis.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+        const id = originalSetTimeout(handler, timeout, ...args);
+        timeoutIds.push(id);
+        return id;
+      }) as typeof globalThis.setTimeout;
+      globalThis.clearTimeout = ((id?: number | NodeJS.Timeout) => {
+        clearedIds.push(id);
+        return originalClearTimeout(id);
+      }) as typeof globalThis.clearTimeout;
+
+      globalThis.fetch = (() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "resp-1",
+              choices: [{
+                index: 0,
+                message: { role: "assistant", content: "OK" },
+                finish_reason: "stop",
+              }],
+              usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+            }),
+            { status: 200 },
+          ),
+        )) as typeof globalThis.fetch;
+
+      try {
+        await client.chat({
+          model: "deepseek-v4-pro",
+          messages: [{ role: "user", content: "test" }],
+        });
+      } finally {
+        globalThis.setTimeout = originalSetTimeout;
+        globalThis.clearTimeout = originalClearTimeout;
+      }
+
+      assert.equal(timeoutIds.length, 2);
+      assert.equal(clearedIds.length, 2);
+      assert.deepEqual(new Set(clearedIds), new Set(timeoutIds));
+    });
   });
 
   describe("chatStream", () => {
