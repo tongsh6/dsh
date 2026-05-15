@@ -5,12 +5,12 @@ priority: p1
 type: refactor
 spec_ref: BLUEPRINT.md §2.6
 created: 2026-05-13
-updated: 2026-05-13
+updated: 2026-05-15
 ---
 
 # PIE Phase 2 + Phase 3：scanner.ts 整体退役，项目识别全面切到 Intelligence 驱动
 
-> 状态: in_review | 日期: 2026-05-13 | 作者: ai
+> 状态: in_review | 日期: 2026-05-15 | 作者: ai
 >
 > 目标: 把 `packages/repo/src/scanner.ts` 的项目识别与 verify plan 推导能力全部退役，4 处 `detectTechStack` 调用 + 1 处 `detectVerifyCommands` 调用切换到 `assembleIntelligence`；交付 `dsh doctor` + Project Card 注入 prompt + `.dsh/project.yml` 人工确认层；同步重构 `repair-loop` / `failure-detector` 中的 `ctxDirs` 字面量，让两者消费 Intelligence 的 module roots。本 spec 一次性收并 ledger §8 中四条已登记跟踪事项。
 >
@@ -328,7 +328,7 @@ function extractCompilationErrors(output: string, moduleRoots: string[]) { ... }
 
 ### 5.2 行为验收（数据驱动）
 
-- [ ] 24 fixture full benchmark 跑通；对比基线 `260508-003359` / `260513-013656`：`completed` 不退化（≥ baseline），`testsPassed` 浮动 ≤ ±2（在 24 样本统计噪声 + Project Card 引入 prompt 变化的合理范围内）
+- [ ] 24 fixture replicated benchmark 跑通；对比基线 `260508-003359` / `260513-013656`：`completed` 不退化（≥ baseline），`testsPassed` 在 N≥3 replication + hard cleanup 条件下不低于 baseline；单 fixture pass rate 用 Wilson 95% CI 判断是否显著退化，高方差 fixture（pass rate 约 25%–75%）单独标注，不按普通退化归因
 - [ ] release-hub 系列 fixture（`rh-*`）识别为 `java + maven + spring-boot`，`modules[]` 含 frontend submodule
 - [ ] `context-builder.buildRepoContext` 在 3 个代表性 fixture（typescript / python / java+vue）上的字符级 diff：除 Project Card 新章节外，原有 Tech Stack 章节零回归
 - [ ] repair-loop 在含路径前缀的 verifyOutput 上仍能正确切回相对路径（用 release-hub 路径样本做回归测试）
@@ -345,7 +345,7 @@ function extractCompilationErrors(output: string, moduleRoots: string[]) { ... }
 | 风险 | 概率 | 影响 | 缓解 |
 |---|---|---|---|
 | `toLegacyTechStack` 反推 modules/framework 与原 scanner 输出存在细微差异，引起 prompt / init 输出字符回归 | 中 | 中 | §5.2 引入"3 fixture buildRepoContext 字符级 diff（除 Project Card）零回归"硬验收；差异先核对语义再决定调整反推还是接受 |
-| Project Card 注入改变模型行为，benchmark 出现 ±2 以上波动 | 中 | 中 | §5.2 设 ±2 容忍带；若超出 → A/B 跑（注入 vs 不注入）→ 决定保留 / 调整 Project Card 文案 / 临时关闭 |
+| Project Card 注入改变模型行为，benchmark 出现随机波动 | 中 | 中 | §5.2 要求 N≥3 randomized A/B + hard cleanup；总通过数不低于 baseline 且单 fixture Wilson 95% CI 无显著退化时保留。若出现显著退化 → 调整 Project Card 文案 / 临时关闭 |
 | `.dsh/project.yml` schema 设计错误（字段过于宽松或过于严格） | 中 | 中 | 先 prototype，跑 ≥3 个 fixture 实测 `dsh doctor --write` 输出，确认人工编辑工作流自洽再固化 |
 | `pickVerifyPlan` 对解释型语言（python/typescript）capabilities=`likely` 时返回 null，导致 cli/init.ts 写出的 config.yml 缺命令 | 中 | 高 | `likely` 状态显式记录在 reason；cli/init 在缺命令时 fall back 到 `pkg.scripts.lint/test/...`（与原 detectVerifyCommands 同款 fallback 逻辑）；24 fixture 验收涵盖 typescript / python |
 | ctxDirs 重构后 `moduleRoots` 在小项目（无子模块）下为空，路径切段失败 | 低 | 中 | 兜底：moduleRoots 为空时回退到 basename（与现状一致）；测试覆盖"无 submodule 的 ts 项目" |
@@ -420,3 +420,4 @@ function extractCompilationErrors(output: string, moduleRoots: string[]) { ... }
 |------|------|------|
 | 2026-05-13 | v1.0 (draft) | 初始 spec：PIE Phase 2 Tier 1 切片（子模块 + framework Fact + scanner.detectTechStack 退役） |
 | 2026-05-13 | v1.1 (in_review) | 范围扩张：合并原 §2.2 中四条非目标（Tier 2 dsh doctor + Project Card 注入 / Tier 3 .dsh/project.yml / ctxDirs 重构 / Phase 3 detectVerifyCommands 退役）。文件名延续 v1.0 命名以保 ledger 引用稳定 |
+| 2026-05-15 | v1.2 (in_review) | 修订 §5.2 benchmark 验收：废弃 deterministic `testsPassed ±2` 阈值，改为 N≥3 replication + hard cleanup + Wilson 95% CI 退化判定；同步更新 Project Card 风险缓解 |

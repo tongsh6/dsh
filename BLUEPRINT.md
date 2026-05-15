@@ -138,6 +138,13 @@ Phase 1 (当前)              Phase 2                     Phase 3
   可跑，数据少             可对比，覆盖广                 可量化，持续监控
 ```
 
+**Phase 2.5 严肃实证方法论（2026-05-15 v1.1）**：LLM benchmark 属于随机系统评测，不能用单次运行或固定 `testsPassed ±2` 当作行为验收。任何用于证明核心能力提升、退化或 Phase 退出的 benchmark，最低标准是：
+
+1. **重复采样**：同一配置至少 N≥3 replication；如果对比两个策略，采用 randomized A/B 交错运行，避免时间、缓存和环境顺序偏差。
+2. **严格清理**：每个 trial 前执行 hard cleanup，清除工作区、`.dsh` 状态、构建产物和 fixture 残留；清理策略必须写入报告，避免 state leak 被误判为模型能力。
+3. **双层判定**：总通过数不得低于 baseline；单 fixture pass rate 用 Wilson 95% CI 判断是否出现显著退化。高方差 fixture（pass rate 约 25%–75%）单独标注，不作为普通退化直接归因。
+4. **证据归档**：报告必须记录 baseline、样本量、随机化方式、清理策略、结论和下一步。阶段性声明优先引用 `docs/reports/knowledge/` 下的归档报告，而不是单个 runlog。
+
 ### 2.6 项目识别 — 从结论型推断到证据驱动决策
 
 ```
