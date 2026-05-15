@@ -1,6 +1,6 @@
 # DSH 项目事实台账
 
-> 状态: active | 最后更新: 2026-05-15
+> 状态: active | 最后更新: 2026-05-16
 >
 > 任何新会话 AI 或新人进入项目后，**请先阅读本文件**，以便快速恢复项目状态基线。
 
@@ -74,6 +74,7 @@
 |------|---------|---------|------|
 | 536 单元测试 | `pnpm run test` | — | 全部通过（2026-05-13 本地验证；provider 23 + repo 63 + core 385 + cli 23 + eval 43） |
 | DSH vs OpenCode 对比 | Benchmark（5 fixtures, pi-proof-forge） | `docs/reports/runlogs/compare-20260502-120419/` | DSH 60% vs OC 100%，修复质量有差距 |
+| DSH vs mini-cc 对比 | 代码/架构审阅（本地 dsh + `/private/tmp/mini-cc`） | 本台账 §8 `dsh-vs-mini-cc-comparison` | mini-cc 优势在交互式 UX、多 provider、工具/MCP 扩展；dsh 优势在验证闭环、可审计状态、patch 安全、benchmark 文化 |
 | 工具系统 Benchmark（loamlog） | Benchmark（5 fixtures） | `docs/reports/runlogs/260504-140432/` | 80% 完成，0/2 修复成功，工具零调用 |
 | 24 fixture 全量 Benchmark（patch-completeness 后） | Benchmark（24 fixtures, 3 repo） | `docs/reports/knowledge/260508-24-fixture-benchmark-analysis.md` | completed 24/24 (100%)，testsPassed 11/24 (45%)；协议覆盖 6/6 达标；多语言 3/3 ≥3 通过 |
 | 并行 Benchmark（DONE 接受+补全模式+regex fix） | Benchmark（24 fixtures, parallel=3） | `docs/reports/runlogs/260509-165142/` | completed 24/24，testsPassed 11/24 (45%)，2087s（3x 加速）；pi 5/7(71%), loam 4/8(50%), rh 2/9(22%)；repair 0/12 |
@@ -120,6 +121,7 @@
 | 决策知识库 | `docs/reports/knowledge/` | Phase 退出审查、session 总结、benchmark 分析报告、对比报告（提交到 Git） |
 | Benchmark 运行产物 | `docs/reports/runlogs/260*-*/` | 机器生成的运行报告（.gitignore，本地保留不提交） |
 | 对比报告 | `docs/reports/knowledge/dsh-vs-opencode-comparison.md` | DSH vs OpenCode |
+| mini-cc 对比结论 | 本台账 §8 `dsh-vs-mini-cc-comparison` | 与 `you-want/mini-cc` 的架构/能力对比：mini-cc 更像交互式 Claude Code 教学复刻，dsh 更像 DeepSeek-native verify-first coding harness |
 | 工具系统 Spec | `docs/specs/2026-05-04-tool-system.md` | 工具系统完整设计 |
 | 工具采纳修复 Spec | `docs/specs/2026-05-04-tool-adoption-fix.md` | 本次修复设计 |
 | 核心源码 | `packages/core/src/` | pipeline, patch-parser, repair-loop, tools |
@@ -156,6 +158,9 @@
 | debt | tool-args-coerce | code:packages/core/src/pipeline.ts | tool args 写 state 前 string-coerce 临时方案 | resolved：`ToolCallRecord.arguments` 已改为 `z.record(z.unknown())`；pipeline / preflight / repair 保留原始 JSON 参数写 state，工具执行层按需转换字符串参数；已补非字符串参数回归测试 | P3 | resolved | 2026-05-15 |
 | debt | history-spec-backfill | spec:docs/specs/2026-05-05-tracked-items-governance.md | 历史 spec 未按原则 8 回填跟踪事项 | best-effort：日常审阅时遇到主要 spec 顺手补 | P3 | waiting | 2026-05-06 |
 | evidence | dsh-vs-oc-resample | report:docs/reports/knowledge/dsh-vs-opencode-comparison.md | DSH vs OpenCode 对比（13 fixture） | 对比完成：通过率持平（62%），DSH 完成率更高（100% vs 77%）| P2 | resolved | 2026-05-06 |
+| evidence | dsh-vs-mini-cc-comparison | repo:https://github.com/you-want/mini-cc | DSH vs mini-cc 架构/能力对比 | 已完成（2026-05-16）：mini-cc 是轻量交互式 coding agent / Claude Code 教学复刻，强在 Ink TUI、流式交互、Anthropic/OpenAI-compatible provider、ToolUseContext、MCP bridge 和 onboarding；dsh 是 DeepSeek-native verify-first harness，强在 Plan→Patch→Verify→Repair→Handoff、结构化 task-state、XML patch protocol、verify assertions、repair/static scan 和 benchmark evidence。结论：dsh 应借鉴 UX、provider/tool 抽象、config/health fast-path、MCP 预留；不应借鉴整文件覆盖式 FileWriteTool 或弱验证自由 agent 模式 | P2 | resolved | 2026-05-16 |
+| debt | dsh-ux-onboarding-mini-cc-lessons | report:docs/project-ledger.md | 借鉴 mini-cc 改善 dsh CLI 运行体验与 onboarding | 增加交互式 API key/config 设置、`dsh --health`/`dsh config get/set`、`dsh run` 阶段进度/patch round/verify 状态的实时输出；验收以不削弱 headless/benchmark 可审计输出为前提 | P2 | waiting | 2026-05-16 |
+| debt | dsh-tool-provider-abstraction-mini-cc-lessons | report:docs/project-ledger.md | 借鉴 mini-cc 的 provider/tool registry 抽象，但保留 dsh patch 安全边界 | 抽出稳定 `ModelProvider` 接口和工具 registry + `ToolContext`；文件修改仍必须走 dsh XML change block / patch parser，不引入模型直接整文件覆盖写入作为主路径 | P2 | waiting | 2026-05-16 |
 | deferred | patchloop-protocol-negotiation | spec:docs/specs/2026-05-05-patch-loop-architecture.md | 协议自动版本协商 | cancelled：被 P2 guard 替代 | P3 | cancelled | 2026-05-06 |
 | deferred | phase4-agent-loop | spec:docs/specs/2026-05-05-patch-loop-architecture.md | BLUEPRINT Phase 4 Agent Loop | Phase 2 退出 + Phase 3 退出后启动 | P3 | waiting | 2026-05-06 |
 | evidence | patchloop-vs-batch-baseline | spec:docs/specs/2026-05-05-patch-loop-architecture.md | v0.4 vs v0.3 对比基线（≥3 fixtures × 3 次） | 数据已收集但未做正式对比报告 | P1 | waiting | 2026-05-06 |
