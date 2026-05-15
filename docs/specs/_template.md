@@ -58,6 +58,17 @@
 
 - [ ] ...
 
+### 5.4 Canonical wiring 验收（替代旧模块 / 旧 API 时必填）
+
+> 仅当本 spec 引入 successor / canonical 模块、入口、协议或 API 来替代 legacy 实现时启用；不适用时写"不适用：本 spec 不替代既有入口"。
+
+- [ ] canonical 入口已命名：`<new module / API / command>`
+- [ ] legacy 入口已命名：`<old module / API / command>`
+- [ ] 生产调用点迁移率 = 100%；证据命令：`rg '<legacy symbol>' <prod paths>` 返回 0 处生产调用（测试 / 文档 / git 历史残留需说明）
+- [ ] legacy API 已物理删除；如保留兼容层，已在 §9 登记 `deferred` / `debt` 并写明退出条件
+- [ ] 顶层 export / CLI / runtime wiring 指向 canonical 入口
+- [ ] 相关测试覆盖 canonical 入口，而不是只覆盖 legacy wrapper
+
 ## 6. 风险与缓解
 
 | 风险 | 概率 | 影响 | 缓解 |

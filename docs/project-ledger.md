@@ -1,6 +1,6 @@
 # DSH 项目事实台账
 
-> 状态: active | 最后更新: 2026-05-14
+> 状态: active | 最后更新: 2026-05-15
 >
 > 任何新会话 AI 或新人进入项目后，**请先阅读本文件**，以便快速恢复项目状态基线。
 
@@ -193,7 +193,7 @@
 | deferred | pie-phase2-tier2-doctor-card | spec:docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md | PIE Phase 2 Tier 2：`dsh doctor` 命令 + `toProjectCard` 注入 LLM prompt | superseded by 本 spec v1.1（§3.6 覆盖：dsh doctor 命令 + context-builder 注入 Project Card） | P2 | cancelled | 2026-05-13 |
 | deferred | pie-phase2-tier3-project-yml | spec:docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md | PIE Phase 2 Tier 3：`.dsh/project.yml` 人工确认层 | superseded by 本 spec v1.1（§3.7 覆盖：ProjectYml zod schema + assembleIntelligence override 集成） | P3 | cancelled | 2026-05-13 |
 | debt | runtime-path-resolution-ctxdirs | spec:docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md | `repair-loop.ts:211` + `failure-detector.ts:559` 的 `["/backend/", "/frontend/", "/src/", ...]` ctxDirs 字面量：路径归一化时缺 project layout source of truth，被迫硬编码 | superseded by 本 spec v1.1（§3.8 覆盖：两函数接收 moduleRoots 参数，由 ProjectIntelligence 投影传入；字面量删除） | P2 | cancelled | 2026-05-13 |
-| debt | canonical-module-wiring-rule | spec:docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md | spec 模板 / CONSTITUTION 原则 5 展开：新模块取代旧模块时，Phase 完成验收必须含「调用方迁移率 = 100% AND 旧 API 物理删除」硬条目 | 起因：`project-intelligence-phase1` 标 resolved 时遗漏 wiring（4 个生产调用点仍走 detectTechStack），导致本 spec 出现。本条解决"未来再次发生"的元层风险 | P2 | waiting | 2026-05-13 |
+| debt | canonical-module-wiring-rule | spec:docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md | spec 模板 / CONSTITUTION 原则 5 展开：新模块取代旧模块时，Phase 完成验收必须含「调用方迁移率 = 100% AND 旧 API 物理删除」硬条目 | resolved：`CONSTITUTION.md` v1.2 原则 5 已加入 canonical wiring 规则；`docs/specs/_template.md` §5.4 已加入可复制验收清单，要求生产调用点 100% 迁移、legacy API 删除或登记退出条件、顶层 wiring 指向 canonical 入口 | P2 | resolved | 2026-05-15 |
 | evidence | pie-phase2-tier1-baseline-comparison | spec:docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md | 本 spec Step 6 完成时收集：24 fixture full benchmark vs 基线 260508-003359 / 260513-013656；context-builder.buildRepoContext 在 ≥3 fixture（TS/Python/Java+Vue）的字符级 diff 为空 | superseded by pie-phase2-3-baseline-comparison（id 反映 v1.1 扩张后的范围） | P1 | cancelled | 2026-05-13 |
 | evidence | pie-phase2-3-baseline-comparison | spec:docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md | 本 spec Step 12 完成时收集：24 fixture full benchmark vs 基线 260508-003359 / 260513-013656；context-builder.buildRepoContext 在 3 个代表性 fixture（TS/Python/Java+Vue）的字符级 diff 除 Project Card 新章节外零回归 | ✅ 已完成 (2026-05-14): N=3 randomized A/B with hard cleanup (260514020257-pie-replicated)；144 trials；Card on 60/72 (83.3%) > Card off 53/72 (73.6%)；累积 +37.5pp vs baseline 11/24 (45.8%)；归因分解 PIE+并发 +21pp, hard cleanup +12pp, Card 注入 +5pp。完整报告 docs/reports/knowledge/20260514-pie-phase2-3-baseline.md | P1 | resolved | 2026-05-14 |
 | debt | benchmark-spec-threshold-revision | spec:docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md | spec §5.2 "testsPassed ±2 阈值"假设 deterministic + 行为零漂移，对 stochastic LLM benchmark 不适用。实测 +9~+18 改善方向超出阈值，但都朝好的方向。建议 v0.7 修订为 "N≥3 hard cleanup; Wilson 95% CI 不退化 ≥ 2σ; 高方差 fixture 单独标注" | spec 修订 PR；本期 PIE Phase E 完成 | P1 | waiting | 2026-05-14 |
