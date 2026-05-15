@@ -1184,6 +1184,38 @@ describe("applySearchReplace", () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it("rejects replacing a tiny anchor with a full file-sized block", () => {
+    const tmp = fs.mkdtempSync("dsh-sr-test-");
+    try {
+      fs.mkdirSync(`${tmp}/src`, { recursive: true });
+      fs.writeFileSync(`${tmp}/src/App.java`, "package src;\n\nclass App {}\n", "utf-8");
+
+      const oversizedReplace = [
+        "package src;",
+        "",
+        "public class App {",
+        ...Array.from({ length: 30 }, (_, i) => `  void method${i}() {}`),
+        "}",
+      ].join("\n");
+
+      const result = applySearchReplace(
+        tmp,
+        [{
+          filePath: "src/App.java",
+          search: "package src;",
+          replace: oversizedReplace,
+        }],
+        false,
+      );
+
+      assert.ok(!result.success);
+      assert.ok(result.error?.includes("search block is too small"));
+      assert.equal(fs.readFileSync(`${tmp}/src/App.java`, "utf-8"), "package src;\n\nclass App {}\n");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("parseChanges with Search/Replace", () => {

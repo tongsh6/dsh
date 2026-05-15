@@ -513,6 +513,20 @@ export function applySearchReplace(
       };
     }
 
+    const searchLines = block.search.split("\n").filter((l) => l.trim().length > 0);
+    const replaceLines = block.replace.split("\n").filter((l) => l.trim().length > 0);
+    if (
+      searchLines.length <= 2 &&
+      replaceLines.length >= 20 &&
+      block.replace.length > Math.max(block.search.length * 20, 500)
+    ) {
+      return {
+        success: false,
+        files: changedFiles,
+        error: `SEARCH/REPLACE rejected for ${block.filePath}: search block is too small for a large replacement. Use <INSERT> or a wider exact <SEARCH> block.`,
+      };
+    }
+
     let content: string;
     try {
       content = fs.readFileSync(absPath, "utf-8");
