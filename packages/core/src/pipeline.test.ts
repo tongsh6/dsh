@@ -878,7 +878,7 @@ describe("runPreflight", () => {
     }
   });
 
-  it("normalizes preflight tool arguments so persisted state can be read back", async () => {
+  it("preserves non-string preflight tool arguments so persisted state can be read back", async () => {
     const tmp = await setupTempDir("planned");
     try {
       let callIndex = 0;
@@ -933,7 +933,7 @@ describe("runPreflight", () => {
 
       assert.equal(state.status, "preflighted");
       assert.ok(persisted, "persisted task-state should parse after preflight tool calls");
-      assert.equal(persisted!.tool_rounds[0]!.calls[0]!.arguments.limit, "5");
+      assert.equal(persisted!.tool_rounds[0]!.calls[0]!.arguments.limit, 5);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

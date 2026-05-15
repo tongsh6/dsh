@@ -15,7 +15,7 @@ const verifyResultSchema = z.object({
 
 const toolCallRecordSchema = z.object({
   name: z.string(),
-  arguments: z.record(z.string()),
+  arguments: z.record(z.unknown()),
   status: z.enum(["success", "error"]),
   summary: z.string(),
 });

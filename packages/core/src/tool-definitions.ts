@@ -3,7 +3,7 @@ export type ToolName = "read_file" | "grep_files" | "exec_shell";
 export interface ToolCall {
   id: string;
   name: ToolName;
-  arguments: Record<string, string>;
+  arguments: Record<string, unknown>;
 }
 
 export interface ToolResult {

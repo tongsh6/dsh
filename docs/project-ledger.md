@@ -153,7 +153,7 @@
 | deferred | patch-loop-stash-rollback | spec:docs/specs/2026-05-05-patch-loop-architecture.md | 事务 rollback / stash-apply（v0.5 优化） | v0.4 patch loop 上线后出现「应用后行号错位」实证 | P3 | waiting | 2026-05-06 |
 | bug | exec-shell-redirect | report:docs/reports/runlogs/260504-185028 | exec_shell 把 `2>&1` 误判为危险 | 修 EXEC_SHELL_BLOCK_PATTERNS：`/>/` 改为 `/{1,2}\s*[^\s&]/` | P3 | resolved | 2026-05-05 |
 | bug | multi-file-patch-output-incomplete | report:docs/reports/runlogs/260504-183633 | patch 阶段多文件任务输出不完整 | P1+P2 部分解决（rounds -23%），但多文件输出仍不稳定 | P1 | waiting | 2026-05-06 |
-| debt | tool-args-coerce | code:packages/core/src/pipeline.ts | tool args 写 state 前 string-coerce 临时方案 | patch/preflight 已统一 normalize，避免 state parse 失败；长期仍可改 schema 为 z.record(z.unknown()) + 全链路 unknown | P3 | waiting | 2026-05-12 |
+| debt | tool-args-coerce | code:packages/core/src/pipeline.ts | tool args 写 state 前 string-coerce 临时方案 | resolved：`ToolCallRecord.arguments` 已改为 `z.record(z.unknown())`；pipeline / preflight / repair 保留原始 JSON 参数写 state，工具执行层按需转换字符串参数；已补非字符串参数回归测试 | P3 | resolved | 2026-05-15 |
 | debt | history-spec-backfill | spec:docs/specs/2026-05-05-tracked-items-governance.md | 历史 spec 未按原则 8 回填跟踪事项 | best-effort：日常审阅时遇到主要 spec 顺手补 | P3 | waiting | 2026-05-06 |
 | evidence | dsh-vs-oc-resample | report:docs/reports/knowledge/dsh-vs-opencode-comparison.md | DSH vs OpenCode 对比（13 fixture） | 对比完成：通过率持平（62%），DSH 完成率更高（100% vs 77%）| P2 | resolved | 2026-05-06 |
 | deferred | patchloop-protocol-negotiation | spec:docs/specs/2026-05-05-patch-loop-architecture.md | 协议自动版本协商 | cancelled：被 P2 guard 替代 | P3 | cancelled | 2026-05-06 |

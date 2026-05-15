@@ -52,7 +52,7 @@ import {
   cleanupFileCheckpoints,
 } from "@dsh/repo";
 import { ALL_TOOL_DEFINITIONS } from "./tool-definitions.js";
-import { executeTool, formatToolResult } from "./tool-executor.js";
+import { executeTool, formatToolResult, normalizeToolArguments } from "./tool-executor.js";
 import type { ToolName } from "./tool-definitions.js";
 
 // ---- Helpers ----
@@ -253,14 +253,6 @@ function applySingleChange(
     default:
       return { ok: false, files_changed: [], error: `unknown op: ${change.op}` };
   }
-}
-
-function normalizeToolArguments(raw: Record<string, unknown>): Record<string, string> {
-  const args: Record<string, string> = {};
-  for (const [key, value] of Object.entries(raw)) {
-    args[key] = typeof value === "string" ? value : JSON.stringify(value);
-  }
-  return args;
 }
 
 // ---- Types ----
@@ -591,8 +583,8 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
         messages.push(assistantMsg);
 
         for (const tc of toolCalls ?? []) {
-          let rawArgs: Record<string, unknown> = {};
-          try { rawArgs = JSON.parse(tc.function.arguments) as Record<string, unknown>; } catch { /* keep empty */ }
+          let rawArgs: unknown = {};
+          try { rawArgs = JSON.parse(tc.function.arguments); } catch { /* keep empty */ }
           const args = normalizeToolArguments(rawArgs);
           const result = executeTool(tc.function.name as ToolName, args, cwd, tc.id);
           console.log(`[pipeline] Tool: ${tc.function.name} args: ${JSON.stringify(args)} status: ${result.status}`);
@@ -1005,8 +997,8 @@ export async function runPreflight(params: PreflightParams): Promise<TaskState> 
 
     if (toolCalls && toolCalls.length > 0) {
       for (const tc of toolCalls) {
-        let rawArgs: Record<string, unknown> = {};
-        try { rawArgs = JSON.parse(tc.function.arguments) as Record<string, unknown>; } catch { /* keep empty */ }
+        let rawArgs: unknown = {};
+        try { rawArgs = JSON.parse(tc.function.arguments); } catch { /* keep empty */ }
         const args = normalizeToolArguments(rawArgs);
         const result = executeTool(tc.function.name as ToolName, args, cwd, tc.id);
         const formatted = formatToolResult(tc.function.name as ToolName, args, result);

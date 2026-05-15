@@ -18,7 +18,7 @@ import {
   formatCallSiteContext,
 } from "./failure-detector.js";
 import { ALL_TOOL_DEFINITIONS } from "./tool-definitions.js";
-import { executeTool, formatToolResult } from "./tool-executor.js";
+import { executeTool, formatToolResult, normalizeToolArguments } from "./tool-executor.js";
 import type { ToolName } from "./tool-definitions.js";
 import { isGitRepo, createCheckpoint, applyRollback, assembleIntelligence, moduleRoots } from "@dsh/repo";
 
@@ -509,12 +509,9 @@ export async function runRepairLoop(
         
         const callRecords: import("./task-state.js").ToolCallRecord[] = [];
         for (const tc of toolCalls) {
-          let rawArgs: Record<string, unknown> = {};
-          try { rawArgs = JSON.parse(tc.function.arguments) as Record<string, unknown>; } catch { /* keep empty */ }
-          const args: Record<string, string> = {};
-          for (const [k, v] of Object.entries(rawArgs)) {
-            args[k] = typeof v === "string" ? v : JSON.stringify(v);
-          }
+          let rawArgs: unknown = {};
+          try { rawArgs = JSON.parse(tc.function.arguments); } catch { /* keep empty */ }
+          const args = normalizeToolArguments(rawArgs);
           const result = executeTool(tc.function.name as ToolName, args, config.cwd, tc.id);
           const formatted = formatToolResult(tc.function.name as ToolName, args, result);
           messages.push({ role: "tool", content: formatted, tool_call_id: tc.id });

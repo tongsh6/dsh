@@ -14,6 +14,27 @@ const PROTOCOL_BLOCK_NAMES = new Set(["CREATE", "PATCH", "INSERT", "DELETE", "RE
 
 const SKIP_DIRS = /\/node_modules\/|\/\.git\/|\/dist\/|\/\.dsh\/|\/__pycache__\/|\/\.next\/|\/build\/|\/coverage\//i;
 
+export type ToolArguments = Record<string, unknown>;
+
+export function normalizeToolArguments(raw: unknown): ToolArguments {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return { ...(raw as Record<string, unknown>) };
+}
+
+function stringArg(args: ToolArguments, key: string): string | undefined {
+  const value = args[key];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
+}
+
+function formatArgValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === undefined) return "undefined";
+  return JSON.stringify(value);
+}
+
 function isSafePath(filePath: string): boolean {
   if (path.isAbsolute(filePath)) return false;
   if (filePath.includes("..")) return false;
@@ -252,17 +273,17 @@ function execShellImpl(command: string, cwd: string): ToolResult {
 
 export function executeTool(
   name: string,
-  args: Record<string, string>,
+  args: ToolArguments,
   cwd: string,
   callId: string = "test-call-id",
 ): ToolResult {
   switch (name) {
     case "read_file": {
-      const filePath = args["path"];
+      const filePath = stringArg(args, "path");
       if (!filePath) {
         return { callId, status: "error", content: "", error: "缺少必填参数 path" };
       }
-      const content = readFileImpl(filePath, cwd, args["offset"], args["limit"]);
+      const content = readFileImpl(filePath, cwd, stringArg(args, "offset"), stringArg(args, "limit"));
       const isError = content.startsWith("错误:");
       return {
         callId,
@@ -273,11 +294,11 @@ export function executeTool(
     }
 
     case "grep_files": {
-      const pattern = args["pattern"];
+      const pattern = stringArg(args, "pattern");
       if (!pattern) {
         return { callId, status: "error", content: "", error: "缺少必填参数 pattern" };
       }
-      const content = grepFilesImpl(pattern, args["include"], cwd);
+      const content = grepFilesImpl(pattern, stringArg(args, "include"), cwd);
       const isError = content.startsWith("错误:");
       return {
         callId,
@@ -288,7 +309,7 @@ export function executeTool(
     }
 
     case "exec_shell": {
-      const command = args["command"];
+      const command = stringArg(args, "command");
       if (!command) {
         return { callId, status: "error", content: "", error: "缺少必填参数 command" };
       }
@@ -322,11 +343,11 @@ export function executeTool(
 
 export function formatToolResult(
   name: string,
-  args: Record<string, string>,
+  args: ToolArguments,
   result: ToolResult,
 ): string {
   const argStr = Object.entries(args)
-    .map(([k, v]) => `${k}="${v}"`)
+    .map(([k, v]) => `${k}="${formatArgValue(v)}"`)
     .join(", ");
   const header = `## 工具调用结果: ${name}(${argStr})`;
   if (result.status === "error") {

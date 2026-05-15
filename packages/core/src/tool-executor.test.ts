@@ -151,6 +151,19 @@ describe("executeTool with read_file", () => {
     assert.ok(!result.content.includes("four"));
   });
 
+  it("accepts numeric line range arguments", () => {
+    const filePath = "range-numeric.txt";
+    fs.writeFileSync(path.join(tmpDir, filePath), "one\ntwo\nthree\nfour", "utf-8");
+
+    const result = executeTool("read_file", { path: filePath, offset: 2, limit: 2 }, tmpDir);
+
+    assert.equal(result.status, "success");
+    assert.ok(result.content.includes("lines 2-3 of 4"));
+    assert.ok(result.content.includes("two\nthree"));
+    assert.ok(!result.content.includes("one\n"));
+    assert.ok(!result.content.includes("four"));
+  });
+
   it("reads from offset to end when limit is omitted", () => {
     const filePath = "range-to-end.txt";
     fs.writeFileSync(path.join(tmpDir, filePath), "one\ntwo\nthree", "utf-8");
@@ -379,9 +392,10 @@ describe("executeTool with unknown tool", () => {
 describe("formatToolResult", () => {
   it("formats success result with tool name and args", () => {
     const result = { callId: "1", status: "success" as const, content: "file content here" };
-    const formatted = formatToolResult("read_file", { path: "src/foo.ts" }, result);
+    const formatted = formatToolResult("read_file", { path: "src/foo.ts", limit: 5 }, result);
 
-    assert.ok(formatted.includes('read_file(path="src/foo.ts")'));
+    assert.ok(formatted.includes('path="src/foo.ts"'));
+    assert.ok(formatted.includes('limit="5"'));
     assert.ok(formatted.includes("file content here"));
   });
 

@@ -182,7 +182,7 @@ describe("taskStateSchema", () => {
           action: "tools",
           tool_calls: [{
             name: "read_file",
-            arguments: { file: "src/foo.ts" },
+            arguments: { file: "src/foo.ts", limit: 5, nested: { raw: true } },
             status: "success",
             summary: "read src/foo.ts",
           }],
