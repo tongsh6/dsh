@@ -19,7 +19,7 @@
 | fixture | repo | 当前结果 | 失败类型 | 根因 | 修复策略 | 预计收益 | 修复后结果 |
 |---|---|---|---|---|---|---|---|
 | `pi-bugfix-count-defs` | `pi-proof-forge` | on 0/3, off 0/3 | `semantic_incorrect` | fixture 原提示要求 `^def` 第 0 列匹配，但真实 expected definitions 中 `post_json` / `extract_content` 是类方法，前面有缩进；模型按提示实现会漏计 | 已把 fixture source-context hint 改为 `^\s*` 可缩进匹配，并说明类方法边界 | +1 fixture | ✅ single smoke PASS `docs/reports/runlogs/260515-015045` |
-| `rh-refactor-branch-orchestrator` | `release-hub` | on 0/3, off 0/3 | `patch_apply_failure` | single smoke `260515-015346` 仍 PARTIAL：30 patch rounds 全是 tool calls、0 change；模型还多次向 `read_file` 传 `offset/limit`，旧工具忽略该参数导致整文件重复读和上下文膨胀 | 已补 protocol-tool misuse guidance、初始调研过长后暂停工具、暂停后拒绝 tool_calls、`read_file(offset, limit)`；仍需重跑或拆 fixture | +1 fixture | partial mitigation；single smoke 仍 PARTIAL `docs/reports/runlogs/260515-015346` |
+| `rh-refactor-branch-orchestrator` | `release-hub` | on 0/3, off 0/3 | `patch_apply_failure` | 原 monolith clean rerun `260515-024737` 仍 PARTIAL：30 rounds / 0 changes；确认不是旧 verify config 污染。大任务同时要求新增 orchestrator、改 3 个服务、补测试，超过当前 patch-loop 稳定粒度。`service-attach` 首轮失败由短 SEARCH 锚点替换整份 Java 文件导致，已加 SEARCH/REPLACE 膨胀保护与 fixture 约束 | 已删除 monolith，拆为 create / tests / service-code-merge / service-release-branch / service-attach；runner 已改为每 fixture 清空 worktree `.dsh` 防 stale assertions | +4 小 fixture，替代原 hard-fail | ✅ create PASS (`260515-025747`), tests PASS (`260515-025747`), release PASS (`260515-031851`), code-merge PASS (`260515-035901`), attach PASS (`260515-044458`, repairSuccess 1/1) |
 | `rh-test-dashboard-version` | `release-hub` | on 0/3, off 0/3 | `wrong_verification_command` | 文件创建断言通过，但 Maven 命令 `cd backend && mvn test -pl releasehub-application -am -Dtest="DashboardAppServiceTest,VersionUpdateAppServiceTest" -q -DfailIfNoTests=true` 失败，确认是 `-am` 触发上游模块 no-tests 误伤 | 已改为结构化 `maven_test`，保留 `-am` 但移除 `-DfailIfNoTests=true`，使用 `-Dsurefire.failIfNoSpecifiedTests=false` | +1 fixture | ✅ single smoke PASS `docs/reports/runlogs/260515-013524` |
 | `loam-refactor-rename-distill-state` | `loamlog` | on 1/3, off 0/3 | `patch_apply_failure` | 高方差，常见 empty / failed patch 或 rename 任务补丁不稳定 | 分析失败 patch turn；只在模式稳定时补 rename-specific guard | 稳定性 +1 | pending |
 | `loam-bugfix-cli-error-handling` | `loamlog` | on 2/3, off 2/3 | `semantic_incorrect` | 高方差，部分语义修复后 verify 仍失败 | 复盘共同 verify output；只有重复模式明确才加 detector 或 hint | 稳定性 | pending |
@@ -41,7 +41,7 @@
 |---|---|---|
 | Phase 3 起点 | `11/24 = 45%` | not rerun in this task |
 | 最新 replicated Project Card on | `60/72 = 83.3%`，约等价 `20/24` | not rerun in this task |
-| hard-fail fixture | 3 个：`pi-bugfix-count-defs`、`rh-refactor-branch-orchestrator`、`rh-test-dashboard-version` | pending targeted rerun |
+| hard-fail fixture | 原 3 个中 `pi-bugfix-count-defs` / `rh-test-dashboard-version` 已 single PASS；`rh-refactor-branch-orchestrator` monolith 已拆解，5 个小 fixture 已全部 single PASS | 下次 N=3/全量复审确认稳定性，不恢复 monolith |
 
 本报告仅建立 failure matrix；未修改 benchmark fixture 或 repair-loop 行为，因此没有触发新的 benchmark 结果声明。
 
