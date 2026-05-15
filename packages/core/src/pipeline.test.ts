@@ -440,12 +440,20 @@ describe("runPatch", () => {
       chatStream: async function* () { yield undefined as any; },
     } as unknown as DeepSeekClient;
 
-    const state = await runPatch({ cwd: tmp, client, auto: true });
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = ((...args: unknown[]) => { logs.push(args.map(String).join(" ")); }) as typeof console.log;
+    try {
+      const state = await runPatch({ cwd: tmp, client, auto: true });
 
-    assert.equal(state.status, "patched");
-    assert.ok(callIndex >= 2, `should have made >= 2 API calls (tool + patch), got ${callIndex}`);
-    assert.equal(state.patches.length, 1);
-    assert.ok(state.patch_rounds.length >= 3, `should have >= 3 rounds, got ${state.patch_rounds.length}`);
+      assert.equal(state.status, "patched");
+      assert.ok(callIndex >= 2, `should have made >= 2 API calls (tool + patch), got ${callIndex}`);
+      assert.equal(state.patches.length, 1);
+      assert.ok(state.patch_rounds.length >= 3, `should have >= 3 rounds, got ${state.patch_rounds.length}`);
+      assert.deepEqual(logs, []);
+    } finally {
+      console.log = origLog;
+    }
   });
 
   // ---- v0.4 patch loop behavioral tests ----

@@ -587,7 +587,6 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
           try { rawArgs = JSON.parse(tc.function.arguments); } catch { /* keep empty */ }
           const args = normalizeToolArguments(rawArgs);
           const result = executeTool(tc.function.name as ToolName, args, cwd, tc.id);
-          console.log(`[pipeline] Tool: ${tc.function.name} args: ${JSON.stringify(args)} status: ${result.status}`);
           const formatted = formatToolResult(tc.function.name as ToolName, args, result);
           messages.push({ role: "tool", content: formatted, tool_call_id: tc.id });
           callRecords.push({

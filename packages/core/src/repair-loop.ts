@@ -627,7 +627,6 @@ export async function runRepairLoop(
 
           if (hasRegression || isStagnant) {
             const reason = hasRegression ? "regression" : "stagnation";
-            console.log(`[repair-loop] ${reason} detected. Rolling back.`);
             applyRollback(config.cwd);
             rolledBack = true;
             const last = current.patches.at(-1);

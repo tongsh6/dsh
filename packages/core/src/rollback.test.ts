@@ -8,6 +8,7 @@ import * as yaml from "js-yaml";
 import { runPatch, runRepair } from "./pipeline.js";
 import type { DeepSeekClient } from "@dsh/provider";
 import { writeTaskState, createTaskState } from "./task-state.js";
+import type { TaskState } from "./task-state.js";
 
 function mockClientSequence(responseContents: string[]): DeepSeekClient {
   let index = 0;
@@ -173,10 +174,20 @@ Fix it properly
       fs.writeFileSync(path.join(tmp, "test_dummy.py"), "import dummy\n", "utf-8");
       execSync("git add test_dummy.py && git commit -m 'update test'", { cwd: tmp });
 
-      const finalState = await runRepair({ cwd: tmp, client, maxRounds: 2 });
+      const logs: string[] = [];
+      const origLog = console.log;
+      console.log = ((...args: unknown[]) => { logs.push(args.map(String).join(" ")); }) as typeof console.log;
+      let finalState: TaskState | undefined;
+      try {
+        finalState = await runRepair({ cwd: tmp, client, maxRounds: 2 });
+      } finally {
+        console.log = origLog;
+      }
 
+      assert.ok(finalState);
       assert.equal(finalState.status, "verified");
       assert.equal(finalState.patches.length, 3); // Initial + Regression (rolled back) + Fix
+      assert.deepEqual(logs, []);
       
       const regressionPatch = finalState.patches[1]!;
       assert.equal(regressionPatch.rolled_back, true);

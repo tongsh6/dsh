@@ -646,12 +646,10 @@ export function applySearchReplace(
     }
 
     if (newContent === null) {
-      const debugInfo = `SEARCH length=${block.search.length}, file=${block.filePath} size=${content.length}, search preview="${block.search.slice(0, 120).replace(/\n/g, '\\n')}"`;
-      console.error("[DEBUG] Search block not found:", debugInfo);
       return {
         success: false,
         files: changedFiles,
-        error: `Search block not found in ${block.filePath}`,
+        error: `Search block not found in ${block.filePath} (search length=${block.search.length}, file size=${content.length}, search preview="${block.search.slice(0, 120).replace(/\n/g, "\\n")}")`,
       };
     }
 

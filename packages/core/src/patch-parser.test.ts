@@ -1173,6 +1173,9 @@ describe("applySearchReplace", () => {
 
   it("returns error when search not found in file", () => {
     const tmp = fs.mkdtempSync("dsh-sr-test-");
+    const errors: string[] = [];
+    const origError = console.error;
+    console.error = ((...args: unknown[]) => { errors.push(args.map(String).join(" ")); }) as typeof console.error;
     try {
       fs.mkdirSync(`${tmp}/src`, { recursive: true });
       fs.writeFileSync(`${tmp}/src/utils.ts`, "completely different content\n", "utf-8");
@@ -1180,7 +1183,10 @@ describe("applySearchReplace", () => {
       const result = applySearchReplace(tmp, blocks, false);
       assert.ok(!result.success);
       assert.ok(result.error?.includes("Search block not found"));
+      assert.ok(result.error?.includes("search preview="));
+      assert.deepEqual(errors, []);
     } finally {
+      console.error = origError;
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
