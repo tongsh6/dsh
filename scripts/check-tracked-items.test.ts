@@ -82,6 +82,17 @@ describe("checkTrackedItems", () => {
     );
   });
 
+  it("skip source path existence check for resolved and cancelled ledger rows", () => {
+    const root = setupFixture({
+      "docs/project-ledger.md": `${LEDGER_HEADER}
+| debt | resolved-old-code | code:packages/repo/src/removed-file.ts:12 | Old code debt | resolved by refactor | P3 | resolved | 2026-05-05 |
+| deferred | cancelled-old-spec | spec:docs/specs/2026-05-05-removed.md | Old spec item | superseded by new spec | P3 | cancelled | 2026-05-05 |
+`,
+    });
+    const r = checkTrackedItems({ rootDir: root, now: new Date("2026-05-05") });
+    assert.equal(r.errors.length, 0, `expected no errors; got: ${JSON.stringify(r.errors)}`);
+  });
+
   it("error: ledger column count wrong (7 instead of 8)", () => {
     const root = setupFixture({
       "docs/project-ledger.md": `# Test

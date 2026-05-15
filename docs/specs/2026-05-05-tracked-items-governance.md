@@ -1,6 +1,6 @@
 # 长期跟踪事项治理（Tracked-Items Governance）
 
-> 状态: draft | 日期: 2026-05-05 | 作者: loong
+> 状态: draft | 日期: 2026-05-15 | 作者: loong
 >
 > 目标: 建立项目级「长期跟踪事项」治理机制，覆盖 4 类易遗忘信息（延后事项 / 已知 bug / 技术债 / 待跟进证据），三层防漂移（宪法 / 台账 / CI），让"以后再做"不再依赖记忆。
 
@@ -75,6 +75,14 @@ DSH 当前已有：
 | `status` | `waiting` \| `ready` \| `in_progress` \| `resolved` \| `cancelled` | 跟踪事项的生命周期 |
 | `last_reviewed` | YYYY-MM-DD | 上次复审日期 |
 | `notes` | string (optional) | 备注 / 关联引用 |
+
+#### 3.1.1 source 字段语义
+
+`source` 是跟踪事项的来源证据指针，不是永久强引用。
+
+- `waiting` / `ready` / `in_progress`：`source` 指向的 spec、report 或 code path 必须存在，CI 将校验路径存在，避免 active tracking 漂移。
+- `resolved` / `cancelled`：`source` 转为历史指针。原始文件可以在重构、退役或归档清理中被删除；CI 不再校验路径存在，但仍校验字段格式、枚举和表格结构。
+- 若 active 条目的原始 source 被 superseded，应先把条目更新为 `cancelled` 并在 `trigger` 或 `notes` 中说明替代条目，再删除或迁移原文件。
 
 ### 3.2 trigger 字段的语义（按 type 区分）
 
@@ -175,7 +183,7 @@ CI 集成：在 `.github/workflows/scan.yml` 加一步 `pnpm exec tsx scripts/ch
 | 错误 | 退出码 | 说明 |
 |------|--------|------|
 | spec 中条目未在 ledger 登记 | 1 | 强制登记 |
-| ledger 条目的 source 路径不存在 | 1 | 防漂移 |
+| ledger 条目的 source 路径不存在 | 1 | 防漂移；仅适用于 status 非 `resolved` / `cancelled` 的 active 条目 |
 | ledger 条目 status=waiting 且 last_reviewed 超过 90 天 | 0（仅 warn） | 软提醒 |
 | 表格列数不对 / 字段空缺 | 1 | 格式校验 |
 
@@ -294,3 +302,4 @@ G3+G4 可与 patch-loop 实施并行（不阻塞）。
 | 日期 | 版本 | 变更 |
 |------|------|------|
 | 2026-05-05 | v1.0 (draft) | 初始 spec：4 类跟踪事项的统一治理机制，含 CONSTITUTION 原则 8、ledger §8、BLUEPRINT 退出 checkbox、CI 脚本 |
+| 2026-05-15 | v1.1 (draft) | 明确 `source` 字段语义：active 条目必须保持路径存在；`resolved` / `cancelled` 条目的 source 是历史指针，CI 不再校验路径存在 |
