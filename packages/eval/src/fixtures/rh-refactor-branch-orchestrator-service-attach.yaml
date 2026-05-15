@@ -1,0 +1,57 @@
+id: rh-refactor-branch-orchestrator-service-attach
+description: 使用 BranchOperationOrchestrator 重构 AttachAppService
+category: refactor
+taskPrompt: |
+  请只重构 AttachAppService 中的 Git 分支操作逻辑，不要修改其他服务。
+
+  实现要求：
+  - 新增 io.releasehub.application.release.BranchOperationOrchestrator
+  - 编排器封装分支存在性检查、创建分支、mergeBranch 调用和日志
+  - AttachAppService 注入并使用 BranchOperationOrchestrator
+  - 只能对 BranchOperationOrchestrator.java 使用 CREATE；AttachAppService.java 与 AttachAppServiceTest.java 已存在，必须用 PATCH 或 SEARCH/REPLACE 做局部修改
+  - 禁止用 `package io.releasehub...`、单个 import 行或其他很短锚点替换成整份 Java 文件内容
+  - 保持 attach、createReleaseBranchForIteration、mergeFeatureToRelease、detach 等 public 方法签名不变
+  - 保持现有错误处理语义和返回类型不变
+  - 同步更新现有 AttachAppServiceTest 以适配构造器注入变化；不要新增测试文件
+
+  相关文件：
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java（新建）
+  - backend/releasehub-application/src/main/java/io/releasehub/application/window/AttachAppService.java
+expectedFiles:
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java
+  - backend/releasehub-application/src/main/java/io/releasehub/application/window/AttachAppService.java
+  - backend/releasehub-application/src/test/java/io/releasehub/application/window/AttachAppServiceTest.java
+expectPass: true
+verifications:
+  - type: file_exists
+    file: backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java
+    name: orchestrator_file_exists
+  - type: file_contains
+    file: backend/releasehub-application/src/main/java/io/releasehub/application/window/AttachAppService.java
+    pattern: BranchOperationOrchestrator
+    name: attach_uses_orchestrator
+  - type: maven_test
+    project_dir: backend
+    module: releasehub-application
+    tests: AttachAppServiceTest
+    also_make: true
+    quiet: true
+    name: attach_service_tests_pass
+architectureRules:
+  - BranchOperationOrchestrator 必须位于 io.releasehub.application.release 包
+  - 不修改 CodeMergeService 或 ReleaseBranchService
+  - 可修改现有 AttachAppServiceTest 以适配构造器变更；不新增测试文件
+  - 不要重写整个 AttachAppService；只替换构造器依赖和 GitBranchPort 调用点
+maxRepairRounds: 2
+benchmarkRef:
+  repo: release-hub
+  branch: dsh-benchmark/release-hub-phase2
+  commit: 180de500e6740433b578e60e1585dc6e315f5191
+preflightFiles:
+  - backend/releasehub-application/src/main/java/io/releasehub/application/window/AttachAppService.java
+  - backend/releasehub-application/src/test/java/io/releasehub/application/window/AttachAppServiceTest.java
+designGoal: 验证 Java 单服务重构能力，隔离 AttachAppService 的窗口发布分支逻辑
+verificationGoal: AttachAppService 使用 BranchOperationOrchestrator 且定向 Maven 测试通过
+expectedProtocolOperations:
+  - CREATE
+  - PATCH

@@ -477,11 +477,12 @@ export async function runTask(
 
     // 2. Clean stale state from previous runs + setup
     const dshDir = path.join(repoPath, ".dsh");
-    fs.rmSync(path.join(dshDir, "task-state.json"), { force: true });
+    fs.rmSync(dshDir, { recursive: true, force: true });
     fs.mkdirSync(dshDir, { recursive: true });
     const stack = toLegacyTechStack(repoPath, assembleIntelligence(repoPath));
 
-    // writeDshConfig merges with existing — only override verify + deepseek, preserve project metadata
+    // The benchmark owns this runtime config; start from a clean .dsh so
+    // assertions from previous fixture runs cannot leak into verification.
     writeDshConfig(repoPath, {
       project: {
         name: path.basename(repoPath),

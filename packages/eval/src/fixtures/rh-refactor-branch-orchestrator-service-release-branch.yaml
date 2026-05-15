@@ -1,0 +1,54 @@
+id: rh-refactor-branch-orchestrator-service-release-branch
+description: 使用 BranchOperationOrchestrator 重构 ReleaseBranchService
+category: refactor
+taskPrompt: |
+  请只重构 ReleaseBranchService 中的 Git 分支操作逻辑，不要修改其他服务。
+
+  实现要求：
+  - 新增 io.releasehub.application.release.BranchOperationOrchestrator
+  - 编排器封装 release 分支存在性检查、按 defaultBranch 创建分支、mergeBranch 调用和日志
+  - ReleaseBranchService 注入并使用 BranchOperationOrchestrator
+  - 保持 createReleaseBranchAndMerge 的 public 方法签名与返回类型不变
+  - 保持创建失败、feature 分支不存在、merge conflict/failed/success 的原有语义
+  - 同步更新现有 ReleaseBranchServiceTest 以适配构造器注入变化；不要新增测试文件
+
+  相关文件：
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java（新建）
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/ReleaseBranchService.java
+expectedFiles:
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/ReleaseBranchService.java
+  - backend/releasehub-application/src/test/java/io/releasehub/application/release/ReleaseBranchServiceTest.java
+expectPass: true
+verifications:
+  - type: file_exists
+    file: backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java
+    name: orchestrator_file_exists
+  - type: file_contains
+    file: backend/releasehub-application/src/main/java/io/releasehub/application/release/ReleaseBranchService.java
+    pattern: BranchOperationOrchestrator
+    name: release_branch_uses_orchestrator
+  - type: maven_test
+    project_dir: backend
+    module: releasehub-application
+    tests: ReleaseBranchServiceTest
+    also_make: true
+    quiet: true
+    name: release_branch_tests_pass
+architectureRules:
+  - BranchOperationOrchestrator 必须位于 io.releasehub.application.release 包
+  - 不修改 CodeMergeService 或 AttachAppService
+  - 可修改现有 ReleaseBranchServiceTest 以适配构造器变更；不新增测试文件
+maxRepairRounds: 2
+benchmarkRef:
+  repo: release-hub
+  branch: dsh-benchmark/release-hub-phase2
+  commit: 180de500e6740433b578e60e1585dc6e315f5191
+preflightFiles:
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/ReleaseBranchService.java
+  - backend/releasehub-application/src/test/java/io/releasehub/application/release/ReleaseBranchServiceTest.java
+designGoal: 验证 Java 单服务重构能力，隔离 ReleaseBranchService 的 release 分支创建合并逻辑
+verificationGoal: ReleaseBranchService 使用 BranchOperationOrchestrator 且定向 Maven 测试通过
+expectedProtocolOperations:
+  - CREATE
+  - PATCH

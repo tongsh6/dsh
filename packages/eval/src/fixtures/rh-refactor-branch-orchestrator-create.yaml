@@ -1,0 +1,58 @@
+id: rh-refactor-branch-orchestrator-create
+description: 新增共享 Git 分支操作编排器
+category: refactor
+taskPrompt: |
+  CodeMergeService、ReleaseBranchService、AttachAppService 中都直接调用 GitBranchPort 做分支检查、创建和合并。
+
+  请先只提取一个可复用的 BranchOperationOrchestrator 组件，不要改造现有服务：
+  - 在 io.releasehub.application.release 包下新增 BranchOperationOrchestrator
+  - 组件必须是 Spring bean，使用构造器注入/无字段注入
+  - 暴露可复用方法封装以下原子操作：
+    - 检查分支是否存在
+    - 分支不存在时从指定源分支创建
+    - 执行 mergeBranch 并返回 GitBranchPort.MergeResult
+  - 统一在组件内部记录关键日志
+  - 不要修改 CodeMergeService、ReleaseBranchService、AttachAppService
+
+  相关文件：
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java（新建）
+expectedFiles:
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java
+expectPass: true
+verifications:
+  - type: file_exists
+    file: backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java
+    name: orchestrator_file_exists
+  - type: file_contains
+    file: backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java
+    pattern: '@Component'
+    name: spring_component
+  - type: file_contains
+    file: backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java
+    pattern: 'mergeBranch'
+    name: merge_method_present
+  - type: maven_test
+    project_dir: backend
+    module: releasehub-application
+    also_make: true
+    quiet: true
+    name: maven_application_tests_pass
+architectureRules:
+  - 新组件必须位于 io.releasehub.application.release 包
+  - Application 层只能依赖 Domain 和 Common
+  - 不能依赖 Infrastructure、Interfaces 或 Bootstrap
+  - 使用构造器注入，不使用字段注入
+maxRepairRounds: 2
+benchmarkRef:
+  repo: release-hub
+  branch: dsh-benchmark/release-hub-phase2
+  commit: 180de500e6740433b578e60e1585dc6e315f5191
+preflightFiles:
+  - backend/releasehub-application/src/main/java/io/releasehub/application/port/out/GitBranchPort.java
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/CodeMergeService.java
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/ReleaseBranchService.java
+  - backend/releasehub-application/src/main/java/io/releasehub/application/window/AttachAppService.java
+designGoal: 验证 Java 单组件 CREATE 能力，先把大重构的共享抽象独立出来
+verificationGoal: 新组件存在且 releasehub-application Maven 测试通过
+expectedProtocolOperations:
+  - CREATE

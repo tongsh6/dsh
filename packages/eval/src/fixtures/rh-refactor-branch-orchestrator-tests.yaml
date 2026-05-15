@@ -1,0 +1,57 @@
+id: rh-refactor-branch-orchestrator-tests
+description: 为 BranchOperationOrchestrator 编写单元测试
+category: test
+taskPrompt: |
+  请新增 BranchOperationOrchestrator 组件并为它编写单元测试；本任务不要求重构现有服务。
+
+  实现要求：
+  - 在 io.releasehub.application.release 包下新增 BranchOperationOrchestrator
+  - 编排器封装 branchExists / ensureBranch / mergeBranch 等 GitBranchPort 原子操作
+  - 新增 BranchOperationOrchestratorTest
+  - 使用 JUnit 5 + Mockito + AssertJ
+  - 覆盖至少以下场景：
+    - 分支已存在时不创建
+    - 分支不存在时从指定源分支创建
+    - 创建失败时抛出或返回明确失败
+    - mergeBranch 成功、冲突、失败三种结果透传
+
+  相关文件：
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java（新建）
+  - backend/releasehub-application/src/test/java/io/releasehub/application/release/BranchOperationOrchestratorTest.java（新建）
+expectedFiles:
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java
+  - backend/releasehub-application/src/test/java/io/releasehub/application/release/BranchOperationOrchestratorTest.java
+expectPass: true
+verifications:
+  - type: file_exists
+    file: backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java
+    name: orchestrator_file_exists
+  - type: file_exists
+    file: backend/releasehub-application/src/test/java/io/releasehub/application/release/BranchOperationOrchestratorTest.java
+    name: orchestrator_test_exists
+  - type: file_contains
+    file: backend/releasehub-application/src/test/java/io/releasehub/application/release/BranchOperationOrchestratorTest.java
+    pattern: MockitoExtension
+    name: uses_mockito_extension
+  - type: maven_test
+    project_dir: backend
+    module: releasehub-application
+    tests: BranchOperationOrchestratorTest
+    also_make: true
+    quiet: true
+    name: orchestrator_unit_test_passes
+architectureRules:
+  - 测试使用 JUnit 5 + Mockito + AssertJ
+  - 测试只 mock GitBranchPort，不访问真实 Git 服务
+  - 不修改 CodeMergeService、ReleaseBranchService、AttachAppService
+maxRepairRounds: 2
+benchmarkRef:
+  repo: release-hub
+  branch: dsh-benchmark/release-hub-phase2
+  commit: 180de500e6740433b578e60e1585dc6e315f5191
+preflightFiles:
+  - backend/releasehub-application/src/main/java/io/releasehub/application/port/out/GitBranchPort.java
+designGoal: 验证 Java CREATE + 单元测试能力，单独覆盖 orchestrator 的行为合同
+verificationGoal: BranchOperationOrchestratorTest 定向 Maven 测试通过
+expectedProtocolOperations:
+  - CREATE

@@ -1,0 +1,54 @@
+id: rh-refactor-branch-orchestrator-service-code-merge
+description: 使用 BranchOperationOrchestrator 重构 CodeMergeService
+category: refactor
+taskPrompt: |
+  请只重构 CodeMergeService 中的 Git 分支操作逻辑，不要修改其他服务。
+
+  实现要求：
+  - 新增 io.releasehub.application.release.BranchOperationOrchestrator
+  - 编排器封装 branchExists / ensureBranch / mergeBranch 等 GitBranchPort 原子操作
+  - CodeMergeService 注入并使用 BranchOperationOrchestrator
+  - 保持 mergeFeatureToRelease 和 mergeAllFeaturesToRelease 的 public 方法签名与返回类型不变
+  - 保持 feature branch 不存在时 skipped、release branch 不存在时 failed、merge conflict/failed/success 的原有语义
+  - 同步更新现有 CodeMergeServiceTest 以适配构造器注入变化；不要新增测试文件
+
+  相关文件：
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java（新建）
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/CodeMergeService.java
+expectedFiles:
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/CodeMergeService.java
+  - backend/releasehub-application/src/test/java/io/releasehub/application/release/CodeMergeServiceTest.java
+expectPass: true
+verifications:
+  - type: file_exists
+    file: backend/releasehub-application/src/main/java/io/releasehub/application/release/BranchOperationOrchestrator.java
+    name: orchestrator_file_exists
+  - type: file_contains
+    file: backend/releasehub-application/src/main/java/io/releasehub/application/release/CodeMergeService.java
+    pattern: BranchOperationOrchestrator
+    name: code_merge_uses_orchestrator
+  - type: maven_test
+    project_dir: backend
+    module: releasehub-application
+    tests: CodeMergeServiceTest
+    also_make: true
+    quiet: true
+    name: code_merge_tests_pass
+architectureRules:
+  - BranchOperationOrchestrator 必须位于 io.releasehub.application.release 包
+  - 不修改 ReleaseBranchService 或 AttachAppService
+  - 可修改现有 CodeMergeServiceTest 以适配构造器变更；不新增测试文件
+maxRepairRounds: 2
+benchmarkRef:
+  repo: release-hub
+  branch: dsh-benchmark/release-hub-phase2
+  commit: 180de500e6740433b578e60e1585dc6e315f5191
+preflightFiles:
+  - backend/releasehub-application/src/main/java/io/releasehub/application/release/CodeMergeService.java
+  - backend/releasehub-application/src/test/java/io/releasehub/application/release/CodeMergeServiceTest.java
+designGoal: 验证 Java 单服务重构能力，隔离 CodeMergeService 的 merge 逻辑
+verificationGoal: CodeMergeService 使用 BranchOperationOrchestrator 且定向 Maven 测试通过
+expectedProtocolOperations:
+  - CREATE
+  - PATCH
