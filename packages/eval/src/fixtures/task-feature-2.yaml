@@ -6,10 +6,22 @@ expectedFiles:
   - src/controllers/user-controller.ts
   - src/services/user-service.ts
 expectPass: true
-verificationCommands:
-  - "npx jest src/controllers/user-controller.test.ts"
-  - "npx jest src/services/user-service.test.ts"
-  - "npx tsc --noEmit"
+verifications:
+  - type: file_exists
+    file: src/controllers/user-controller.ts
+    name: user_controller_file_exists
+  - type: file_exists
+    file: src/services/user-service.ts
+    name: user_service_file_exists
+  - type: shell
+    command: "npx jest src/controllers/user-controller.test.ts"
+    name: user_controller_tests_pass
+  - type: shell
+    command: "npx jest src/services/user-service.test.ts"
+    name: user_service_tests_pass
+  - type: shell
+    command: "npx tsc --noEmit"
+    name: typecheck_passes
 architectureRules:
   - 分页逻辑在 service 层，controller 只做参数提取
   - 不修改 User 模型

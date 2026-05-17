@@ -6,10 +6,22 @@ expectedFiles:
   - src/services/order-service.ts
   - src/services/inventory-service.ts
 expectPass: true
-verificationCommands:
-  - "npx jest src/services/order-service.test.ts"
-  - "npx jest src/services/inventory-service.test.ts"
-  - "npx tsc --noEmit"
+verifications:
+  - type: file_exists
+    file: src/services/order-service.ts
+    name: order_service_file_exists
+  - type: file_exists
+    file: src/services/inventory-service.ts
+    name: inventory_service_file_exists
+  - type: shell
+    command: "npx jest src/services/order-service.test.ts"
+    name: order_service_tests_pass
+  - type: shell
+    command: "npx jest src/services/inventory-service.test.ts"
+    name: inventory_service_tests_pass
+  - type: shell
+    command: "npx tsc --noEmit"
+    name: typecheck_passes
 architectureRules:
   - 使用数据库行锁或乐观锁，不要用应用层锁
   - 库存扣减必须是原子操作

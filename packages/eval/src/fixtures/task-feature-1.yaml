@@ -6,10 +6,22 @@ expectedFiles:
   - src/middleware/rate-limiter.ts
   - src/app.ts
 expectPass: true
-verificationCommands:
-  - "npx jest src/middleware/rate-limiter.test.ts"
-  - "npx tsc --noEmit"
-  - "npx eslint src/middleware/rate-limiter.ts"
+verifications:
+  - type: file_exists
+    file: src/middleware/rate-limiter.ts
+    name: rate_limiter_file_exists
+  - type: file_exists
+    file: src/app.ts
+    name: app_file_exists
+  - type: shell
+    command: "npx jest src/middleware/rate-limiter.test.ts"
+    name: rate_limiter_tests_pass
+  - type: shell
+    command: "npx tsc --noEmit"
+    name: typecheck_passes
+  - type: shell
+    command: "npx eslint src/middleware/rate-limiter.ts"
+    name: rate_limiter_lint_passes
 architectureRules:
   - 中间件必须符合 Express 中间件签名
   - 使用内存存储不要引入 Redis（项目未使用）

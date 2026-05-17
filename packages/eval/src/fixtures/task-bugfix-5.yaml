@@ -5,9 +5,16 @@ taskPrompt: "修复 WebSocket 连接断开后，事件监听器没有被正确�
 expectedFiles:
   - src/ws/connection-manager.ts
 expectPass: true
-verificationCommands:
-  - "npx jest src/ws/connection-manager.test.ts"
-  - "npx tsc --noEmit"
+verifications:
+  - type: file_exists
+    file: src/ws/connection-manager.ts
+    name: connection_manager_file_exists
+  - type: shell
+    command: "npx jest src/ws/connection-manager.test.ts"
+    name: connection_manager_tests_pass
+  - type: shell
+    command: "npx tsc --noEmit"
+    name: typecheck_passes
 architectureRules:
   - 使用 WeakMap 或显式清理，不用全局状态
   - 不修改 WebSocket 消息协议

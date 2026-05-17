@@ -7,9 +7,22 @@ expectedFiles:
   - src/utils/formatters.ts
   - src/utils/validators.ts
 expectPass: true
-verificationCommands:
-  - "npx tsc --noEmit"
-  - "npx jest"
+verifications:
+  - type: file_exists
+    file: src/utils/helpers.ts
+    name: helpers_file_exists
+  - type: file_exists
+    file: src/utils/formatters.ts
+    name: formatters_file_exists
+  - type: file_exists
+    file: src/utils/validators.ts
+    name: validators_file_exists
+  - type: shell
+    command: "npx tsc --noEmit"
+    name: typecheck_passes
+  - type: shell
+    command: "npx jest"
+    name: tests_pass
 architectureRules:
   - 只删除确认未被引用的代码
   - 被测试文件引用的代码不能删除

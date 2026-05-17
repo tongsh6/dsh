@@ -161,15 +161,6 @@ describe("fixture verification coverage audit", () => {
     );
     const findings = auditFixturesForVerificationCoverage(loadAllFixtures(fixturesDir));
 
-    assert.ok(findings.length > 0, "current fixture set should expose false-positive audit candidates");
-    assert.ok(
-      findings.some((finding) => finding.fixtureId === "loam-bugfix-cli-error-handling"),
-      "known broad-command fixture should remain visible to the audit",
-    );
-    assert.equal(
-      findings.some((finding) => finding.fixtureId === "rh-test-dashboard-version"),
-      false,
-      "fixed fixture should have explicit file assertions",
-    );
+    assert.deepEqual(findings, []);
   });
 });

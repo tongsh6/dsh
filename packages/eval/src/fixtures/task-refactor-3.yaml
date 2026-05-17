@@ -7,9 +7,22 @@ expectedFiles:
   - src/models/user.ts
   - src/dto/user-dto.ts
 expectPass: true
-verificationCommands:
-  - "npx jest"
-  - "npx tsc --noEmit"
+verifications:
+  - type: file_exists
+    file: src/types/user.ts
+    name: user_types_file_exists
+  - type: file_exists
+    file: src/models/user.ts
+    name: user_model_file_exists
+  - type: file_exists
+    file: src/dto/user-dto.ts
+    name: user_dto_file_exists
+  - type: shell
+    command: "npx jest"
+    name: tests_pass
+  - type: shell
+    command: "npx tsc --noEmit"
+    name: typecheck_passes
 architectureRules:
   - types/user.ts 是唯一的基础类型来源
   - DTO 可以添加校验装饰器

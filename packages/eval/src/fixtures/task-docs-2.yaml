@@ -6,8 +6,16 @@ expectedFiles:
   - AIEF/architecture.md
   - AIEF/coding-standards.md
 expectPass: true
-verificationCommands:
-  - "npx markdownlint AIEF/"
+verifications:
+  - type: file_exists
+    file: AIEF/architecture.md
+    name: architecture_doc_file_exists
+  - type: file_exists
+    file: AIEF/coding-standards.md
+    name: coding_standards_doc_file_exists
+  - type: shell
+    command: "npx markdownlint AIEF/"
+    name: aief_markdown_lint_passes
 architectureRules:
   - 规则文件使用项目统一模板
   - 不添加与现有规则冲突的内容

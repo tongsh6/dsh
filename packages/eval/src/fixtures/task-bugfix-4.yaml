@@ -5,9 +5,16 @@ taskPrompt: "修复日期解析工具在处理 ISO 8601 带时区偏移的字符
 expectedFiles:
   - src/utils/date-utils.ts
 expectPass: true
-verificationCommands:
-  - "npx jest src/utils/date-utils.test.ts"
-  - "npx tsc --noEmit"
+verifications:
+  - type: file_exists
+    file: src/utils/date-utils.ts
+    name: date_utils_file_exists
+  - type: shell
+    command: "npx jest src/utils/date-utils.test.ts"
+    name: date_utils_tests_pass
+  - type: shell
+    command: "npx tsc --noEmit"
+    name: typecheck_passes
 architectureRules:
   - 不修改 API 响应格式
   - 保留向后兼容性

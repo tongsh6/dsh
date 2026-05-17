@@ -6,9 +6,19 @@ expectedFiles:
   - src/validators/register-validator.ts
   - src/controllers/auth-controller.ts
 expectPass: true
-verificationCommands:
-  - "npx jest src/validators/register-validator.test.ts"
-  - "npx tsc --noEmit"
+verifications:
+  - type: file_exists
+    file: src/validators/register-validator.ts
+    name: register_validator_file_exists
+  - type: file_exists
+    file: src/controllers/auth-controller.ts
+    name: auth_controller_file_exists
+  - type: shell
+    command: "npx jest src/validators/register-validator.test.ts"
+    name: register_validator_tests_pass
+  - type: shell
+    command: "npx tsc --noEmit"
+    name: typecheck_passes
 architectureRules:
   - 校验逻辑独立于 controller，放在 validators 目录
   - 使用 zod 做 schema 校验（项目已安装）

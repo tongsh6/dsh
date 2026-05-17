@@ -6,9 +6,19 @@ expectedFiles:
   - src/middleware/request-logger.ts
   - src/app.ts
 expectPass: true
-verificationCommands:
-  - "npx jest src/middleware/request-logger.test.ts"
-  - "npx tsc --noEmit"
+verifications:
+  - type: file_exists
+    file: src/middleware/request-logger.ts
+    name: request_logger_file_exists
+  - type: file_exists
+    file: src/app.ts
+    name: app_file_exists
+  - type: shell
+    command: "npx jest src/middleware/request-logger.test.ts"
+    name: request_logger_tests_pass
+  - type: shell
+    command: "npx tsc --noEmit"
+    name: typecheck_passes
 architectureRules:
   - 使用项目已有的 logger 实例
   - 不引入新的日志库

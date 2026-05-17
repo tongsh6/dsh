@@ -5,9 +5,16 @@ taskPrompt: "修复 getUserProfile 当输入 userId 为 null 时抛出的空指�
 expectedFiles:
   - src/services/user-service.ts
 expectPass: true
-verificationCommands:
-  - "npx jest src/services/user-service.test.ts"
-  - "npx tsc --noEmit"
+verifications:
+  - type: file_exists
+    file: src/services/user-service.ts
+    name: user_service_file_exists
+  - type: shell
+    command: "npx jest src/services/user-service.test.ts"
+    name: user_service_tests_pass
+  - type: shell
+    command: "npx tsc --noEmit"
+    name: typecheck_passes
 architectureRules:
   - 不要在 Controller 层做参数校验
   - 使用统一的错误类型

@@ -8,9 +8,25 @@ expectedFiles:
   - src/services/push-notifier.ts
   - src/services/sms-notifier.ts
 expectPass: true
-verificationCommands:
-  - "npx jest src/services/"
-  - "npx tsc --noEmit"
+verifications:
+  - type: file_exists
+    file: src/interfaces/notification.ts
+    name: notification_interface_file_exists
+  - type: file_exists
+    file: src/services/email-notifier.ts
+    name: email_notifier_file_exists
+  - type: file_exists
+    file: src/services/push-notifier.ts
+    name: push_notifier_file_exists
+  - type: file_exists
+    file: src/services/sms-notifier.ts
+    name: sms_notifier_file_exists
+  - type: shell
+    command: "npx jest src/services/"
+    name: service_tests_pass
+  - type: shell
+    command: "npx tsc --noEmit"
+    name: typecheck_passes
 architectureRules:
   - ISP 原则：使用者只依赖需要的接口
   - INotificationService 保持向后兼容

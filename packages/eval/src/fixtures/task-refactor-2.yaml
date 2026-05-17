@@ -6,9 +6,19 @@ expectedFiles:
   - src/processors/file-processor.ts
   - src/processors/file-processor.test.ts
 expectPass: true
-verificationCommands:
-  - "npx jest src/processors/file-processor.test.ts"
-  - "npx tsc --noEmit"
+verifications:
+  - type: file_exists
+    file: src/processors/file-processor.ts
+    name: file_processor_file_exists
+  - type: file_exists
+    file: src/processors/file-processor.test.ts
+    name: file_processor_test_file_exists
+  - type: shell
+    command: "npx jest src/processors/file-processor.test.ts"
+    name: file_processor_tests_pass
+  - type: shell
+    command: "npx tsc --noEmit"
+    name: typecheck_passes
 architectureRules:
   - 不修改文件处理的核心逻辑
   - 不修改 FileProcessor 的公共 API 输入参数

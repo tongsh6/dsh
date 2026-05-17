@@ -8,9 +8,25 @@ expectedFiles:
   - src/components/button.test.tsx
   - src/components/input.test.tsx
 expectPass: true
-verificationCommands:
-  - "npx jest src/components/button.test.tsx src/components/input.test.tsx"
-  - "npx tsc --noEmit"
+verifications:
+  - type: file_exists
+    file: src/components/__snapshots__/button.snap
+    name: button_snapshot_file_exists
+  - type: file_exists
+    file: src/components/__snapshots__/input.snap
+    name: input_snapshot_file_exists
+  - type: file_exists
+    file: src/components/button.test.tsx
+    name: button_test_file_exists
+  - type: file_exists
+    file: src/components/input.test.tsx
+    name: input_test_file_exists
+  - type: shell
+    command: "npx jest src/components/button.test.tsx src/components/input.test.tsx"
+    name: component_snapshot_tests_pass
+  - type: shell
+    command: "npx tsc --noEmit"
+    name: typecheck_passes
 architectureRules:
   - 使用项目已有的测试框架和快照工具
   - 不修改组件实现

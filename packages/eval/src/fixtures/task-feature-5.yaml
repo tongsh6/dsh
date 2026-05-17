@@ -6,10 +6,22 @@ expectedFiles:
   - src/config/index.ts
   - src/config/env-loader.ts
 expectPass: true
-verificationCommands:
-  - "npx jest src/config/env-loader.test.ts"
-  - "npx jest src/config/index.test.ts"
-  - "npx tsc --noEmit"
+verifications:
+  - type: file_exists
+    file: src/config/index.ts
+    name: config_index_file_exists
+  - type: file_exists
+    file: src/config/env-loader.ts
+    name: env_loader_file_exists
+  - type: shell
+    command: "npx jest src/config/env-loader.test.ts"
+    name: env_loader_tests_pass
+  - type: shell
+    command: "npx jest src/config/index.test.ts"
+    name: config_index_tests_pass
+  - type: shell
+    command: "npx tsc --noEmit"
+    name: typecheck_passes
 architectureRules:
   - 环境变量覆盖在配置加载的最外层
   - 不修改配置的读取接口

@@ -6,9 +6,19 @@ expectedFiles:
   - src/auth/token.ts
   - src/auth/login.ts
 expectPass: true
-verificationCommands:
-  - "npx jest src/auth/token.test.ts"
-  - "npx tsc --noEmit"
+verifications:
+  - type: file_exists
+    file: src/auth/token.ts
+    name: token_file_exists
+  - type: file_exists
+    file: src/auth/login.ts
+    name: login_file_exists
+  - type: shell
+    command: "npx jest src/auth/token.test.ts"
+    name: token_tests_pass
+  - type: shell
+    command: "npx tsc --noEmit"
+    name: typecheck_passes
 architectureRules:
   - token 刷新逻辑必须在 token.ts 中
   - login.ts 不应包含刷新实现细节

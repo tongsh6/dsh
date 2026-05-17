@@ -24,9 +24,22 @@ expectedFiles:
   - packages/cli/src/distill.ts
   - packages/cli/src/daemon.ts
 expectPass: true
-verificationCommands:
-  - "pnpm run typecheck"
-  - "pnpm run test"
+verifications:
+  - type: file_exists
+    file: packages/cli/src/capture.ts
+    name: capture_command_file_exists
+  - type: file_exists
+    file: packages/cli/src/distill.ts
+    name: distill_command_file_exists
+  - type: file_exists
+    file: packages/cli/src/daemon.ts
+    name: daemon_command_file_exists
+  - type: shell
+    command: "pnpm run typecheck"
+    name: typecheck_passes
+  - type: shell
+    command: "pnpm run test"
+    name: tests_pass
 architectureRules:
   - 不改变命令的正常功能逻辑
   - 错误消息使用中文
