@@ -13,6 +13,7 @@
 - **议题 B (verify-protocol-structured)**: ✅ P1-P6 已实施，结构化验证协议上线。
 - **议题 C (goal-driven-verify)**: ✅ P1-P2 已实施，代码已合并（config redaction + autonomous verification prompts + PLAN retry + scope 软化 + DONE 接受放松）。
 - **议题 D (transactional-self-correction)**: ✅ P1 已实施并通过本地测试（双轨 checkpoint + managed_files + 物理回滚 + ANSI 剥离）；loam smoke PASS，rh smoke `260513-013656` PASS，repairSuccess 1/1。
+- **DeepSeek provider hardening**: ✅ 已实施（official `/chat/completions` endpoint、`thinking.type` + `reasoning_effort`、cache/reasoning usage、HTTP retry、阶段化 tool policy、JSON/strict/prefix/FIM 扩展点）；`pnpm test` / `pnpm typecheck` / `pnpm lint` PASS。
 - **Phase 3 起点基线**: testsPassed 11/24 = 45%（`260508-003359` / `260509-165142`）。
 - **目标**: testsPassed > 60%.
 - **最新 replicated benchmark evidence**: Project Card on `60/72 = 83.3%` over 24 fixtures × 3 reps — `docs/reports/knowledge/20260514-pie-phase2-3-baseline.md`；该结果已超过 Phase 3 `>60%` 目标，但 hard-fail smoke 修复仍需新的 N=3 / full benchmark 复审。
@@ -77,6 +78,7 @@
 | 工具执行引擎 | 2026-05-04 | `packages/core/src/tool-executor.ts` + `tool-definitions.ts` | 408+ 行测试 | read_file/grep_files/exec_shell |
 | 工具 API 集成 | 2026-05-04 | `packages/core/src/pipeline.ts` L272-338 | 测试通过 | 5 轮调用循环 |
 | 修复循环工具支持 | 2026-05-04 | `packages/core/src/repair-loop.ts` L208-238 | 测试通过 | 2→3 轮工具循环 |
+| DeepSeek provider hardening | 2026-05-17 | `packages/provider/src/client.ts` + `docs/specs/deepseek-api-compatibility.md` | `pnpm test` / `pnpm typecheck` / `pnpm lint` PASS | official endpoint、thinking.type、usage/cache、retry、staged tool policy、实验性高级能力扩展点 |
 | Benchmark 系统 | 2026-05-02 | `packages/eval/` + `run-benchmark.ts` | 24 eval 测试通过 | 多项目多语言 fixtures |
 | CI 质量门禁 | 2026-05-02 | `.github/workflows/scan.yml` | PR CI 通过 | lint+typecheck+test |
 | Benchmark CI | 2026-05-02 | `.github/workflows/benchmark.yml` | 每周六定时 | GitHub Actions |
@@ -97,6 +99,7 @@
 | rh smoke 系统性修复验证 | Benchmark（1 fixture） | `docs/reports/runlogs/260513-000650/` | PARTIAL；已推进为源文件+测试文件存在、结构化 Maven 验证运行；剩余失败为 `ExportAppService.java:[35,18] 需要';'` 编译错误，repairSuccess 仍 0/1 |
 | rh smoke repair 诊断增强验证 | Benchmark（1 fixture） | `docs/reports/runlogs/260513-011828/` | PARTIAL；patch loop DONE=✓，CREATE/PATCH/SEARCH_REPLACE 均有统计，Maven 测试已进入运行期；剩余失败为 `ExportAppServiceTest.createRunItem` 触发 `RunItem.rehydrate`/`BaseEntity` NPE，repairSuccess 仍 0/1 |
 | rh smoke blocker 收敛验证 | Benchmark（1 fixture） | `docs/reports/runlogs/260513-013656/` | PASS；`rh-bugfix-csv-export` completed 1/1，testsPassed 1/1，repairSuccess 1/1，score 99；首轮 Maven 测试失败后 repair 追加测试补丁并通过第二轮结构化 Maven verify |
+| DeepSeek provider hardening | 本地质量门禁 | `docs/specs/deepseek-api-compatibility.md` | PASS；provider endpoint/thinking/retry/usage/stream tests，core staged tool loop tests，root `pnpm test` / `pnpm typecheck` / `pnpm lint` 全部通过 |
 
 ## 4. 进行中事项
 
@@ -142,6 +145,7 @@
 | 核心源码 | `packages/core/src/` | pipeline, patch-parser, repair-loop, tools |
 | CLI 源码 | `packages/cli/src/` | init/plan/patch/verify/repair/handoff/doctor/run |
 | Provider 源码 | `packages/provider/src/` | DeepSeek API 客户端 |
+| DeepSeek API Compatibility | `docs/specs/deepseek-api-compatibility.md` | official endpoint、thinking、usage/cache、retry、tool policy、高级能力扩展点支持矩阵 |
 | Repo 源码 | `packages/repo/src/` | ProjectIntelligence、配置加载、文件排序 |
 | Eval 源码 | `packages/eval/src/` | Benchmark 执行器、fixtures |
 | CI 配置 | `.github/workflows/` | scan, benchmark, codeql, gitleaks |

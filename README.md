@@ -2,6 +2,8 @@
 
 一个围绕 DeepSeek 模型行为深度优化的终端编程助手，覆盖从任务理解、代码生成、验证修复到交接沉淀的验证闭环。
 
+DSH provides a DeepSeek-oriented provider with official Chat Completion support, V4 Pro/Flash routing, thinking mode, streaming, staged tool calls, and cache-aware usage reporting. Advanced beta capabilities such as strict tool calls, chat prefix, and FIM are exposed as experimental feature-flagged extension points, not enabled by default.
+
 **核心流程:** Plan → Patch → Verify → Repair → Handoff
 **当前阶段:** Phase 3 收口验证期
 **Phase 3 起点基线:** testsPassed 11/24 = 45%（`260508-003359` / `260509-165142`）
@@ -81,6 +83,7 @@ pnpm run scan         # 全量质量门禁（lint + typecheck + test）
 
 - [项目宪法](CONSTITUTION.md) — 核心原则与协作规则
 - [产品蓝图](BLUEPRINT.md) — 最终产品形态与 7 阶段演进路线
+- [DeepSeek API Compatibility](docs/specs/deepseek-api-compatibility.md) — Provider 兼容性矩阵与 DeepSeek API 语义
 - [设计 Spec](docs/specs/) — 功能设计说明
 - [实现计划](docs/plans/) — 分阶段实施计划
 
