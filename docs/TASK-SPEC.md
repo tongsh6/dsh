@@ -308,6 +308,8 @@ spec/           ← 设计文档：描述"要做什么"和"为什么这样做"
 | `pie-phase-c-callsite-switch` | PIE Phase C：detectVerifyCommands 切换 + scanner.ts 物理删除 | in_review | p1 | ai |
 | `pie-phase-d-new-capabilities` | PIE Phase D：dsh doctor + Project Card 注入 + ctxDirs 重构 | in_review | p1 | ai |
 | `pie-phase-e-validation` | PIE Phase E：24 fixture benchmark + A/B + 报告归档 | in_review | p1 | ai |
+| `fixture-metadata-audit` | 机器化受控 benchmark fixture 元数据审计 | in_review | p0 | ai |
+| `failure-matrix-governance-invariants` | 锁定 failure matrix 证据治理不变量 | in_review | p0 | ai |
 
 ## 7. 修订历史
 
