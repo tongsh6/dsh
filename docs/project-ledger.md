@@ -107,9 +107,9 @@
 
 | 事项 | 当前状态 | 阻塞点 | 下一步 |
 |------|---------|--------|--------|
-| Phase 3 failure matrix | 已结构化 | `packages/eval/src/failure-matrix.json` 已建立，Markdown 报告保留解释口径 | benchmark metadata 读取 JSON summary；后续 AI 先读 JSON，不重新拼散落报告 |
-| hard-fail fixture 根因分析 | 未闭环 | `pi-bugfix-count-defs` partial replicated on/off 各 3/3 PASS 但 fixture 已确认有答案泄漏风险；`rh-test-dashboard-version` partial replicated 已回归；`rh-refactor-branch-orchestrator` 5 个小 fixture 仍待 N=3 且需标注 scope reshaping | 先清理 benchmark contamination 风险，再决定哪些 fixture 可用于 Phase 3 exit evidence |
-| Benchmark fixture contamination audit | 新增审计 | `docs/reports/knowledge/20260517-fixture-contamination-audit.md` 确认 53 个 current fixture 中 2 个 strict contamination risk、6 个 scope reshaping / comparability risk | 不把 fixture-specific answer hints 当作能力修复；后续新增 fixture lint/audit rule |
+| Phase 3 failure matrix | 已结构化 | `packages/eval/src/failure-matrix.json` 已建立，含 `governance.comparabilityRisk` / `evidencePolicy` 标记；Markdown 报告保留解释口径 | benchmark metadata 读取 JSON summary；后续 AI 先读 JSON，不重新拼散落报告 |
+| hard-fail fixture 根因分析 | 未闭环 | `pi-bugfix-count-defs` partial replicated on/off 各 3/3 PASS 但历史 evidence 需按污染治理重新标注；`rh-test-dashboard-version` partial replicated 已回归；`rh-refactor-branch-orchestrator` 5 个小 fixture 仍待 N=3 且需标注 scope reshaping | 先清理 benchmark contamination 风险，再决定哪些 fixture 可用于 Phase 3 exit evidence |
+| Benchmark fixture 标准与 contamination audit | 已标准化并自动化 | `docs/specs/benchmark-fixture-standard.md` 是新增/修改 fixture 的 canonical 标准；`docs/reports/knowledge/20260517-fixture-contamination-audit.md` 确认 53 个 current fixture 中 0 个 remaining strict contamination risk、6 个 scope reshaping / comparability risk；`packages/eval/src/fixture-audit.ts` 已锁定自动审计；`packages/eval/src/failure-matrix.json` 已机器可读标注 comparability risk / evidence policy | 不把 fixture-specific answer hints 当作能力修复；历史污染 evidence 不进入 Phase 3 exit evidence |
 | 最小 `dsh run` | 已补 CLI 入口 | core 已有 `runFullPipeline`，CLI 已提供一键入口 | 继续通过 CLI 测试和真实 dry-run/smoke 验证输出体验 |
 | Phase 3 收口证据台账 | 已更新 | commit `454f731` + `docs/reports/knowledge/20260517-phase3-closeout-review.md` | 本轮结论明确：不进入 Phase 4，先修 benchmark blocker |
 
@@ -123,7 +123,7 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|---------|
-| P0 | Benchmark contamination 清理 | 当前 fixture 审计发现 `pi-bugfix-count-defs` 有答案泄漏，`rh-refactor-branch-orchestrator-service-attach` 有 DSH patch-protocol coaching；这些结果不能直接作为通用能力提升证据 | 清理或隔离污染项；污染 fixture 不进入 Phase 3 exit evidence，scope reshaping fixture 单独标注 |
+| P0 | Benchmark contamination 清理 | strict prompt contamination 已清理为 0；`rh-refactor-branch-orchestrator-*` 拆分 fixture 与 `rh-test-dashboard-version` 已在 failure matrix 机器可读标注 scope reshaping / comparability risk | 后续 benchmark metadata/report 必须读取 evidencePolicy；历史污染 evidence 不进入 Phase 3 exit evidence |
 | P1 | `rh-refactor-branch-orchestrator` 拆分后 N=3 复审 | 原 single fixture 在干净 runner 下仍 PARTIAL (`260515-024737`，30 rounds / 0 changes)，已拆为 5 个小 fixture；create/tests/release/code-merge/attach 已全部 single PASS，attach 最新 `260515-044458` PASS | 下次 replicated benchmark 确认 5 个小 fixture 稳定，不恢复 monolith |
 | P0 | `rh-test-dashboard-version` replicated 回归修复 | single smoke PASS 未稳定复现；partial closeout run `260517074552-pie-replicated` 已出现 card_on 0/1、card_off 0/1 | 先修复 VersionUpdateAppServiceTest 语义/NPE 与 no-change 失败模式，再跑该 fixture 定向 N=3 |
 | P1 | `pi-bugfix-count-defs` semantic failure 复审 | 已修正 fixture source-context hint 并 single smoke PASS (`260515-015045`)；等待下一轮 N=3/全量确认稳定性 | 下次 replicated benchmark 不再 0/6；pytest 定向验证持续通过 |
@@ -137,8 +137,9 @@
 | 任务规范 | `docs/TASK-SPEC.md` | 任务格式、生命周期、三层体系 |
 | 最新全量 Benchmark | `docs/reports/runlogs/260509-165142/` | 24 fixtures, parallel=3, 2087s, testsPassed 11/24 (45%) |
 | 最新 replicated Benchmark | `docs/reports/knowledge/20260514-pie-phase2-3-baseline.md` | N=3 randomized hard cleanup；Project Card on 60/72 (83.3%) |
-| Phase 3 Failure Matrix | `docs/reports/knowledge/20260514-phase3-failure-matrix.md` | hard-fail / high-variance fixture 分类与下一轮修复顺序 |
-| Fixture Contamination Audit | `docs/reports/knowledge/20260517-fixture-contamination-audit.md` | 53 个 current fixture 审计；2 个 strict contamination risk，6 个 scope reshaping / comparability risk |
+| Phase 3 Failure Matrix | `docs/reports/knowledge/20260514-phase3-failure-matrix.md` + `packages/eval/src/failure-matrix.json` | hard-fail / high-variance fixture 分类与下一轮修复顺序；JSON 含 comparability risk / evidence policy |
+| Benchmark Fixture Standard | `docs/specs/benchmark-fixture-standard.md` | 新增/修改 benchmark fixture 的 canonical 标准；汇总 schema、prompt、verification、protocol ops、isolation、contamination/comparability policy |
+| Fixture Contamination Audit | `docs/reports/knowledge/20260517-fixture-contamination-audit.md` | 53 个 current fixture 审计；0 个 remaining strict contamination risk，6 个 scope reshaping / comparability risk；`pi-bugfix-count-defs` answer leakage 与 attach protocol coaching 已 neutralized |
 | 最新 smoke Benchmark | `docs/reports/runlogs/260512-225408/` + `docs/reports/runlogs/260513-013656/` | loam PASS；rh PASS，repairSuccess 1/1 |
 | rh Debug Benchmark | `docs/reports/runlogs/260509-174358/` + `260509-181614/` | rh 9 fixtures, mvn clean compile→mvn install 修复 NoSuchMethodError |
 | 决策知识库 | `docs/reports/knowledge/` | Phase 退出审查、session 总结、benchmark 分析报告、对比报告（提交到 Git） |
@@ -236,4 +237,4 @@
 | deferred | verify-plan-model-enhancement | spec:docs/specs/2026-05-13-pie-phase2-tier1-submodule-fact-promotion.md | §7.3 中显式排除的剩余范围：多模块独立 verify plan、test selectivity 等 verify 模型增强；本 spec 只做 cli/init 写 config 时的 capabilities → VerifyCommands 投影 | benchmark 数据揭示 verify plan 在多模块项目 / test selectivity 场景出现需求时启动 | P3 | waiting | 2026-05-13 |
 | debt | tracked-items-resolved-path-check | spec:docs/specs/2026-05-05-tracked-items-governance.md | resolved：治理 spec v1.1 已明确 `source` 字段语义：active 条目必须保持路径存在；status=resolved/cancelled 后 source 是历史指针，CI 不再校验路径存在。脚本既有跳过逻辑已补回归测试 | 已处理：`docs/specs/2026-05-05-tracked-items-governance.md` v1.1 + `scripts/check-tracked-items.test.ts` | P3 | resolved | 2026-05-15 |
 | debt | phase2-exit-fixture-doc-lag | spec:docs/specs/2026-05-06-phase2-exit-fixtures.md | doc-lag 回补：commit `f97aae3` 实施时按"单侧成对 fixture"拆 rh 混合 (3 个设计→6 个实施 yaml)，但 spec §3.3 第 2 条/§3.5/§4.6 没同步；BLUEPRINT Phase 2 退出条件"Java+Vue 混合 ≥3" 按旧 §3.3 定义不达成（0/3 双侧），按 v0.6 新定义达成 (3 pair)。**已修**: spec v0.6 (2026-05-14) 扩展 §3.3 第 2 条，新增"单侧成对"作为合法实施选项 + 计数规则；未来类似 mid-implementation 偏离 spec 时，应在同 commit 更新 spec 而不是延迟 8 天才回补 | spec 治理流程: 任何 commit 实施偏离设计 spec 时，必须在同 commit 更新 spec 或加 ledger debt | P2 | waiting | 2026-05-14 |
-| debt | benchmark-fixture-contamination-audit | report:docs/reports/knowledge/20260517-fixture-contamination-audit.md | Benchmark fixture 污染治理：严禁把 failure-specific answer hints / DSH patch workaround 写入通用 fixture 任务提示 | 清理或隔离 `pi-bugfix-count-defs` 与 `rh-refactor-branch-orchestrator-service-attach`；为 fixture prompt 增加 lightweight lint/audit rule；scope reshaping 结果单独标注，不与原 monolith 横比 | P0 | waiting | 2026-05-17 |
+| debt | benchmark-fixture-contamination-audit | report:docs/reports/knowledge/20260517-fixture-contamination-audit.md | Benchmark fixture 污染治理：严禁把 failure-specific answer hints / DSH patch workaround 写入通用 fixture 任务提示 | 已新增 canonical fixture standard、fixture prompt audit rule；`pi-bugfix-count-defs` answer leakage 与 `rh-refactor-branch-orchestrator-service-attach` protocol coaching 已 neutralized；scope reshaping / comparability risk 已写入 failure matrix governance metadata，且测试校验 audit 与 matrix 对齐 | P0 | in_progress | 2026-05-17 |
