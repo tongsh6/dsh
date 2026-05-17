@@ -202,7 +202,7 @@
 | bug | scan-workflow-branch-mismatch | code:.github/workflows/scan.yml:6 | scan.yml branches 配置 | 改为 branches: [master, main] | P2 | resolved | 2026-05-05 |
 | bug | ci-pnpm-version-missing | code:package.json | pnpm version 缺失 | 加 packageManager 到 package.json | P1 | resolved | 2026-05-05 |
 | bug | ci-missing-build-step | code:.github/workflows/scan.yml | CI 缺少 build 步骤 | pnpm install 后加 pnpm -r run build | P1 | resolved | 2026-05-05 |
-| deferred | ci-actions-node24-upgrade | code:.github/workflows/scan.yml | actions Node.js 20 deprecation | 2026-06-02 之前升级到支持 Node 24 的 actions/* 主版本 | P3 | waiting | 2026-05-06 |
+| deferred | ci-actions-node24-upgrade | code:.github/workflows/*.yml | actions Node.js 20 deprecation | resolved：GitHub Actions 已迁移到 Node 24 兼容主版本：`actions/checkout@v6`、`actions/setup-node@v6`、`actions/upload-artifact@v6`、`pnpm/action-setup@v6`；`gitleaks/gitleaks-action@v2` 无 Node 24 主版本且仍声明 `runs.using: node20`，已改为官方 Gitleaks CLI v8.30.1 容器扫描并按 digest 固定；benchmark 显式 Node runtime 同步为 24；已通过 YAML 解析、workflow action 引用扫描、`pnpm run scan` | P3 | resolved | 2026-05-18 |
 | evidence | patchloop-e2e-selfhost-260505 | report:docs/reports/runlogs/260506-004042 | P6.1 自托管 e2e 验证（已 supersede 原始 report） | superseded 13 fixture full benchmark (260506-004042) | P1 | resolved | 2026-05-06 |
 | deferred | patchloop-done-prompt-weak | code:packages/core/src/prompt-builder.ts | v0.4 DONE 触发（根因在第 7 条：元认知任务） | P1+P2 pipeline 自动终止已从代码层替代 prompt 方案 | P1 | waiting | 2026-05-06 |
 | evidence | patchloop-search-replace-risk-realized | code:packages/core/src/pipeline.ts | SEARCH/REPLACE 行号错位风险已实证 | 长期跟踪；v0.5 考虑 stash-rollback | P2 | waiting | 2026-05-06 |
