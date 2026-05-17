@@ -18,10 +18,12 @@ export interface ToolDefinition {
   function: {
     name: ToolName;
     description: string;
+    strict?: boolean;
     parameters: {
       type: "object";
       properties: Record<string, { type: string; description: string }>;
       required: string[];
+      additionalProperties?: boolean;
     };
   };
 }

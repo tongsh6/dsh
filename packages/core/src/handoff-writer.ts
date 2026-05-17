@@ -127,6 +127,28 @@ function buildMarkdown(state: TaskState): string {
     }
   }
 
+  if (state.deepseek_usage.length > 0) {
+    lines.push("## DeepSeek Usage Summary");
+    lines.push("");
+    lines.push("| Phase | Model | Thinking | Prompt | Cache Hit | Cache Miss | Hit Ratio | Completion | Reasoning | Total |");
+    lines.push("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|");
+    for (const usage of state.deepseek_usage) {
+      lines.push([
+        `| ${usage.phase}`,
+        usage.model,
+        usage.thinking ? "yes" : "no",
+        formatCount(usage.prompt),
+        formatCount(usage.cache_hit),
+        formatCount(usage.cache_miss),
+        formatRatio(usage.cache_hit_ratio),
+        formatCount(usage.completion),
+        formatCount(usage.reasoning),
+        `${formatCount(usage.total)} |`,
+      ].join(" | "));
+    }
+    lines.push("");
+  }
+
   // Repair history
   if (state.repair_rounds > 0) {
     lines.push("## 修复历史");
@@ -163,4 +185,12 @@ function buildMarkdown(state: TaskState): string {
   }
 
   return lines.join("\n");
+}
+
+function formatCount(value: number): string {
+  return Number.isFinite(value) ? String(value) : "0";
+}
+
+function formatRatio(value: number): string {
+  return Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "0.0%";
 }

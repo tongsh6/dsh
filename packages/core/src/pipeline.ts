@@ -52,8 +52,12 @@ import {
   cleanupFileCheckpoints,
 } from "@dsh/repo";
 import { ALL_TOOL_DEFINITIONS } from "./tool-definitions.js";
-import { executeTool, formatToolResult, normalizeToolArguments } from "./tool-executor.js";
-import type { ToolName } from "./tool-definitions.js";
+import {
+  executeToolCallsForPolicy,
+  filterToolsForPolicy,
+  getToolPolicy,
+} from "./agent-turn-loop.js";
+import { recordDeepSeekUsage } from "./deepseek-usage.js";
 
 // ---- Helpers ----
 
@@ -413,10 +417,18 @@ export async function runPlan(params: PlanParams): Promise<TaskState> {
   let attempts = 0;
   while (attempts < 2) {
     attempts++;
+    const startedAt = Date.now();
     const response = await client.chat({
       model: target.model,
       messages,
       thinking: target.thinking,
+    });
+    recordDeepSeekUsage(state, {
+      phase: "plan",
+      model: target.model,
+      thinking: target.thinking,
+      durationMs: Date.now() - startedAt,
+      response,
     });
 
     const content = response.choices[0]?.message.content ?? "";
@@ -515,6 +527,8 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
 
   const fileCount = state.plan?.files?.length ?? 0;
   const target = classify({ command: "patch", fileCount });
+  const patchToolPolicy = getToolPolicy("patch");
+  const patchTools = filterToolsForPolicy(ALL_TOOL_DEFINITIONS, patchToolPolicy);
 
   const messages: DeepSeekMessage[] = buildMessages({
     context: fullLayers,
@@ -534,13 +548,21 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
     round++;
 
     const toolsPausedForInitialStall = !hasProducedChange && consecutiveToolsOnly >= MAX_CONSECUTIVE_TOOLS_ONLY;
+    const startedAt = Date.now();
     const response = await client.chat({
       model: target.model,
       messages,
       thinking: target.thinking,
       ...(toolsPausedForInitialStall
         ? {}
-        : { tools: ALL_TOOL_DEFINITIONS as unknown as Record<string, unknown>[] }),
+        : { tools: patchTools as unknown as Record<string, unknown>[] }),
+    });
+    recordDeepSeekUsage(state, {
+      phase: "patch",
+      model: target.model,
+      thinking: target.thinking,
+      durationMs: Date.now() - startedAt,
+      response,
     });
 
     const choice = response.choices[0];
@@ -582,20 +604,14 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
         }
         messages.push(assistantMsg);
 
-        for (const tc of toolCalls ?? []) {
-          let rawArgs: unknown = {};
-          try { rawArgs = JSON.parse(tc.function.arguments); } catch { /* keep empty */ }
-          const args = normalizeToolArguments(rawArgs);
-          const result = executeTool(tc.function.name as ToolName, args, cwd, tc.id);
-          const formatted = formatToolResult(tc.function.name as ToolName, args, result);
-          messages.push({ role: "tool", content: formatted, tool_call_id: tc.id });
-          callRecords.push({
-            name: tc.function.name,
-            arguments: args,
-            status: result.status,
-            summary: result.status === "success" ? result.content.slice(0, 200) : (result.error ?? "").slice(0, 200),
-          });
-        }
+        const toolResult = await executeToolCallsForPolicy({
+          toolCalls: toolCalls ?? [],
+          toolPolicy: patchToolPolicy,
+          tools: ALL_TOOL_DEFINITIONS,
+          cwd,
+        });
+        messages.push(...toolResult.messages);
+        callRecords.push(...toolResult.records);
         record.tool_calls = callRecords;
         consecutiveInvalid = 0;
         consecutiveToolsOnly++;
@@ -976,12 +992,22 @@ export async function runPreflight(params: PreflightParams): Promise<TaskState> 
   });
 
   const MAX_PREFLIGHT_TURNS = 5;
+  const preflightToolPolicy = getToolPolicy("preflight");
+  const preflightTools = filterToolsForPolicy(ALL_TOOL_DEFINITIONS, preflightToolPolicy);
   for (let turn = 1; turn <= MAX_PREFLIGHT_TURNS; turn++) {
+    const startedAt = Date.now();
     const response = await client.chat({
       model: "deepseek-v4-pro",
       messages,
       thinking: true,
-      tools: ALL_TOOL_DEFINITIONS as unknown as Record<string, unknown>[],
+      tools: preflightTools as unknown as Record<string, unknown>[],
+    });
+    recordDeepSeekUsage(state, {
+      phase: "preflight",
+      model: "deepseek-v4-pro",
+      thinking: true,
+      durationMs: Date.now() - startedAt,
+      response,
     });
 
     const choice = response.choices[0];
@@ -995,26 +1021,18 @@ export async function runPreflight(params: PreflightParams): Promise<TaskState> 
     messages.push(assistantMsg);
 
     if (toolCalls && toolCalls.length > 0) {
-      for (const tc of toolCalls) {
-        let rawArgs: unknown = {};
-        try { rawArgs = JSON.parse(tc.function.arguments); } catch { /* keep empty */ }
-        const args = normalizeToolArguments(rawArgs);
-        const result = executeTool(tc.function.name as ToolName, args, cwd, tc.id);
-        const formatted = formatToolResult(tc.function.name as ToolName, args, result);
-        messages.push({ role: "tool", content: formatted, tool_call_id: tc.id });
-
-        // Record tool call in task state (using a special round for preflight)
-        const round = state.preflight_results.length + 1;
-        state.tool_rounds.push({
-          round: 1000 + round, // Use 1000+ offset to distinguish from patch rounds
-          calls: [{
-            name: tc.function.name,
-            arguments: args,
-            status: result.status,
-            summary: result.status === "success" ? result.content.slice(0, 200) : (result.error ?? "").slice(0, 200),
-          }],
-        });
-      }
+      const toolResult = await executeToolCallsForPolicy({
+        toolCalls,
+        toolPolicy: preflightToolPolicy,
+        tools: ALL_TOOL_DEFINITIONS,
+        cwd,
+      });
+      messages.push(...toolResult.messages);
+      const round = state.tool_rounds.length + 1;
+      state.tool_rounds.push({
+        round: 1000 + round, // Use 1000+ offset to distinguish from patch rounds
+        calls: toolResult.records,
+      });
       writeTaskState(cwd, state);
       continue;
     }

@@ -280,6 +280,7 @@ describe("collectTaskDiagnostics", () => {
       }],
       static_scan_runs: [],
       static_repair_results: [],
+      deepseek_usage: [],
       repair_rounds: 1,
       managed_files: [],
     });

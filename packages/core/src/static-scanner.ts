@@ -21,6 +21,7 @@ import type {
   StaticScanRun,
   TaskState,
 } from "./task-state.js";
+import { recordDeepSeekUsage } from "./deepseek-usage.js";
 
 export interface StaticScanConfig {
   enabled: boolean;
@@ -143,10 +144,18 @@ export async function repairStaticScanTopN(params: {
     "Return the smallest possible patch that fixes these selected findings.",
   ].join("\n");
 
+  const startedAt = Date.now();
   const response = await client.chat({
     model: "deepseek-v4-pro",
     messages: buildMessages({ context, taskDescription, phase: "patch" }),
     thinking: true,
+  });
+  recordDeepSeekUsage(state, {
+    phase: "static-repair",
+    model: "deepseek-v4-pro",
+    thinking: true,
+    durationMs: Date.now() - startedAt,
+    response,
   });
 
   const content = response.choices[0]?.message.content ?? "";

@@ -18,8 +18,12 @@ import {
   formatCallSiteContext,
 } from "./failure-detector.js";
 import { ALL_TOOL_DEFINITIONS } from "./tool-definitions.js";
-import { executeTool, formatToolResult, normalizeToolArguments } from "./tool-executor.js";
-import type { ToolName } from "./tool-definitions.js";
+import {
+  executeToolCallsForPolicy,
+  filterToolsForPolicy,
+  getToolPolicy,
+} from "./agent-turn-loop.js";
+import { recordDeepSeekUsage } from "./deepseek-usage.js";
 import { isGitRepo, createCheckpoint, applyRollback, assembleIntelligence, moduleRoots } from "@dsh/repo";
 
 export interface RepairConfig {
@@ -488,13 +492,23 @@ export async function runRepairLoop(
     const MAX_REPAIR_TOOL_ROUNDS = 5;
     let content = "";
     const repairToolRounds: import("./task-state.js").ToolRoundRecord[] = [];
+    const repairToolPolicy = getToolPolicy("repair");
+    const repairTools = filterToolsForPolicy(ALL_TOOL_DEFINITIONS, repairToolPolicy);
 
     for (let tr = 0; tr <= MAX_REPAIR_TOOL_ROUNDS; tr++) {
+      const startedAt = Date.now();
       const response = await config.client.chat({
         model: "deepseek-v4-pro",
         messages,
         thinking: true,
-        tools: ALL_TOOL_DEFINITIONS as unknown as Record<string, unknown>[],
+        tools: repairTools as unknown as Record<string, unknown>[],
+      });
+      recordDeepSeekUsage(current, {
+        phase: "repair",
+        model: "deepseek-v4-pro",
+        thinking: true,
+        durationMs: Date.now() - startedAt,
+        response,
       });
 
       const choice = response.choices[0];
@@ -507,22 +521,14 @@ export async function runRepairLoop(
         if (choice.message.reasoning_content) assistantMsg.reasoning_content = choice.message.reasoning_content;
         messages.push(assistantMsg);
         
-        const callRecords: import("./task-state.js").ToolCallRecord[] = [];
-        for (const tc of toolCalls) {
-          let rawArgs: unknown = {};
-          try { rawArgs = JSON.parse(tc.function.arguments); } catch { /* keep empty */ }
-          const args = normalizeToolArguments(rawArgs);
-          const result = executeTool(tc.function.name as ToolName, args, config.cwd, tc.id);
-          const formatted = formatToolResult(tc.function.name as ToolName, args, result);
-          messages.push({ role: "tool", content: formatted, tool_call_id: tc.id });
-          callRecords.push({
-            name: tc.function.name,
-            arguments: args,
-            status: result.status,
-            summary: result.status === "success" ? result.content.slice(0, 200) : (result.error ?? "").slice(0, 200),
-          });
-        }
-        repairToolRounds.push({ round: tr + 1, calls: callRecords });
+        const toolResult = await executeToolCallsForPolicy({
+          toolCalls,
+          toolPolicy: repairToolPolicy,
+          tools: ALL_TOOL_DEFINITIONS,
+          cwd: config.cwd,
+        });
+        messages.push(...toolResult.messages);
+        repairToolRounds.push({ round: tr + 1, calls: toolResult.records });
         continue;
       }
       break;

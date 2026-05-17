@@ -17,6 +17,7 @@ export type {
   StaticScanFinding,
   StaticScanRun,
   StaticRepairResult,
+  DeepSeekUsageRecord,
 } from "./task-state.js";
 
 export {
@@ -90,6 +91,23 @@ export type { VerifyRunResult } from "./verifier.js";
 export { runRepairLoop } from "./repair-loop.js";
 export type { RepairConfig, RepairRoundResult } from "./repair-loop.js";
 
+export {
+  executeToolCallsForPolicy,
+  filterToolsForPolicy,
+  getToolPolicy,
+  runAgentTurnLoop,
+  TOOL_POLICIES,
+} from "./agent-turn-loop.js";
+export type {
+  AgentPhase,
+  ExecuteToolCallsForPolicyInput,
+  ExecuteToolCallsForPolicyResult,
+  AgentTurnLoopInput,
+  AgentTurnLoopResult,
+  ToolExecutor,
+  ToolPolicy,
+} from "./agent-turn-loop.js";
+
 export { detectFailures, buildRepairHints } from "./failure-detector.js";
 export type { FailureDetection, DetectParams } from "./failure-detector.js";
 
@@ -126,6 +144,7 @@ export {
 export type { StaticFindingParser } from "./static-finding-parser.js";
 
 export { writeHandoff } from "./handoff-writer.js";
+export { recordDeepSeekUsage } from "./deepseek-usage.js";
 
 export {
   runPlan,
@@ -167,4 +186,5 @@ export {
   executeTool,
   isShellAllowed,
   formatToolResult,
+  normalizeToolArguments,
 } from "./tool-executor.js";

@@ -35,6 +35,7 @@ function baseState(status: TaskState["status"]): TaskState {
     tool_rounds: [],
     static_scan_runs: [],
     static_repair_results: [],
+    deepseek_usage: [],
     managed_files: [],
   };
 }

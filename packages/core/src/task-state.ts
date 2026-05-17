@@ -120,6 +120,20 @@ const staticRepairResultSchema = z.object({
   created_at: z.string(),
 });
 
+const deepSeekUsageRecordSchema = z.object({
+  phase: z.string(),
+  model: z.string(),
+  thinking: z.boolean(),
+  duration_ms: z.number(),
+  prompt: z.number(),
+  completion: z.number(),
+  total: z.number(),
+  reasoning: z.number(),
+  cache_hit: z.number(),
+  cache_miss: z.number(),
+  cache_hit_ratio: z.number(),
+});
+
 export const taskStateSchema = z.object({
   version: z.literal("0.1"),
   status: z.enum([
@@ -151,6 +165,7 @@ export const taskStateSchema = z.object({
   verify_results: z.array(verifyRoundSchema).default([]),
   static_scan_runs: z.array(staticScanRunSchema).default([]),
   static_repair_results: z.array(staticRepairResultSchema).default([]),
+  deepseek_usage: z.array(deepSeekUsageRecordSchema).default([]),
   repair_rounds: z.number().default(0),
   managed_files: z.array(z.string()).default([]),
   handoff_path: z.string().optional(),
@@ -165,6 +180,7 @@ export type ToolRoundRecord = z.infer<typeof toolRoundRecordSchema>;
 export type StaticScanFinding = z.infer<typeof staticScanFindingSchema>;
 export type StaticScanRun = z.infer<typeof staticScanRunSchema>;
 export type StaticRepairResult = z.infer<typeof staticRepairResultSchema>;
+export type DeepSeekUsageRecord = z.infer<typeof deepSeekUsageRecordSchema>;
 
 export type TaskStatus = TaskState["status"];
 
@@ -247,6 +263,7 @@ export function createTaskState(
     verify_results: [],
     static_scan_runs: [],
     static_repair_results: [],
+    deepseek_usage: [],
     repair_rounds: 0,
     managed_files: [],
   };
