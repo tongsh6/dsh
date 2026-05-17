@@ -3,6 +3,17 @@ export interface RouteTarget {
   thinking: boolean;
 }
 
+export interface ModelRoutingConfig {
+  planModel?: string;
+  patchSmallModel?: string;
+  patchLargeModel?: string;
+  verifyModel?: string;
+  repairModel?: string;
+  handoffModel?: string;
+  initScanModel?: string;
+  initRuleDetectModel?: string;
+}
+
 export type CommandName =
   | "plan"
   | "patch"
@@ -21,15 +32,17 @@ export interface ClassifyInput {
 const DEFAULT_PRO = "deepseek-v4-pro";
 const DEFAULT_FLASH = "deepseek-v4-flash";
 
-const ROUTES: Record<CommandName, RouteTarget> = {
-  "plan": { model: DEFAULT_PRO, thinking: true },
-  "patch": { model: DEFAULT_FLASH, thinking: true },
-  "verify": { model: DEFAULT_FLASH, thinking: false },
-  "repair": { model: DEFAULT_PRO, thinking: true },
-  "handoff": { model: DEFAULT_FLASH, thinking: false },
-  "init/scan": { model: DEFAULT_FLASH, thinking: false },
-  "init/rule-detect": { model: DEFAULT_PRO, thinking: true },
-};
+function routes(config: ModelRoutingConfig = {}): Record<CommandName, RouteTarget> {
+  return {
+    "plan": { model: config.planModel ?? DEFAULT_PRO, thinking: true },
+    "patch": { model: config.patchSmallModel ?? DEFAULT_FLASH, thinking: true },
+    "verify": { model: config.verifyModel ?? DEFAULT_FLASH, thinking: false },
+    "repair": { model: config.repairModel ?? DEFAULT_PRO, thinking: true },
+    "handoff": { model: config.handoffModel ?? DEFAULT_FLASH, thinking: false },
+    "init/scan": { model: config.initScanModel ?? DEFAULT_FLASH, thinking: false },
+    "init/rule-detect": { model: config.initRuleDetectModel ?? DEFAULT_PRO, thinking: true },
+  };
+}
 /**
  * 根据命令和输入参数路由到合适的模型。
  *
@@ -41,10 +54,10 @@ const ROUTES: Record<CommandName, RouteTarget> = {
  *
  * **patch 特殊逻辑**：当 command 为 "patch" 且 fileCount > 3 时，强制路由到 Pro 模型（默认 Flash）。
  */
-export function classify(input: ClassifyInput): RouteTarget {
+export function classify(input: ClassifyInput, config: ModelRoutingConfig = {}): RouteTarget {
   // patch 命令根据文件数决定模型
   if (input.command === "patch" && input.fileCount && input.fileCount > 3) {
-    return { model: DEFAULT_PRO, thinking: true };
+    return { model: config.patchLargeModel ?? DEFAULT_PRO, thinking: true };
   }
-  return ROUTES[input.command];
+  return routes(config)[input.command];
 }

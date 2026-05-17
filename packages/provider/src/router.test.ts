@@ -50,4 +50,14 @@ describe("classify", () => {
     assert.equal(r.model, "deepseek-v4-pro");
     assert.equal(r.thinking, true);
   });
+
+  it("allows model routing overrides", () => {
+    const plan = classify({ command: "plan" }, { planModel: "custom-plan" });
+    const patchSmall = classify({ command: "patch", fileCount: 1 }, { patchSmallModel: "custom-small" });
+    const patchLarge = classify({ command: "patch", fileCount: 5 }, { patchLargeModel: "custom-large" });
+
+    assert.equal(plan.model, "custom-plan");
+    assert.equal(patchSmall.model, "custom-small");
+    assert.equal(patchLarge.model, "custom-large");
+  });
 });

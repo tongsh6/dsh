@@ -24,7 +24,11 @@ const makeResponse = (overrides?: Partial<DeepSeekResponse>): DeepSeekResponse =
     prompt_tokens: 100,
     completion_tokens: 50,
     total_tokens: 150,
-    reasoning_tokens: 20,
+    prompt_cache_hit_tokens: 80,
+    prompt_cache_miss_tokens: 20,
+    completion_tokens_details: {
+      reasoning_tokens: 20,
+    },
   },
   ...overrides,
 });
@@ -67,18 +71,47 @@ describe("normalizeUsage", () => {
       prompt_tokens: 10,
       completion_tokens: 5,
       total_tokens: 15,
-      reasoning_tokens: 3,
+      prompt_cache_hit_tokens: 8,
+      prompt_cache_miss_tokens: 2,
+      completion_tokens_details: {
+        reasoning_tokens: 3,
+      },
     });
-    assert.deepEqual(usage, { prompt: 10, completion: 5, total: 15, reasoning: 3 });
+    assert.deepEqual(usage, {
+      prompt: 10,
+      completion: 5,
+      total: 15,
+      cacheHit: 8,
+      cacheMiss: 2,
+      reasoning: 3,
+      cacheHitRatio: 0.8,
+    });
   });
 
-  it("defaults reasoning to 0", () => {
+  it("defaults missing usage fields to 0", () => {
     const usage = normalizeUsage({
       prompt_tokens: 10,
       completion_tokens: 5,
       total_tokens: 15,
     });
+    assert.equal(usage.prompt, 10);
     assert.equal(usage.reasoning, 0);
+    assert.equal(usage.cacheHit, 0);
+    assert.equal(usage.cacheMiss, 0);
+    assert.equal(usage.cacheHitRatio, 0);
+  });
+
+  it("does not crash when usage is missing", () => {
+    const usage = normalizeUsage(undefined);
+    assert.deepEqual(usage, {
+      prompt: 0,
+      completion: 0,
+      total: 0,
+      cacheHit: 0,
+      cacheMiss: 0,
+      reasoning: 0,
+      cacheHitRatio: 0,
+    });
   });
 });
 
@@ -89,6 +122,14 @@ describe("normalizeResponse", () => {
     assert.equal(nr.content, "Hello");
     assert.equal(nr.thinkingContent, "Thinking...");
     assert.equal(nr.finishReason, "stop");
-    assert.deepEqual(nr.usage, { prompt: 100, completion: 50, total: 150, reasoning: 20 });
+    assert.deepEqual(nr.usage, {
+      prompt: 100,
+      completion: 50,
+      total: 150,
+      cacheHit: 80,
+      cacheMiss: 20,
+      reasoning: 20,
+      cacheHitRatio: 0.8,
+    });
   });
 });

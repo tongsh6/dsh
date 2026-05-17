@@ -1,4 +1,4 @@
-export { DeepSeekClient, DeepSeekError } from "./client.js";
+export { DeepSeekClient, DeepSeekError, DeepSeekApiError } from "./client.js";
 export type {
   DeepSeekMessage,
   DeepSeekRequest,
@@ -9,10 +9,17 @@ export type {
   DeepSeekToolCall,
   DeepSeekToolResultMessage,
   DeepSeekClientConfig,
+  DeepSeekEndpointMode,
+  DeepSeekFeatureFlags,
+  DeepSeekFimRequest,
+  DeepSeekFimResponse,
+  DeepSeekReasoningEffort,
+  DeepSeekRetryOptions,
+  DeepSeekTool,
 } from "./client.js";
 
 export { classify } from "./router.js";
-export type { RouteTarget, ClassifyInput, CommandName } from "./router.js";
+export type { RouteTarget, ClassifyInput, CommandName, ModelRoutingConfig } from "./router.js";
 
 export {
   extractTextContent,
@@ -20,4 +27,4 @@ export {
   normalizeUsage,
   normalizeResponse,
 } from "./normalizer.js";
-export type { NormalizedResponse } from "./normalizer.js";
+export type { NormalizedResponse, NormalizedUsage } from "./normalizer.js";
