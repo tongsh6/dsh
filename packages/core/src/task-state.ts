@@ -226,6 +226,7 @@ export function writeTaskState(cwd: string, state: TaskState): void {
   fs.mkdirSync(dshRoot, { recursive: true });
   const filePath = path.join(dshRoot, "task-state.json");
   fs.writeFileSync(filePath, JSON.stringify(state, null, 2), "utf-8");
+  writeEvidenceFiles(dshRoot, state);
 }
 
 export function transition(
@@ -267,4 +268,161 @@ export function createTaskState(
     repair_rounds: 0,
     managed_files: [],
   };
+}
+
+function writeEvidenceFiles(dshRoot: string, state: TaskState): void {
+  fs.writeFileSync(path.join(dshRoot, "current-goal.md"), buildCurrentGoal(state), "utf-8");
+  fs.writeFileSync(path.join(dshRoot, "plan.json"), JSON.stringify(state.plan ?? null, null, 2), "utf-8");
+  fs.writeFileSync(path.join(dshRoot, "changed-files.json"), JSON.stringify(collectChangedFiles(state), null, 2), "utf-8");
+  fs.writeFileSync(path.join(dshRoot, "tool-calls.jsonl"), collectToolCalls(state).map((r) => JSON.stringify(r)).join("\n"), "utf-8");
+  fs.writeFileSync(path.join(dshRoot, "verify-result.json"), JSON.stringify(buildVerifyResult(state), null, 2), "utf-8");
+  fs.writeFileSync(path.join(dshRoot, "failure-evidence.md"), buildFailureEvidence(state), "utf-8");
+  fs.writeFileSync(path.join(dshRoot, "repair-history.jsonl"), buildRepairHistory(state).map((r) => JSON.stringify(r)).join("\n"), "utf-8");
+  fs.writeFileSync(path.join(dshRoot, "handoff.md"), buildStateHandoff(state), "utf-8");
+}
+
+function buildCurrentGoal(state: TaskState): string {
+  const lines = [
+    `# Current Goal`,
+    "",
+    `- Status: ${state.status}`,
+    `- Type: ${state.task.type}`,
+    `- Created: ${state.task.created_at}`,
+    `- Task: ${state.task.description}`,
+  ];
+  if (state.task.verification_goal) {
+    lines.push(`- Verification Goal: ${state.task.verification_goal}`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+function collectChangedFiles(state: TaskState): string[] {
+  const files = new Set<string>();
+  for (const patch of state.patches) {
+    for (const file of patch.files_changed) files.add(file);
+  }
+  for (const round of state.patch_rounds) {
+    if (round.change?.apply_status === "ok") files.add(round.change.file);
+  }
+  return [...files].sort();
+}
+
+function collectToolCalls(state: TaskState): Array<Record<string, unknown>> {
+  const records: Array<Record<string, unknown>> = [];
+  for (const round of state.tool_rounds) {
+    for (const call of round.calls) {
+      records.push({ source: "tool_rounds", round: round.round, ...call });
+    }
+  }
+  for (const round of state.patch_rounds) {
+    for (const call of round.tool_calls ?? []) {
+      records.push({ source: "patch_rounds", round: round.round, ...call });
+    }
+  }
+  for (const patch of state.patches) {
+    for (const toolRound of patch.tool_rounds ?? []) {
+      for (const call of toolRound.calls) {
+        records.push({ source: "patch_record", patchRound: patch.round, round: toolRound.round, ...call });
+      }
+    }
+  }
+  return records;
+}
+
+function buildVerifyResult(state: TaskState): Record<string, unknown> {
+  const latest = state.verify_results.at(-1) ?? null;
+  return {
+    status: state.status,
+    latest,
+    all: state.verify_results,
+  };
+}
+
+function buildFailureEvidence(state: TaskState): string {
+  const lines = ["# Failure Evidence", ""];
+  const failedVerifies = state.verify_results.flatMap((round) =>
+    round.results
+      .filter((result) => result.status === "failed")
+      .map((result) => ({ round: round.round, result })),
+  );
+  const failedPatches = state.patches.filter((patch) => patch.apply_status === "failed" || patch.apply_status === "partial_ok");
+
+  if (failedVerifies.length === 0 && failedPatches.length === 0 && state.status !== "repair_exhausted") {
+    lines.push("No failure evidence recorded.");
+    return lines.join("\n") + "\n";
+  }
+
+  for (const { round, result } of failedVerifies) {
+    lines.push(`## Verify Round ${round}: ${result.command}`);
+    lines.push("");
+    lines.push(`- Exit code: ${result.exit_code}`);
+    lines.push(`- Duration: ${result.duration_ms}ms`);
+    lines.push("");
+    lines.push("```");
+    lines.push(result.output.slice(0, 8000));
+    lines.push("```");
+    lines.push("");
+  }
+
+  for (const patch of failedPatches) {
+    lines.push(`## Patch Round ${patch.round}: ${patch.apply_status}`);
+    lines.push("");
+    if (patch.patch_incomplete_reason) lines.push(`- Incomplete: ${patch.patch_incomplete_reason}`);
+    lines.push(`- Files changed: ${patch.files_changed.join(", ") || "(none)"}`);
+    lines.push("");
+  }
+
+  return lines.join("\n") + "\n";
+}
+
+function buildRepairHistory(state: TaskState): Array<Record<string, unknown>> {
+  return state.patches.map((patch) => {
+    const verify = state.verify_results.find((round) => round.round === patch.round);
+    return {
+      round: patch.round,
+      apply_status: patch.apply_status,
+      files_changed: patch.files_changed,
+      rolled_back: patch.rolled_back ?? false,
+      rollback_reason: patch.rollback_reason,
+      verify_status: verify
+        ? verify.results.every((result) => result.status === "passed") ? "passed" : "failed"
+        : "not-run",
+      patch_incomplete_reason: patch.patch_incomplete_reason,
+    };
+  });
+}
+
+function buildStateHandoff(state: TaskState): string {
+  const changedFiles = collectChangedFiles(state);
+  const failed = state.verify_results.flatMap((round) => round.results.filter((result) => result.status === "failed"));
+  const lines = [
+    `# Handoff`,
+    "",
+    `## Completed`,
+    "",
+    changedFiles.length > 0 ? changedFiles.map((file) => `- Changed ${file}`).join("\n") : "- No changed files recorded.",
+    "",
+    `## Unfinished`,
+    "",
+    state.status === "verified" || state.status === "done"
+      ? "- None recorded."
+      : `- Current status is ${state.status}.`,
+    "",
+    `## Risks`,
+    "",
+    ...(state.plan?.risks?.length ? state.plan.risks.map((risk) => `- ${risk}`) : ["- No plan risks recorded."]),
+    "",
+    `## Evidence`,
+    "",
+    `- Verify rounds: ${state.verify_results.length}`,
+    `- Failed verify commands: ${failed.length}`,
+    `- Repair rounds: ${state.repair_rounds}`,
+    "",
+    `## Next Steps`,
+    "",
+    state.status === "verified" || state.status === "done"
+      ? "- Review final diff and commit."
+      : "- Inspect failure-evidence.md and repair-history.jsonl before continuing.",
+  ];
+  return lines.join("\n") + "\n";
 }

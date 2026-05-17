@@ -117,6 +117,53 @@ describe("writeTaskState / readTaskState", () => {
     assert.equal(read!.task.description, "修复登录");
   });
 
+  it("writes evidence sidecar files from task state", () => {
+    const state = createTaskState("fix parser", "bugfix", "parser test passes");
+    const planned = transition(state, "planned");
+    planned.plan = {
+      summary: "fix parser",
+      files: ["src/parser.ts"],
+      risks: ["parser edge cases"],
+      raw_xml: "<PLAN>fix parser</PLAN>",
+      verify_commands: ["pnpm test"],
+    };
+    planned.patches.push({
+      round: 1,
+      patch: "<PATCH>...</PATCH>",
+      apply_status: "ok",
+      files_changed: ["src/parser.ts"],
+    });
+    planned.patch_rounds.push({
+      round: 1,
+      action: "tools",
+      tool_calls: [{
+        name: "read_file",
+        arguments: { path: "src/parser.ts" },
+        status: "success",
+        summary: "read parser",
+      }],
+      duration_ms: 10,
+    });
+    planned.verify_results.push({
+      round: 1,
+      results: [{
+        command: "pnpm test",
+        status: "failed",
+        exit_code: 1,
+        output: "expected parser failure",
+        duration_ms: 20,
+      }],
+    });
+
+    writeTaskState(tmp, planned);
+
+    assert.ok(fs.readFileSync(path.join(tmp, ".dsh", "current-goal.md"), "utf-8").includes("fix parser"));
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(tmp, ".dsh", "changed-files.json"), "utf-8")), ["src/parser.ts"]);
+    assert.ok(fs.readFileSync(path.join(tmp, ".dsh", "tool-calls.jsonl"), "utf-8").includes("read_file"));
+    assert.ok(fs.readFileSync(path.join(tmp, ".dsh", "failure-evidence.md"), "utf-8").includes("expected parser failure"));
+    assert.ok(fs.readFileSync(path.join(tmp, ".dsh", "handoff.md"), "utf-8").includes("parser edge cases"));
+  });
+
   it("returns null when no state file", () => {
     const read = readTaskState(tmp);
     assert.equal(read, null);

@@ -122,6 +122,8 @@ export class DeepSeekApiError extends DeepSeekError {
     public readonly status: number,
     public readonly body?: unknown,
     public readonly retryable: boolean = false,
+    public readonly attempt?: number,
+    public readonly durationMs?: number,
   ) {
     super(message, status, body);
     this.name = "DeepSeekApiError";
@@ -254,28 +256,33 @@ export class DeepSeekClient {
 
         return result;
       } catch (e) {
-        lastError = e instanceof Error ? e : new Error(String(e));
+        const elapsed = Date.now() - startTime;
+        const error = e instanceof DeepSeekApiError
+          ? withApiErrorMetadata(e, attempt + 1, elapsed)
+          : e instanceof Error
+          ? e
+          : new Error(String(e));
+        lastError = error;
 
-        if (e instanceof DeepSeekApiError && !e.retryable) {
-          throw e;
+        if (error instanceof DeepSeekApiError && !error.retryable) {
+          throw error;
         }
 
         if (
-          e instanceof DeepSeekError &&
-          !(e instanceof DeepSeekApiError) &&
-          !e.message.includes("Network error") &&
-          !e.message.includes("timed out")
+          error instanceof DeepSeekError &&
+          !(error instanceof DeepSeekApiError) &&
+          !error.message.includes("Network error") &&
+          !error.message.includes("timed out")
         ) {
-          throw e;
+          throw error;
         }
 
-        if (e instanceof DeepSeekApiError && e.retryable && attempt >= this.retryOptions.maxRetries) {
-          throw e;
+        if (error instanceof DeepSeekApiError && error.retryable && attempt >= this.retryOptions.maxRetries) {
+          throw error;
         }
 
         if (attempt < this.retryOptions.maxRetries) {
-          const elapsed = Date.now() - startTime;
-          const status = e instanceof DeepSeekError ? e.status : undefined;
+          const status = error instanceof DeepSeekError ? error.status : undefined;
           console.warn(
             `DeepSeek API retry ${attempt + 1}/${this.retryOptions.maxRetries} after error: ${lastError.message} (status=${status ?? "network"}, duration=${elapsed}ms)`,
           );
@@ -424,8 +431,8 @@ export class DeepSeekClient {
   }
 
   async fim(req: DeepSeekFimRequest, signal?: AbortSignal): Promise<DeepSeekFimResponse> {
-    if (!this.featureFlags.fim) {
-      throw new DeepSeekError("DeepSeek FIM is experimental and requires featureFlags.fim=true");
+    if (!this.featureFlags.fim || !this.betaBaseUrl) {
+      throw new DeepSeekError("DeepSeek FIM is experimental and requires featureFlags.fim=true and betaBaseUrl");
     }
 
     const body: Record<string, unknown> = {
@@ -441,7 +448,7 @@ export class DeepSeekClient {
     if (signal) signal.addEventListener("abort", () => controller.abort());
 
     try {
-      const res = await fetch(`${this.baseUrl}/completions`, {
+      const res = await fetch(`${this.betaBaseUrl}/completions`, {
         method: "POST",
         headers: this.buildHeaders(),
         body: JSON.stringify(body),
@@ -577,6 +584,22 @@ export class DeepSeekClient {
 
 function trimTrailingSlash(url: string): string {
   return url.replace(/\/+$/, "");
+}
+
+function withApiErrorMetadata(
+  error: DeepSeekApiError,
+  attempt: number,
+  durationMs: number,
+): DeepSeekApiError {
+  if (error.attempt === attempt && error.durationMs === durationMs) return error;
+  return new DeepSeekApiError(
+    error.message,
+    error.status,
+    error.body,
+    error.retryable,
+    attempt,
+    durationMs,
+  );
 }
 
 function sanitizeThinkingRequestBody(body: Record<string, unknown>): Record<string, unknown> {

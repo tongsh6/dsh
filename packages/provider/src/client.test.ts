@@ -251,7 +251,9 @@ describe("DeepSeekClient", () => {
             e instanceof DeepSeekApiError &&
             e.status === 400 &&
             e.message.includes("400") &&
-            e.retryable === false
+            e.retryable === false &&
+            e.attempt === 1 &&
+            (e.durationMs ?? -1) >= 0
           );
         },
       );
@@ -340,6 +342,8 @@ describe("DeepSeekClient", () => {
             e instanceof DeepSeekApiError &&
             e.status === 503 &&
             e.retryable === true &&
+            e.attempt === 2 &&
+            (e.durationMs ?? -1) >= 0 &&
             JSON.stringify(e.body).includes("overloaded"),
         );
       } finally {
@@ -597,6 +601,7 @@ describe("DeepSeekClient", () => {
       let capturedBody: string | null = null;
       const fimClient = new DeepSeekClient({
         apiKey: "test-key",
+        betaBaseUrl: "https://api.deepseek.com/beta",
         featureFlags: { fim: true },
       });
 
@@ -622,7 +627,7 @@ describe("DeepSeekClient", () => {
       });
 
       const parsed = JSON.parse(capturedBody!);
-      assert.equal(capturedUrl, "https://api.deepseek.com/completions");
+      assert.equal(capturedUrl, "https://api.deepseek.com/beta/completions");
       assert.equal(parsed.max_tokens, 20);
       assert.equal(res.content, "completion");
     });

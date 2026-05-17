@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   extractTextContent,
   extractThinkingContent,
+  extractToolCalls,
+  normalizeStreamDelta,
   normalizeUsage,
   normalizeResponse,
 } from "./normalizer.js";
@@ -65,6 +67,44 @@ describe("extractThinkingContent", () => {
   });
 });
 
+describe("extractToolCalls", () => {
+  it("returns tool calls without parsing or dropping arguments", () => {
+    const res = makeResponse({
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content: "",
+            tool_calls: [
+              {
+                id: "call_1",
+                type: "function",
+                function: {
+                  name: "read_file",
+                  arguments: "{\"path\":\"src/a.ts\"}",
+                },
+              },
+            ],
+          },
+          finish_reason: "tool_calls",
+        },
+      ],
+    });
+
+    assert.deepEqual(extractToolCalls(res), [
+      {
+        id: "call_1",
+        type: "function",
+        function: {
+          name: "read_file",
+          arguments: "{\"path\":\"src/a.ts\"}",
+        },
+      },
+    ]);
+  });
+});
+
 describe("normalizeUsage", () => {
   it("normalizes token counts", () => {
     const usage = normalizeUsage({
@@ -121,6 +161,12 @@ describe("normalizeResponse", () => {
     const nr = normalizeResponse(res);
     assert.equal(nr.content, "Hello");
     assert.equal(nr.thinkingContent, "Thinking...");
+    assert.deepEqual(nr.toolCalls, []);
+    assert.deepEqual(nr.message, {
+      content: "Hello",
+      reasoningContent: "Thinking...",
+      toolCalls: [],
+    });
     assert.equal(nr.finishReason, "stop");
     assert.deepEqual(nr.usage, {
       prompt: 100,
@@ -130,6 +176,30 @@ describe("normalizeResponse", () => {
       cacheMiss: 20,
       reasoning: 20,
       cacheHitRatio: 0.8,
+    });
+  });
+});
+
+describe("normalizeStreamDelta", () => {
+  it("keeps content and reasoning deltas separate", () => {
+    const delta = normalizeStreamDelta({
+      id: "s1",
+      object: "chat.completion.chunk",
+      created: 1,
+      model: "deepseek-v4-pro",
+      choices: [
+        {
+          index: 0,
+          delta: { content: "final", reasoning_content: "think" },
+          finish_reason: null,
+        },
+      ],
+    });
+
+    assert.deepEqual(delta, {
+      content: "final",
+      reasoningContent: "think",
+      finishReason: null,
     });
   });
 });
