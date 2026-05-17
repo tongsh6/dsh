@@ -310,6 +310,7 @@ spec/           ← 设计文档：描述"要做什么"和"为什么这样做"
 | `pie-phase-e-validation` | PIE Phase E：24 fixture benchmark + A/B + 报告归档 | in_review | p1 | ai |
 | `fixture-metadata-audit` | 机器化受控 benchmark fixture 元数据审计 | in_review | p0 | ai |
 | `failure-matrix-governance-invariants` | 锁定 failure matrix 证据治理不变量 | in_review | p0 | ai |
+| `phase3-exit-benchmark-evidence` | Phase 3 最新 N=3 replicated benchmark 退出证据 | blocked | p0 | ai |
 
 ## 7. 修订历史
 
