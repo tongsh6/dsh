@@ -20,6 +20,12 @@ export interface FixtureAuditFinding {
   evidence: string;
 }
 
+export interface VerificationExtensionCandidate {
+  fixtureId: string;
+  command: string;
+  reason: "non_runner_shell_assertion";
+}
+
 const COMPARABILITY_RISK_FIXTURES = new Set([
   "rh-refactor-branch-orchestrator-create",
   "rh-refactor-branch-orchestrator-tests",
@@ -182,4 +188,41 @@ export function auditFixturesForVerificationCoverage(
   fixtures: Array<Pick<LoadedFixture, "id" | "expectedFiles" | "verificationCommands" | "verifications">>,
 ): FixtureAuditFinding[] {
   return fixtures.flatMap((fixture) => auditFixtureVerificationCoverage(fixture));
+}
+
+const SHELL_RUNNER_PATTERNS: RegExp[] = [
+  /^(?:\([^)]*&&\s*)?pnpm\b/,
+  /^npx\s+(?:jest|tsc|eslint|markdownlint)\b/,
+  /^python3\s+(?:-m\s+pytest|tools\/check_v2_constraints\.py)\b/,
+  /^(?:\(\s*)?(?:cd\s+\S+\s+&&\s*)?mvn\s+test\b/,
+];
+
+function isRunnerShellCommand(command: string): boolean {
+  const normalized = command.trim().replace(/\s+/g, " ");
+  return SHELL_RUNNER_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function shellCommandsForExtensionReview(
+  fixture: Pick<TaskFixture, "verificationCommands" | "verifications">,
+): string[] {
+  return [
+    ...fixture.verificationCommands,
+    ...(fixture.verifications ?? [])
+      .filter((assertion) => assertion.type === "shell")
+      .map((assertion) => assertion.command),
+  ];
+}
+
+export function collectVerificationExtensionCandidates(
+  fixtures: Array<Pick<LoadedFixture, "id" | "verificationCommands" | "verifications">>,
+): VerificationExtensionCandidate[] {
+  return fixtures.flatMap((fixture) =>
+    shellCommandsForExtensionReview(fixture)
+      .filter((command) => !isRunnerShellCommand(command))
+      .map((command) => ({
+        fixtureId: fixture.id,
+        command,
+        reason: "non_runner_shell_assertion" as const,
+      })),
+  );
 }

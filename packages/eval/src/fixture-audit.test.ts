@@ -7,6 +7,7 @@ import {
   auditFixtureVerificationCoverage,
   auditFixturesForContamination,
   auditFixturesForVerificationCoverage,
+  collectVerificationExtensionCandidates,
 } from "./fixture-audit.js";
 import { loadFailureMatrix } from "./failure-matrix.js";
 import { loadAllFixtures } from "./task-fixtures.js";
@@ -162,5 +163,29 @@ describe("fixture verification coverage audit", () => {
     const findings = auditFixturesForVerificationCoverage(loadAllFixtures(fixturesDir));
 
     assert.deepEqual(findings, []);
+  });
+});
+
+describe("fixture verification extension review", () => {
+  it("keeps the current shell assertion extension candidate baseline below the spec trigger", () => {
+    const fixturesDir = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "fixtures",
+    );
+    const candidates = collectVerificationExtensionCandidates(loadAllFixtures(fixturesDir));
+
+    assert.deepEqual(candidates, [
+      {
+        fixtureId: "loam-docs-readme-distill-observability",
+        command:
+          "awk '/^## Architecture/{seen=1} seen && /^## Distill Observability/{found=1} /^## Current Direction/{exit found ? 0 : 1}' README.md",
+        reason: "non_runner_shell_assertion",
+      },
+      {
+        fixtureId: "loam-refactor-rename-distill-state",
+        command: "git show HEAD:packages/distill/src/state.ts | cmp - packages/distill/src/distill-state.ts",
+        reason: "non_runner_shell_assertion",
+      },
+    ]);
   });
 });
