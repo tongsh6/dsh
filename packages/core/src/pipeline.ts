@@ -62,6 +62,7 @@ import { recordDeepSeekUsage } from "./deepseek-usage.js";
 // ---- Helpers ----
 
 const MAX_PATCH_ROUNDS = 30;
+const MAX_PLAN_TOOL_ROUNDS = 5;
 const MAX_CONSECUTIVE_INVALID = 3;
 const MAX_CONSECUTIVE_TOOLS_ONLY = 10;
 const TOOLS_ONLY_STALL_WARNING = 3;
@@ -179,6 +180,20 @@ function buildMissingFilesRetryMessage(): string {
     "- path/to/file.ext",
     "</FILES>",
     "<RISKS>...</RISKS>",
+  ].join("\n");
+}
+
+function buildPlanToolLimitMessage(): string {
+  return [
+    "## SYSTEM WARNING",
+    `You have reached the ${MAX_PLAN_TOOL_ROUNDS}-round limit for plan-phase source inspection.`,
+    "Tool access is now paused. Use the information already gathered to output the required XML blocks:",
+    "<PLAN>...</PLAN>",
+    "<FILES>...</FILES>",
+    "<VERIFY_STRATEGY>...</VERIFY_STRATEGY>",
+    "<VERIFY>...</VERIFY>",
+    "<RISKS>...</RISKS>",
+    "Do not call more tools in the plan phase.",
   ].join("\n");
 }
 
@@ -412,16 +427,20 @@ export async function runPlan(params: PlanParams): Promise<TaskState> {
 
   const layers = await buildLayers(cwd, state);
   const target = classify({ command: "plan" });
+  const planToolPolicy = getToolPolicy("plan");
+  const planTools = filterToolsForPolicy(ALL_TOOL_DEFINITIONS, planToolPolicy);
 
   const messages = buildMessages({ context: layers, taskDescription: description, phase: "plan" });
   let attempts = 0;
+  let toolRounds = 0;
   while (attempts < 2) {
-    attempts++;
+    const toolsEnabled = toolRounds < MAX_PLAN_TOOL_ROUNDS;
     const startedAt = Date.now();
     const response = await client.chat({
       model: target.model,
       messages,
       thinking: target.thinking,
+      ...(toolsEnabled ? { tools: planTools as unknown as Record<string, unknown>[] } : {}),
     });
     recordDeepSeekUsage(state, {
       phase: "plan",
@@ -432,6 +451,39 @@ export async function runPlan(params: PlanParams): Promise<TaskState> {
     });
 
     const content = response.choices[0]?.message.content ?? "";
+    const choice = response.choices[0];
+    const toolCalls = choice?.message.tool_calls ?? [];
+    if (toolCalls.length > 0) {
+      const assistantMsg: DeepSeekMessage = {
+        role: "assistant",
+        content,
+        tool_calls: toolCalls,
+      };
+      if (choice?.message.reasoning_content) {
+        assistantMsg.reasoning_content = choice.message.reasoning_content;
+      }
+      messages.push(assistantMsg);
+
+      const toolResult = await executeToolCallsForPolicy({
+        toolCalls,
+        toolPolicy: planToolPolicy,
+        tools: ALL_TOOL_DEFINITIONS,
+        cwd,
+      });
+      messages.push(...toolResult.messages);
+      toolRounds++;
+      state.tool_rounds.push({
+        round: toolRounds,
+        calls: toolResult.records,
+      });
+      writeTaskState(cwd, state);
+      if (toolRounds >= MAX_PLAN_TOOL_ROUNDS) {
+        messages.push({ role: "user", content: buildPlanToolLimitMessage() });
+      }
+      continue;
+    }
+
+    attempts++;
     const planRaw = extractPlanBlock(content);
     const files = extractFilesBlock(content);
     const risks = extractRisksBlock(content);

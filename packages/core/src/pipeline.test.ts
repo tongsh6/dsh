@@ -6,7 +6,7 @@ import * as os from "node:os";
 import * as yaml from "js-yaml";
 import { runPlan, runPatch, runVerify, runRepair, runHandoff, runFullPipeline, runPreflight, resolveVerifyCommands, resolveVerifyAssertions, computeUncoveredPlanFiles } from "./pipeline.js";
 import { readTaskState } from "./task-state.js";
-import type { DeepSeekClient, DeepSeekResponse } from "@dsh/provider";
+import type { DeepSeekClient, DeepSeekMessage, DeepSeekResponse } from "@dsh/provider";
 
 // Helper: create a mock DeepSeekClient that returns the given content
 function mockClient(responseContent: string): DeepSeekClient {
@@ -185,6 +185,153 @@ describe("runPlan", () => {
       assert.ok(state.plan);
       assert.equal(state.plan!.files.length, 1);
       assert.equal(state.task.type, "bugfix");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("allows plan phase to inspect source files before producing the final plan", async () => {
+    const tmp = await setupTempDir();
+    try {
+      fs.mkdirSync(path.join(tmp, "src"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, "src", "service.ts"),
+        "export class Service {\n  constructor(private readonly ports: Port[]) {}\n}\n",
+        "utf-8",
+      );
+
+      const seenMessages: DeepSeekMessage[][] = [];
+      let calls = 0;
+      const client = {
+        chat: async (request: { messages: DeepSeekMessage[] }) => {
+          seenMessages.push(request.messages);
+          calls++;
+          if (calls === 1) {
+            return {
+              id: "plan-tool",
+              object: "chat.completion",
+              created: Date.now(),
+              model: "deepseek-v4-pro",
+              choices: [{
+                index: 0,
+                message: {
+                  role: "assistant" as const,
+                  content: "",
+                  tool_calls: [{
+                    id: "call_read_service",
+                    type: "function" as const,
+                    function: {
+                      name: "read_file",
+                      arguments: '{"path":"src/service.ts"}',
+                    },
+                  }],
+                },
+                finish_reason: "tool_calls" as const,
+              }],
+              usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
+            };
+          }
+
+          return {
+            id: "plan-final",
+            object: "chat.completion",
+            created: Date.now(),
+            model: "deepseek-v4-pro",
+            choices: [{
+              index: 0,
+              message: { role: "assistant" as const, content: VALID_PLAN_RESPONSE },
+              finish_reason: "stop" as const,
+            }],
+            usage: { prompt_tokens: 130, completion_tokens: 50, total_tokens: 180 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      const state = await runPlan({ cwd: tmp, client, description: "test source inspection", taskType: "test" });
+
+      assert.equal(state.status, "planned");
+      assert.equal(calls, 2);
+      assert.equal(state.tool_rounds.length, 1);
+      assert.equal(state.tool_rounds[0]!.calls[0]!.name, "read_file");
+      const secondCallMessages = seenMessages[1]!;
+      assert.ok(
+        secondCallMessages.some(
+          (message) => message.role === "tool" && message.content?.includes("constructor(private readonly ports: Port[])"),
+        ),
+        "second plan request should include read_file output",
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("pauses plan tools after the bounded inspection limit and asks for a final plan", async () => {
+    const tmp = await setupTempDir();
+    try {
+      fs.writeFileSync(path.join(tmp, "dummy.py"), "# test\n", "utf-8");
+
+      const seenRequests: Array<{ messages: DeepSeekMessage[]; tools?: unknown[] }> = [];
+      let calls = 0;
+      const client = {
+        chat: async (request: { messages: DeepSeekMessage[]; tools?: unknown[] }) => {
+          seenRequests.push(request);
+          calls++;
+          if (calls <= 5) {
+            return {
+              id: `plan-tool-${calls}`,
+              object: "chat.completion",
+              created: Date.now(),
+              model: "deepseek-v4-pro",
+              choices: [{
+                index: 0,
+                message: {
+                  role: "assistant" as const,
+                  content: "",
+                  tool_calls: [{
+                    id: `call_read_${calls}`,
+                    type: "function" as const,
+                    function: {
+                      name: "read_file",
+                      arguments: '{"path":"dummy.py"}',
+                    },
+                  }],
+                },
+                finish_reason: "tool_calls" as const,
+              }],
+              usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
+            };
+          }
+
+          return {
+            id: "plan-final",
+            object: "chat.completion",
+            created: Date.now(),
+            model: "deepseek-v4-pro",
+            choices: [{
+              index: 0,
+              message: { role: "assistant" as const, content: VALID_PLAN_RESPONSE },
+              finish_reason: "stop" as const,
+            }],
+            usage: { prompt_tokens: 130, completion_tokens: 50, total_tokens: 180 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      const state = await runPlan({ cwd: tmp, client, description: "test plan tool limit", taskType: "bugfix" });
+
+      assert.equal(state.status, "planned");
+      assert.equal(calls, 6);
+      assert.equal(state.tool_rounds.length, 5);
+      assert.ok(seenRequests.slice(0, 5).every((request) => (request.tools?.length ?? 0) > 0));
+      assert.equal(seenRequests[5]!.tools, undefined);
+      assert.ok(
+        seenRequests[5]!.messages.some(
+          (message) => message.role === "user" && message.content?.includes("Tool access is now paused"),
+        ),
+        "final plan request should include the tool limit warning",
+      );
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

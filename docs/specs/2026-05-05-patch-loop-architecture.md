@@ -54,7 +54,7 @@ BLUEPRINT 第 1 节定位 DSH 是「DeepSeek-native Coding Agent」，对标 Cla
 ### 2.2 非目标
 
 1. **不做完整 Agent Loop**（BLUEPRINT Phase 4） —— 模型不能自主分解任务、不能调度子 Agent，patch 仍由用户单 task 驱动
-2. **不动 PLAN 阶段** —— PLAN 仍是单轮响应（`<PLAN>`/`<FILES>`/`<VERIFY>`/`<RISKS>` 一次性给出）
+2. **不改变 PLAN 输出契约** —— PLAN 最终仍一次性给出 `<PLAN>` / `<FILES>` / `<VERIFY>` / `<RISKS>`；允许在最终 PLAN 前使用有界只读工具轮（`read_file` / `grep_files`）补足源码上下文，不引入 plan 阶段写入或 `exec_shell`
 3. **不动 REPAIR 阶段（本期）** —— repair 仍沿用现协议；若 D 部分完成度检查使 repair 触发频次上升、且 repair 也表现出同样不稳，再扩到 repair（v0.5）
 4. **不做协议自动版本协商** —— v0.4 prompt 是硬切换，老 prompt 删除而非保留
 5. **不做事务回滚** —— 单轮 apply 失败不自动 rollback；由模型在下一轮自行修正（v0.5 可加 stash/restore）
@@ -272,7 +272,7 @@ type ChangeBlock = {
 packages/core/src/
 ├── pipeline.ts          # runPatch 重写为 loop（其他函数不变）
 ├── patch-parser.ts      # 新增 parsePatchTurn；parseChanges 保留
-├── prompt-builder.ts    # PATCH_PROMPT v0.4；PLAN/REPAIR_PROMPT 不变
+├── prompt-builder.ts    # PATCH_PROMPT v0.4；PLAN 最终 XML 契约不变；REPAIR_PROMPT 不变
 ├── task-state.ts        # 加 patch_rounds + patch_failed status + partial_ok
 ├── tool-executor.ts     # 不变
 └── ...
@@ -383,5 +383,6 @@ packages/eval/src/
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
-| 2026-05-05 | v1.0 (draft) | 初始 spec：从 batch 协议切换到 patch loop，含 6 phase 实施计划与回退策略 |
+| 2026-05-17 | v1.2 (draft) | 追认 PLAN 阶段只读工具轮：不改变最终 XML 输出契约，但允许 `read_file` / `grep_files` 在计划前补足源码上下文。 |
 | 2026-05-05 | v1.1 (draft) | §9 新增「本 spec 引发的跟踪事项」（治理 G2 回填，依据 CONSTITUTION v1.1 原则 8）；原 §9 修订历史顺延为 §10 |
+| 2026-05-05 | v1.0 (draft) | 初始 spec：从 batch 协议切换到 patch loop，含 6 phase 实施计划与回退策略 |

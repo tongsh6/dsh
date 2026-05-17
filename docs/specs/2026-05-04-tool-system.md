@@ -33,7 +33,7 @@
 1. **不做完整 Agent Loop**（Phase 4）：模型不能自主分解任务或调度子 Agent
 2. **不做对话式会话管理**（Phase 5）：每次 `dsh patch` 仍然是独立调用
 3. **不做 MCP 集成**（Phase 7）：工具是 DSH 内置的，不通过 MCP 协议
-4. **不做 plan 阶段工具调用**：plan 阶段仍使用预装配上下文（plan 不需要精确代码）
+4. **plan 阶段只允许只读探索工具**：plan 阶段可使用 `read_file` / `grep_files` 补足预装配上下文，但不能使用 `exec_shell` 或任何写入能力；变更仍只能在 patch / repair 阶段通过 XML 协议块落地。
 5. **不做文件写入工具**：模型仍然通过 XML 协议块（CREATE/PATCH/INSERT 等）输出变更
 6. **不做工具调用审批门禁**：本阶段所有工具自动执行（在 Phase 4 Agent Loop 中引入审批）
 
@@ -391,4 +391,5 @@ DeepSeek API 兼容 OpenAI 的 function calling 格式。关键参数：
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
+| 2026-05-17 | v1.1 | 追认 plan 阶段只读工具策略：允许 `read_file` / `grep_files`，禁止 `exec_shell` / 写入；用于减少计划期源码结构猜测。 |
 | 2026-05-04 | v1.0 | 初始工具系统 spec：read_file/grep_files/exec_shell + 多轮调用循环 |
