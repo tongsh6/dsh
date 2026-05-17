@@ -6,7 +6,7 @@
 
 ## 1. 当前阶段目标
 
-**Phase 3（工具化 / 验证闭环攻坚）**。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
+**Phase 3 收口 / 验证闭环攻坚**。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 
 ### Phase 3 核心演进
 - **议题 A (dsh-autonomous-env)**: ✅ P1-P2 已实施（去保姆化 + runPreflight 状态机 + prompt 增强 + 命令白名单 + repair 扩容 + fixture 验证命令修正）。

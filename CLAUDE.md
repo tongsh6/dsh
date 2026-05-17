@@ -68,7 +68,7 @@ pnpm run lint             # ESLint across all packages
 ## Project State
 
 - **Version:** 0.1.0 (active development)
-- **Current phase:** Phase 3 (tooling / verification-loop hardening)
+- **Current phase:** Phase 3 closeout / verification-loop hardening
 - **Baseline:** testsPassed 11/24 = 45%; target >60%
 - **Latest evidence:** 2026-05-14 replicated benchmark, Project Card on 60/72 = 83.3%
 - **Task tracking:** `docs/TASK-SPEC.md` — defines task format, lifecycle, and spec→plan→task hierarchy
