@@ -67,4 +67,26 @@ describe("failure matrix", () => {
     assert.equal(entries[1]!.evidencePolicy, "exclude_from_phase3_exit");
     assert.equal(entries[1]!.contamination, "neutralized_prompt_contamination");
   });
+
+  it("enforces evidence policies for comparability and contamination governance", () => {
+    const matrix = loadFailureMatrix();
+
+    for (const entry of matrix.entries) {
+      if (entry.governance?.comparabilityRisk === true) {
+        assert.equal(
+          entry.governance.evidencePolicy,
+          "label_required",
+          `${entry.fixture}: comparability risk must be explicitly labeled in benchmark evidence`,
+        );
+      }
+
+      if (entry.governance?.contamination) {
+        assert.equal(
+          entry.governance.evidencePolicy,
+          "exclude_from_phase3_exit",
+          `${entry.fixture}: contaminated historical evidence must be excluded from Phase 3 exit evidence`,
+        );
+      }
+    }
+  });
 });
