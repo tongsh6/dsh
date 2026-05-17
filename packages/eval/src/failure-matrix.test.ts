@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   EVIDENCE_POLICIES,
+  FailureMatrixEntrySchema,
   FAILURE_STATUSES,
   FAILURE_TYPES,
   loadFailureMatrix,
@@ -88,5 +89,49 @@ describe("failure matrix", () => {
         );
       }
     }
+  });
+
+  it("rejects comparability risk entries without label-required evidence policy", () => {
+    const parsed = FailureMatrixEntrySchema.safeParse({
+      fixture: "rh-split-fixture",
+      repo: "release-hub",
+      failureType: "patch_apply_failure",
+      status: "single_smoke_passed",
+      requiresReplicatedConfirmation: true,
+      lastEvidence: "docs/reports/runlogs/example",
+      notes: "split replacement fixture",
+      governance: {
+        comparabilityRisk: true,
+        evidencePolicy: "standard",
+      },
+    });
+
+    assert.equal(parsed.success, false);
+    assert.match(
+      parsed.error.issues.map((issue) => issue.message).join("\n"),
+      /comparability risk entries must use evidencePolicy="label_required"/,
+    );
+  });
+
+  it("rejects contaminated evidence entries not excluded from Phase 3 exit evidence", () => {
+    const parsed = FailureMatrixEntrySchema.safeParse({
+      fixture: "pi-contaminated-fixture",
+      repo: "pi-proof-forge",
+      failureType: "semantic_incorrect",
+      status: "single_smoke_passed",
+      requiresReplicatedConfirmation: true,
+      lastEvidence: "docs/reports/runlogs/example",
+      notes: "historical prompt contained answer leakage",
+      governance: {
+        contamination: "neutralized_prompt_contamination",
+        evidencePolicy: "label_required",
+      },
+    });
+
+    assert.equal(parsed.success, false);
+    assert.match(
+      parsed.error.issues.map((issue) => issue.message).join("\n"),
+      /contaminated historical evidence must use evidencePolicy="exclude_from_phase3_exit"/,
+    );
   });
 });

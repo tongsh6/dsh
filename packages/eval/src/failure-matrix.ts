@@ -55,6 +55,30 @@ export const FailureMatrixEntrySchema = z.object({
     ]).optional(),
     notes: z.string().min(1).optional(),
   }).optional(),
+}).superRefine((entry, ctx) => {
+  if (
+    entry.governance?.comparabilityRisk === true &&
+    entry.governance.evidencePolicy !== "label_required"
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["governance", "evidencePolicy"],
+      message:
+        "comparability risk entries must use evidencePolicy=\"label_required\"",
+    });
+  }
+
+  if (
+    entry.governance?.contamination &&
+    entry.governance.evidencePolicy !== "exclude_from_phase3_exit"
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["governance", "evidencePolicy"],
+      message:
+        "contaminated historical evidence must use evidencePolicy=\"exclude_from_phase3_exit\"",
+    });
+  }
 });
 
 export const FailureMatrixSchema = z.object({
