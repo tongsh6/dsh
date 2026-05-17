@@ -1,12 +1,12 @@
 # DSH 项目事实台账
 
-> 状态: active | 最后更新: 2026-05-16
+> 状态: active | 最后更新: 2026-05-17
 >
 > 任何新会话 AI 或新人进入项目后，**请先阅读本文件**，以便快速恢复项目状态基线。
 
 ## 1. 当前阶段目标
 
-**Phase 3 收口 / 验证闭环攻坚**。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
+**Phase 3 收口验证期**。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 
 ### Phase 3 核心演进
 - **议题 A (dsh-autonomous-env)**: ✅ P1-P2 已实施（去保姆化 + runPreflight 状态机 + prompt 增强 + 命令白名单 + repair 扩容 + fixture 验证命令修正）。
@@ -15,13 +15,25 @@
 - **议题 D (transactional-self-correction)**: ✅ P1 已实施并通过本地测试（双轨 checkpoint + managed_files + 物理回滚 + ANSI 剥离）；loam smoke PASS，rh smoke `260513-013656` PASS，repairSuccess 1/1。
 - **Phase 3 起点基线**: testsPassed 11/24 = 45%（`260508-003359` / `260509-165142`）。
 - **目标**: testsPassed > 60%.
-- **最新 replicated benchmark evidence**: Project Card on `60/72 = 83.3%` over 24 fixtures × 3 reps — `docs/reports/knowledge/20260514-pie-phase2-3-baseline.md`；该结果已超过 Phase 3 `>60%` 目标，但 3 个 hard-fail fixture 仍需根因分析。
+- **最新 replicated benchmark evidence**: Project Card on `60/72 = 83.3%` over 24 fixtures × 3 reps — `docs/reports/knowledge/20260514-pie-phase2-3-baseline.md`；该结果已超过 Phase 3 `>60%` 目标，但 hard-fail smoke 修复仍需新的 N=3 / full benchmark 复审。
+- **2026-05-17 收口复审**: full replicated run `docs/reports/runlogs/260517074552-pie-replicated/` 因成本控制在 12/168 trials 后中断；partial evidence 已足够判定 Phase 3 不可退出：`rh-test-dashboard-version` card_on 0/1、card_off 0/1，single smoke PASS 未在 replicated 环境稳定复现。
+- **failure matrix 机器可读资产**: `packages/eval/src/failure-matrix.json` 是后续 AI / benchmark runner 判断 fixture 状态的主入口；Markdown 报告仅作为人读解释。
 
 ### 验证分层原则
 - **单元/类型/静态验证是日常反馈**：代码修改后优先跑相关 package test、typecheck、lint/build，验证局部合同和编译质量。
 - **定向 smoke 是 blocker 闭环验证**：只有当改动触及某个真实 fixture blocker，或需要证明一个具体端到端路径已收敛时，才跑对应单 fixture smoke。
 - **benchmark 是阶段性能力评估**：全量或多 fixture benchmark 用于阶段收口、指标对比、跨 fixture 回归排查、对外宣称 testsPassed/repairSuccess 提升；不要把 benchmark 当成每次代码修改后的常规验证。
 - **记录要求**：任何 benchmark 运行都应说明目的、baseline、结论和下一步；如果只是验证本地代码正确性，应选择更小的测试命令。
+
+### Phase 3 退出条件
+- [ ] ProjectIntelligence 是 init / pipeline / context 的唯一主路径。
+- [ ] README / BLUEPRINT / project-ledger / GitHub 可见 README 状态一致。
+- [ ] 最新 N=3 replicated benchmark 达到 Phase 3 目标，且 Project Card on 收益持续。
+- [ ] hard-fail smoke 修复经过 replicated benchmark 复审。
+- [x] failure matrix 已机器可读：`packages/eval/src/failure-matrix.json`。
+- [x] legacy scanner 有防回流测试：`packages/repo/src/legacy-scanner-guard.test.ts`。
+- [ ] `dsh run` / `dsh doctor` 作为最小产品入口通过测试。
+- [ ] build / typecheck / lint / test 全部通过。
 
 ### Phase 2 终态（已退出，归档参考）
 - [x] 静态扫描 Phase 2-3（Top N 可解释选择）
@@ -88,8 +100,8 @@
 
 | 事项 | 当前状态 | 阻塞点 | 下一步 |
 |------|---------|--------|--------|
-| Phase 3 failure matrix | 已建立 | 最新 replicated evidence 已整理为 hard-fail / high-variance 矩阵 | 依据矩阵定点复现，不做无证据泛化优化 |
-| hard-fail fixture 根因分析 | 已完成首轮定点复现 | `pi-bugfix-count-defs` 与 `rh-test-dashboard-version` 已 single PASS；`rh-refactor-branch-orchestrator` monolith 已拆解，5 个小 fixture 已全部 single PASS | 下次做 N=3/全量复审，原 monolith 不再作为单 fixture 继续优化 |
+| Phase 3 failure matrix | 已结构化 | `packages/eval/src/failure-matrix.json` 已建立，Markdown 报告保留解释口径 | benchmark metadata 读取 JSON summary；后续 AI 先读 JSON，不重新拼散落报告 |
+| hard-fail fixture 根因分析 | 未闭环 | `pi-bugfix-count-defs` partial replicated on/off 各 3/3 PASS；`rh-test-dashboard-version` partial replicated 已回归；`rh-refactor-branch-orchestrator` 5 个小 fixture 仍待 N=3 | 先修 `rh-test-dashboard-version`，再跑 hard-fail 定向 N=3；原 monolith 不再作为单 fixture 继续优化 |
 | 最小 `dsh run` | 已补 CLI 入口 | core 已有 `runFullPipeline`，CLI 已提供一键入口 | 继续通过 CLI 测试和真实 dry-run/smoke 验证输出体验 |
 
 ## 5. 已废弃事项
@@ -103,7 +115,7 @@
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|---------|
 | P1 | `rh-refactor-branch-orchestrator` 拆分后 N=3 复审 | 原 single fixture 在干净 runner 下仍 PARTIAL (`260515-024737`，30 rounds / 0 changes)，已拆为 5 个小 fixture；create/tests/release/code-merge/attach 已全部 single PASS，attach 最新 `260515-044458` PASS | 下次 replicated benchmark 确认 5 个小 fixture 稳定，不恢复 monolith |
-| P1 | `rh-test-dashboard-version` Maven verify 修复复审 | 已修复并 single smoke PASS (`260515-013524`)；等待下一轮 N=3/全量确认从 hard-fail 移除 | 下次 replicated benchmark 不再出现 upstream no-tests / Maven 拓扑误伤 |
+| P0 | `rh-test-dashboard-version` replicated 回归修复 | single smoke PASS 未稳定复现；partial closeout run `260517074552-pie-replicated` 已出现 card_on 0/1、card_off 0/1 | 先修复 VersionUpdateAppServiceTest 语义/NPE 与 no-change 失败模式，再跑该 fixture 定向 N=3 |
 | P1 | `pi-bugfix-count-defs` semantic failure 复审 | 已修正 fixture source-context hint 并 single smoke PASS (`260515-015045`)；等待下一轮 N=3/全量确认稳定性 | 下次 replicated benchmark 不再 0/6；pytest 定向验证持续通过 |
 
 ## 7. 关键证据索引

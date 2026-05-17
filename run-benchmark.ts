@@ -2,6 +2,7 @@ import { DeepSeekClient } from "./packages/provider/dist/client.js";
 import { readApiKey } from "./packages/repo/dist/config-loader.js";
 import { loadAllFixtures } from "./packages/eval/dist/task-fixtures.js";
 import { runTask, formatEvaluationReport } from "./packages/eval/dist/benchmark-runner.js";
+import { loadFailureMatrix, summarizeFailureMatrix } from "./packages/eval/dist/failure-matrix.js";
 import type { TaskResult } from "./packages/eval/dist/benchmark-runner.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -214,6 +215,7 @@ allResults.sort((a, b) => a.fixtureId.localeCompare(b.fixtureId));
 const runEnd = new Date();
 const elapsed = ((runEnd.getTime() - runStart.getTime()) / 1000).toFixed(0);
 const report = formatEvaluationReport(allResults);
+const failureMatrixSummary = summarizeFailureMatrix(loadFailureMatrix());
 console.log("\n" + report);
 console.log(`\nTotal time: ${elapsed}s (parallel=${parallelCount})`);
 
@@ -228,6 +230,7 @@ const metadata = {
   dsh_commit: gitShortHash(),
   fixture_count: benchFixtures.length,
   parallel_count: parallelCount,
+  failure_matrix_summary: failureMatrixSummary,
   fixtures: benchFixtures.map((f) => ({
     id: f.id,
     category: f.category,

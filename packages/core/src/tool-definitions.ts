@@ -64,7 +64,7 @@ export const GREP_FILES_DEF: ToolDefinition = {
       properties: {
         pattern: {
           type: "string",
-          description: "JavaScript 正则表达式模式，例如 detectVerifyCommands、import.*from.*scanner",
+          description: "JavaScript 正则表达式模式，例如 runTask、import.*from.*benchmark-runner",
         },
         include: {
           type: "string",

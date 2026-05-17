@@ -31,6 +31,9 @@ export interface TechStack {
   packageManager: string | null;
   framework: string | null;
   details: Record<string, string>;
+  languageDecisionMode?: DecisionMode;
+  buildDecisionMode?: DecisionMode;
+  verifyDecisionMode?: DecisionMode;
   /** Sub-modules detected in mixed projects (e.g., backend/ + frontend/) */
   modules?: SubModule[];
 }
@@ -51,7 +54,7 @@ export interface Candidate<T> {
   missingEvidence: string[]; // facts that would confirm it but are absent
 }
 
-export type DecisionMode = "auto" | "suggest" | "ask-user" | "blocked";
+export type DecisionMode = "auto" | "suggest" | "unknown" | "blocked";
 
 export interface ProjectDecision<T> {
   key: string;
@@ -497,7 +500,7 @@ export function decide<T>(
   key: string,
 ): ProjectDecision<T> {
   if (candidates.length === 0) {
-    return { key, selected: null, mode: "blocked", confidence: 0, reason: ["no candidates"], alternatives: [] };
+    return { key, selected: null, mode: "unknown", confidence: 0, reason: ["no candidates"], alternatives: [] };
   }
 
   const top = candidates[0]!;
@@ -524,8 +527,8 @@ export function decide<T>(
     };
   }
 
-  // blocked
-  return { key, selected: null, mode: "blocked", confidence: 0, reason: ["all candidates below threshold"], alternatives: candidates };
+  // unknown: candidates exist, but none are strong enough to act on.
+  return { key, selected: null, mode: "unknown", confidence: 0, reason: ["all candidates below threshold"], alternatives: candidates };
 }
 
 // ---- Capability Derivation ----
@@ -649,31 +652,34 @@ export function toProjectCard(pi: ProjectIntelligence, opts: ProjectCardOptions 
     }),
   ].filter(Boolean);
   if (known.length > 0) {
-    lines.push("**Known**");
+    lines.push("**Known Facts**");
     for (const k of known) lines.push(k as string);
     lines.push("");
   }
 
   // Inferred
-  if (pi.language.mode === "suggest" || pi.buildSystem.mode === "suggest") {
-    lines.push("**Inferred (unconfirmed)**");
-    if (pi.language.mode === "suggest") lines.push(`- Language: likely ${pi.language.selected} (${(pi.language.confidence * 100).toFixed(0)}%)`);
-    if (pi.buildSystem.mode === "suggest") {
-      lines.push(`- Build system: likely ${pi.buildSystem.selected} (${(pi.buildSystem.confidence * 100).toFixed(0)}%)`);
-      if (pi.buildSystem.alternatives.length > 0) {
-        lines.push(`  Alternatives: ${pi.buildSystem.alternatives.map((a) => `${a.value} (${(a.confidence * 100).toFixed(0)}%)`).join(", ")}`);
-      }
+  lines.push("**Inferred Candidates**");
+  lines.push("Inferred candidates are not confirmed facts.");
+  if (pi.language.mode === "suggest") lines.push(`- Language: likely ${pi.language.selected} (${(pi.language.confidence * 100).toFixed(0)}%)`);
+  if (pi.buildSystem.mode === "suggest") {
+    lines.push(`- Build system: likely ${pi.buildSystem.selected} (${(pi.buildSystem.confidence * 100).toFixed(0)}%)`);
+    if (pi.buildSystem.alternatives.length > 0) {
+      lines.push(`  Alternatives: ${pi.buildSystem.alternatives.map((a) => `${a.value} (${(a.confidence * 100).toFixed(0)}%)`).join(", ")}`);
     }
-    lines.push("");
   }
+  if (pi.language.mode !== "suggest" && pi.buildSystem.mode !== "suggest") {
+    lines.push("- None above suggestion threshold.");
+  }
+  lines.push("");
 
   // Unknown
   const unknown = [
-    pi.buildSystem.mode === "blocked" ? "Build system" : null,
-    pi.language.mode === "blocked" ? "Primary language" : null,
+    pi.buildSystem.mode === "unknown" ? "Build system" : null,
+    pi.language.mode === "unknown" ? "Primary language" : null,
   ].filter(Boolean);
   if (unknown.length > 0) {
-    lines.push("**Unknown**");
+    lines.push("**Unknowns**");
+    lines.push("Unknowns must not be silently replaced by defaults.");
     for (const u of unknown) lines.push(`- ${u}`);
     lines.push("");
   }
@@ -688,6 +694,20 @@ export function toProjectCard(pi: ProjectIntelligence, opts: ProjectCardOptions 
     lines.push(`${icon} ${c.key}: ${c.status}${cmd} — ${c.reason}`);
   }
 
+  lines.push("");
+  lines.push("**Forbidden Assumptions**");
+  lines.push("- Do not treat inferred candidates as confirmed facts.");
+  lines.push("- Do not replace unknown build, test, lint, or typecheck commands with defaults.");
+  lines.push("");
+  lines.push("**Suggested Probes**");
+  lines.push("Suggested probes require execution or user confirmation before becoming facts.");
+  if (pi.buildSystem.mode === "suggest") {
+    lines.push(`- Confirm build system candidate: ${pi.buildSystem.selected}`);
+  }
+  if (pi.language.mode === "suggest") {
+    lines.push(`- Confirm language candidate: ${pi.language.selected}`);
+  }
+
   return lines.join("\n");
 }
 
@@ -699,7 +719,8 @@ export function toProjectCard(pi: ProjectIntelligence, opts: ProjectCardOptions 
  * straight from capabilities. For interpreted languages (TS/JS/Python) where
  * the capability is "likely" with no canonical command, fall back to
  * package.json scripts (Node) or convention commands with the resolved
- * package manager prefix (Python).
+ * package manager prefix (Python). Suggest/unknown/blocked decisions are not
+ * executable facts and must not be converted into default verify commands.
  */
 export function pickVerifyPlan(cwd: string, pi: ProjectIntelligence): VerifyCommands {
   const fromCap = (key: "build" | "test" | "typecheck" | "lint"): string | null => {
@@ -714,9 +735,7 @@ export function pickVerifyPlan(cwd: string, pi: ProjectIntelligence): VerifyComm
     build: fromCap("build"),
   };
 
-  const lang = pi.language.mode === "auto" || pi.language.mode === "suggest"
-    ? pi.language.selected
-    : null;
+  const lang = pi.language.mode === "auto" ? pi.language.selected : null;
 
   let plan = base;
   if (lang === "typescript" || lang === "javascript") {
@@ -808,7 +827,7 @@ export function moduleRoots(pi: ProjectIntelligence): string[] {
  */
 export function toLegacyTechStack(cwd: string, pi: ProjectIntelligence): TechStack {
   const lang = pi.language.selected ?? "unknown";
-  const isAuto = pi.language.mode === "auto" || pi.language.mode === "suggest";
+  const isAuto = pi.language.mode === "auto";
   const bld = pi.buildSystem.mode === "auto" ? pi.buildSystem.selected : null;
   const resolvedLang = isAuto ? lang : "unknown";
 
@@ -821,6 +840,9 @@ export function toLegacyTechStack(cwd: string, pi: ProjectIntelligence): TechSta
     packageManager,
     framework,
     details: {},
+    languageDecisionMode: pi.language.mode,
+    buildDecisionMode: pi.buildSystem.mode,
+    verifyDecisionMode: pi.capabilities.some((c) => c.command !== null) ? "auto" : "unknown",
   };
   if (modules.length > 0) out.modules = modules;
   return out;

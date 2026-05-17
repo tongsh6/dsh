@@ -1,0 +1,132 @@
+{
+  "version": 1,
+  "updatedAt": "2026-05-17",
+  "entries": [
+    {
+      "fixture": "pi-bugfix-count-defs",
+      "repo": "pi-proof-forge",
+      "failureType": "semantic_incorrect",
+      "status": "single_smoke_passed",
+      "requiresReplicatedConfirmation": true,
+      "lastEvidence": "docs/reports/runlogs/260515-015045",
+      "notes": "Fixture hint was updated for indented class methods; single smoke passed and still needs N=3 confirmation."
+    },
+    {
+      "fixture": "rh-refactor-branch-orchestrator",
+      "repo": "release-hub",
+      "failureType": "patch_apply_failure",
+      "status": "ignored",
+      "requiresReplicatedConfirmation": false,
+      "lastEvidence": "docs/reports/runlogs/260515-024737",
+      "notes": "Original monolith fixture remains out of current benchmark scope after being split into smaller fixtures."
+    },
+    {
+      "fixture": "rh-refactor-branch-orchestrator-create",
+      "repo": "release-hub",
+      "failureType": "patch_apply_failure",
+      "status": "single_smoke_passed",
+      "requiresReplicatedConfirmation": true,
+      "lastEvidence": "docs/reports/runlogs/260515-025747",
+      "notes": "Split fixture replacing the original monolith; single smoke passed."
+    },
+    {
+      "fixture": "rh-refactor-branch-orchestrator-tests",
+      "repo": "release-hub",
+      "failureType": "patch_apply_failure",
+      "status": "single_smoke_passed",
+      "requiresReplicatedConfirmation": true,
+      "lastEvidence": "docs/reports/runlogs/260515-025747",
+      "notes": "Split fixture replacing the original monolith; single smoke passed."
+    },
+    {
+      "fixture": "rh-refactor-branch-orchestrator-service-code-merge",
+      "repo": "release-hub",
+      "failureType": "patch_apply_failure",
+      "status": "single_smoke_passed",
+      "requiresReplicatedConfirmation": true,
+      "lastEvidence": "docs/reports/runlogs/260515-035901",
+      "notes": "Split fixture replacing the original monolith; single smoke passed."
+    },
+    {
+      "fixture": "rh-refactor-branch-orchestrator-service-release-branch",
+      "repo": "release-hub",
+      "failureType": "patch_apply_failure",
+      "status": "single_smoke_passed",
+      "requiresReplicatedConfirmation": true,
+      "lastEvidence": "docs/reports/runlogs/260515-031851",
+      "notes": "Split fixture replacing the original monolith; single smoke passed."
+    },
+    {
+      "fixture": "rh-refactor-branch-orchestrator-service-attach",
+      "repo": "release-hub",
+      "failureType": "patch_apply_failure",
+      "status": "single_smoke_passed",
+      "requiresReplicatedConfirmation": true,
+      "lastEvidence": "docs/reports/runlogs/260515-044458",
+      "notes": "Split fixture replacing the original monolith; single smoke passed with repairSuccess 1/1."
+    },
+    {
+      "fixture": "rh-test-dashboard-version",
+      "repo": "release-hub",
+      "failureType": "wrong_verification_command",
+      "status": "regressed",
+      "requiresReplicatedConfirmation": true,
+      "lastEvidence": "docs/reports/runlogs/260517074552-pie-replicated/results.json",
+      "notes": "Single smoke passed earlier, but partial replicated closeout run regressed: card_on 0/1 with semantic NPE in VersionUpdateAppServiceTest, card_off 0/1 with no files changed."
+    },
+    {
+      "fixture": "loam-refactor-rename-distill-state",
+      "repo": "loamlog",
+      "failureType": "high_variance",
+      "status": "pending_replication",
+      "requiresReplicatedConfirmation": true,
+      "lastEvidence": "docs/reports/runlogs/260514020257-pie-replicated/results.json",
+      "notes": "Project Card on 1/3 and off 0/3; patch apply behavior remains high variance."
+    },
+    {
+      "fixture": "loam-bugfix-cli-error-handling",
+      "repo": "loamlog",
+      "failureType": "high_variance",
+      "status": "pending_replication",
+      "requiresReplicatedConfirmation": true,
+      "lastEvidence": "docs/reports/runlogs/260514020257-pie-replicated/results.json",
+      "notes": "Project Card on 2/3 and off 2/3; semantic repair remains high variance."
+    },
+    {
+      "fixture": "rh-bugfix-csv-export",
+      "repo": "release-hub",
+      "failureType": "context_missing",
+      "status": "confirmed_stable",
+      "requiresReplicatedConfirmation": false,
+      "lastEvidence": "docs/reports/runlogs/260514020257-pie-replicated/results.json",
+      "notes": "Project Card on 3/3 and off 0/3; kept as evidence that Project Card default injection matters."
+    },
+    {
+      "fixture": "loam-refactor-provider-dedup",
+      "repo": "loamlog",
+      "failureType": "context_missing",
+      "status": "confirmed_stable",
+      "requiresReplicatedConfirmation": false,
+      "lastEvidence": "docs/reports/runlogs/260514020257-pie-replicated/results.json",
+      "notes": "Project Card on 3/3 and off 2/3."
+    },
+    {
+      "fixture": "loam-refactor-reorganize-tests",
+      "repo": "loamlog",
+      "failureType": "context_missing",
+      "status": "confirmed_stable",
+      "requiresReplicatedConfirmation": false,
+      "lastEvidence": "docs/reports/runlogs/260514020257-pie-replicated/results.json",
+      "notes": "Project Card on 3/3 and off 2/3."
+    },
+    {
+      "fixture": "rh-mixed-remove-starter-ping-demo-frontend",
+      "repo": "release-hub",
+      "failureType": "context_missing",
+      "status": "confirmed_stable",
+      "requiresReplicatedConfirmation": false,
+      "lastEvidence": "docs/reports/runlogs/260514020257-pie-replicated/results.json",
+      "notes": "Project Card on 3/3 and off 2/3."
+    }
+  ]
+}

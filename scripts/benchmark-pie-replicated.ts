@@ -28,6 +28,10 @@ import {
   runTask,
   cleanBenchmarkWorktreeHard,
 } from "../packages/eval/dist/benchmark-runner.js";
+import {
+  loadFailureMatrix,
+  summarizeFailureMatrix,
+} from "../packages/eval/dist/failure-matrix.js";
 import { injectCardContext } from "../packages/core/dist/inject-card-context.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -268,6 +272,7 @@ async function main(): Promise<void> {
   }
 
   const durationEstimates = loadDurationEstimates(ESTIMATE_RESULTS);
+  const failureMatrixSummary = summarizeFailureMatrix(loadFailureMatrix());
   if (durationEstimates.size > 0) {
     console.log(`Loaded duration estimates for ${durationEstimates.size} fixtures from ${ESTIMATE_RESULTS}`);
   } else {
@@ -306,6 +311,7 @@ async function main(): Promise<void> {
     dshCommit: gitShortHash(), startedAt,
     fixtureCount: benchFixtures.length,
     totalTrials: trials.length,
+    failureMatrixSummary,
     repoBreakdown: Object.fromEntries(
       [...byRepo.entries()].map(([p, ts]) => [path.basename(p), ts.length]),
     ),
@@ -425,6 +431,7 @@ async function main(): Promise<void> {
     completedAt: new Date().toISOString(),
     fixtureCount: benchFixtures.length,
     totalTrials: trials.length,
+    failureMatrixSummary,
     repoBreakdown: Object.fromEntries(
       [...byRepo.entries()].map(([p, ts]) => [path.basename(p), ts.length]),
     ),

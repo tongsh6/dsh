@@ -15,3 +15,20 @@ export {
   formatEvaluationReport,
 } from "./benchmark-runner.js";
 export type { TaskResult, ComparisonReport } from "./benchmark-runner.js";
+
+export {
+  FAILURE_TYPES,
+  FAILURE_STATUSES,
+  FailureMatrixEntrySchema,
+  FailureMatrixSchema,
+  defaultFailureMatrixPath,
+  loadFailureMatrix,
+  summarizeFailureMatrix,
+} from "./failure-matrix.js";
+export type {
+  FailureType,
+  FailureStatus,
+  FailureMatrixEntry,
+  FailureMatrix,
+  FailureMatrixSummary,
+} from "./failure-matrix.js";

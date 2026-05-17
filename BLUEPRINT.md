@@ -167,13 +167,13 @@ Phase 1 (止血)              Phase 2 (模型)              Phase 3 (替换)
 
 当前 `scanner.ts` 的 `detectTechStack` + `detectVerifyCommands` 存在一类系统性缺陷：**把关联关系当成等价关系**。看到 `.java` 文件 → 推断 Maven；看到 `.py` 文件 → 推断 pip；packageManager 为 null 时 verify 命令默认 Maven。这些不是"识别"，而是"猜测并假装确定"。
 
-**当前实现状态（2026-05-14）**：`scanner.ts` 已退役，生产路径通过 `assembleIntelligence` 生成 `ProjectIntelligence`；`init` 使用 `pickVerifyPlan` 投影验证命令；`pipeline` 通过 `generateRepoContext(cwd, pi)` 注入 RepoContext；LLM 上下文默认包含 Project Card，并可通过 `DSH_INJECT_PROJECT_CARD=false` 关闭。
+**当前实现状态（2026-05-17）**：DSH 处于 Phase 3 收口验证期。`scanner.ts` 已退役，生产路径通过 `assembleIntelligence` 生成 `ProjectIntelligence`；`init` 使用 `pickVerifyPlan` 投影验证命令；`pipeline` 通过 `generateRepoContext(cwd, pi)` 注入 RepoContext；LLM 上下文默认包含 Project Card，并可通过 `DSH_INJECT_PROJECT_CARD=false` 关闭。
 
 **Phase 1 目标（已完成）**：消除 3 个已知危险默认推断；引入最小的 `ProjectIntelligence` 抽象（Fact / Candidate / Decision / Capability 四模型），通过 `toLegacyTechStack` 投影兼容现有调用链路。新增 `toProjectCard` 给 LLM 注入"已知 / 未知 / 禁止推断"的结构化上下文。
 
 **Phase 2 目标（已完成）**：完整 Fact 收集器（文件系统 + 构建描述符 + wrapper 脚本 + 源码语法版本推断）；Candidate 生成器实现多候选排序 + 置信度计算；`dsh doctor` 命令输出候选判断和能力状态；`.dsh/project.yml` 人工确认层。
 
-**Phase 3 目标（主路径已完成，继续验收）**：`detectVerifyCommands` 退役，verify plan 从 `ProjectCapability` 推导；项目识别统一由 `assembleIntelligence` 驱动；LLM context 统一使用 Project Card。当前剩余工作集中在 benchmark failure matrix、hard-fail fixture 根因分析和 verify plan 精细化，不扩展 TUI、MCP、多 Provider 或子 Agent。
+**Phase 3 目标（主路径已完成，继续验收）**：`detectVerifyCommands` 退役，verify plan 从 `ProjectCapability` 推导；项目识别统一由 `assembleIntelligence` 驱动；LLM context 统一使用 Project Card。当前剩余工作集中在 benchmark failure matrix、hard-fail fixture 复审、verify plan 精细化和 legacy scanner 防回流，不扩展 TUI、MCP、多 Provider 或子 Agent。
 
 **与主阶段的关系**：本维度是横切关注点——Phase 1 止血与 Phase 3（工具化）并行推进，Phase 2 与 Phase 4（Agent Loop）重叠。它不是独立的 Phase 8，而是对现有 scanner/verify/context 三个模块的渐进式加固。
 
@@ -187,7 +187,7 @@ Phase 1 (止血)              Phase 2 (模型)              Phase 3 (替换)
 |------|------|------|------|
 | **Phase 1** | 核心闭环（MVP） | Plan→Patch→Verify→Repair→Handoff 跑通 | ✅ 已完成 |
 | **Phase 2** | 协议+评测完善 | Patch 协议升级（v0.4）、评测体系建立、静态扫描治理 | ✅ 已完成（2026-05-08，详见 `docs/reports/phase-2-exit-review.md` §5.7） |
-| **Phase 3** | 工具化 | 引入基础工具集（read_file/grep/exec_shell），模型从"闭眼出 patch"升级为"先探索再修改" | 🔧 进行中 |
+| **Phase 3** | 工具化收口验证 | 引入基础工具集（read_file/grep/exec_shell），模型从"闭眼出 patch"升级为"先探索再修改"；当前处于收口验证期 | 🔧 收口验证中 |
 | **Phase 4** | Agent Loop | 多轮工具调用、模型自主分解任务、repair 内联到 patch 阶段 | 📋 |
 | **Phase 5** | 流式+会话 | 流式输出、会话持久化、断点续跑 | 📋 |
 | **Phase 6** | TUI | 完整终端交互体验 | 📋 |
@@ -200,6 +200,21 @@ Phase 1 (止血)              Phase 2 (模型)              Phase 3 (替换)
 1. **前置依赖** — 后续阶段依赖前一阶段的产出。Phase 3（工具化）依赖 Phase 2 的评测体系来验证"工具化是否提升了成功率"。Phase 4（Agent Loop）依赖 Phase 3 的工具集。Phase 6（TUI）依赖 Phase 4 的 Agent Loop。
 
 2. **先验证核心假设，再扩展范围** — Phase 2 的评测体系必须先建立，因为后续每个阶段的优化都必须用 benchmark 数据证明"确实变好了"（CONSTITUTION 原则 5）。没有评测数据，所有优化都是"我觉得"。
+
+### Phase 3 退出条件（收口验证期）
+
+Phase 3 可以退出，当且仅当以下条件都有证据支撑：
+
+- [ ] **ProjectIntelligence 唯一主路径** — `init` / `pipeline` / context builder 均通过 `assembleIntelligence`、`generateRepoContext`、Project Card 工作；`suggest` 只作为候选，不能投影成确定事实。
+- [ ] **入口文档状态一致** — README / BLUEPRINT / project-ledger / GitHub 可见 README 都描述为 Phase 3 收口验证期，不把 historical benchmark 当作当前状态。
+- [ ] **最新 N=3 replicated benchmark 达标** — Project Card on 仍达到 Phase 3 `testsPassed >60%` 目标，并与 off 组保持正向差异。
+- [ ] **hard-fail smoke 修复经过复审** — single smoke PASS 的 fixture 必须经过新的 N=3 / full benchmark 确认稳定性。
+- [ ] **failure matrix 机器可读** — `packages/eval/src/failure-matrix.json` 可被测试校验，并可被 benchmark metadata 读取。
+- [ ] **legacy scanner 防回流** — 生产路径不得 import 或调用旧 `detectTechStack` / `detectVerifyCommands`，并有自动化测试防止回流。
+- [ ] **最小产品入口可用** — `dsh run` / `dsh doctor` 通过 CLI 测试，并能展示 ProjectIntelligence / Project Card 相关状态。
+- [ ] **质量门禁通过** — build / typecheck / lint / test / scan 均通过，或对失败给出明确非本轮引入证据和最小修复方案。
+
+Phase 4 只能在上述条件满足后进入正式实现；在此之前只允许做设计澄清，不启动 Agent Loop 正式实现。
 
 ### Phase 2 退出条件（已全部勾选 — 2026-05-08）
 

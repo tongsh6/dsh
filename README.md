@@ -3,10 +3,10 @@
 一个围绕 DeepSeek 模型行为深度优化的终端编程助手，覆盖从任务理解、代码生成、验证修复到交接沉淀的验证闭环。
 
 **核心流程:** Plan → Patch → Verify → Repair → Handoff
-**当前阶段:** Phase 3 收口 / 验证闭环攻坚
+**当前阶段:** Phase 3 收口验证期
 **Phase 3 起点基线:** testsPassed 11/24 = 45%（`260508-003359` / `260509-165142`）
 **Phase 3 目标:** testsPassed > 60%
-**最新实证:** 2026-05-14 N=3 replicated benchmark：Project Card on `60/72 = 83.3%`，约等价 `20/24`，详见 `docs/reports/knowledge/20260514-pie-phase2-3-baseline.md`
+**最新实证:** 2026-05-14 N=3 replicated benchmark：Project Card on `60/72 = 83.3%`，约等价 `20/24`；部分 hard-fail smoke 修复仍需要新的 N=3 / full benchmark 复审，详见 `docs/reports/knowledge/20260514-pie-phase2-3-baseline.md`
 
 ## 快速开始
 
@@ -88,7 +88,8 @@ pnpm run scan         # 全量质量门禁（lint + typecheck + test）
 
 - **版本:** 0.1.0（活跃开发中）
 - **定位:** DeepSeek-native, benchmark-gated, verify-first Coding Harness
-- **阶段:** Phase 3 收口 / 验证闭环攻坚
+- **阶段:** Phase 3 收口验证期
 - **当前基线:** testsPassed 11/24 = 45%
 - **目标:** testsPassed >60%
-- **最新特性:** 结构化 Verify、Repair Loop、ProjectIntelligence 主路径、Project Card 默认注入、Benchmark replicated evidence 已落地
+- **最新特性:** 结构化 Verify、Repair Loop、ProjectIntelligence 主路径、Project Card 默认注入、`dsh run` / `dsh doctor` 可用、Benchmark replicated evidence 已落地
+- **收口重点:** replicated benchmark 正向，但 hard-fail smoke 修复、failure matrix 机器可读化与 legacy scanner 防回流仍需验证闭环

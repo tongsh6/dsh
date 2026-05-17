@@ -1,5 +1,7 @@
 # 议题 B P6 全量 Benchmark — 分析报告
 
+> 历史报告说明（2026-05-17）：本文记录 2026-05-08 单次 run 的历史分析，不代表当前 Phase 3 状态。当前状态以 README、BLUEPRINT、`docs/project-ledger.md` 与最新 replicated benchmark 报告为准。
+>
 > 日期: 2026-05-09 | run-id: 260508-223235
 >
 > 范围: 议题 B P1-P5 实施后首份 24 fixture 全量 benchmark；5 个 fixture 迁移到 `verifications`（结构化断言），19 个保持 `verificationCommands`（shell 包装，行为不变）。
@@ -11,12 +13,12 @@
 | fixture 数 | 24 | 24 | 0 |
 | completed | 24/24 (100%) | 24/24 (100%) | 0 |
 | testsPassed (**原始**) | 7/24 (29%) | 11/24 (45%) | -4 |
-| testsPassed (**修正后**) | 8/24 (33%) | — | — |
+| testsPassed (**修正后，历史单次 run**) | 8 of 24 (33%) | — | — |
 | 修复成功率 | 0/17 (0%) | 1/14 (7%) | -1 |
 | 平均 patch round | 17.9 | 15.5 | +2.4 |
 | done 主动终止率 | 25% | 33% | -8pp |
 
-testsPassed 原始值 29% 含 1 个实现 bug（`^` multiline regex 未加 `m` flag，已修 `6eee131`→）。修正后 8/24 (33%) = 回归 11→8 (-3)。
+testsPassed 原始值 29% 含 1 个实现 bug（`^` multiline regex 未加 `m` flag，已修 `6eee131`→）。修正后历史单次 run 为 8 of 24 (33%)，相对当时 baseline 回归 11→8 (-3)。
 
 ## 2. 回归归因（8 个 baseline ✓ → P6 ✗）
 

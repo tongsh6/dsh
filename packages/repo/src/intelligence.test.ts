@@ -187,18 +187,18 @@ describe("decide", () => {
     assert.equal(d.selected, "maven");
   });
 
-  it("blocked when no candidates exist", () => {
+  it("unknown when no candidates exist", () => {
     const d = decide([], DEFAULT_POLICY, "language.primary");
-    assert.equal(d.mode, "blocked");
+    assert.equal(d.mode, "unknown");
     assert.equal(d.selected, null);
   });
 
-  it("blocked when all candidates below suggest threshold", () => {
+  it("unknown when all candidates below suggest threshold", () => {
     const d = decide([
       { value: "maven", confidence: 0.25, evidence: [], missingEvidence: ["pom.xml"] },
       { value: "gradle", confidence: 0.20, evidence: [], missingEvidence: ["build.gradle"] },
     ], DEFAULT_POLICY, "build.system");
-    assert.equal(d.mode, "blocked");
+    assert.equal(d.mode, "unknown");
     assert.equal(d.selected, null);
   });
 });
@@ -291,8 +291,12 @@ describe("assembleIntelligence + views", () => {
       touch(path.join(tmp, "src", "Baz.java"), "class Baz {}");
       const pi = assembleIntelligence(tmp);
       const card = toProjectCard(pi);
-      assert.ok(card.includes("inferred") || card.includes("Unknown") || card.includes("unconfirmed"),
+      assert.ok(card.includes("Inferred Candidates") || card.includes("Unknowns") || card.includes("unconfirmed"),
         `card should indicate uncertainty, got:\n${card}`);
+      assert.ok(card.includes("Inferred candidates are not confirmed facts."));
+      assert.ok(card.includes("Unknowns must not be silently replaced by defaults."));
+      assert.ok(card.includes("Suggested probes require execution or user confirmation before becoming facts."));
+      assert.ok(!card.includes("**Known Facts**\nPrimary language: maven"));
     });
   });
 
@@ -306,6 +310,23 @@ describe("assembleIntelligence + views", () => {
       const stack = toLegacyTechStack(tmp, pi);
       assert.equal(stack.language, "java");
       assert.equal(stack.packageManager, "maven");
+      assert.equal(stack.languageDecisionMode, "auto");
+      assert.equal(stack.buildDecisionMode, "auto");
+    });
+  });
+
+  it("toLegacyTechStack does not project suggest language as a confirmed fact", () => {
+    withTmp((tmp) => {
+      const pi = {
+        language: { key: "language.primary", selected: "typescript", mode: "suggest" as const, confidence: 0.55, reason: ["package.json"], alternatives: [] },
+        buildSystem: { key: "build.system", selected: null, mode: "unknown" as const, confidence: 0, reason: ["no descriptor"], alternatives: [] },
+        capabilities: [],
+        facts: [],
+      };
+      const stack = toLegacyTechStack(tmp, pi);
+      assert.equal(stack.language, "unknown");
+      assert.equal(stack.packageManager, null);
+      assert.equal(stack.languageDecisionMode, "suggest");
     });
   });
 
@@ -500,9 +521,53 @@ describe("pickVerifyPlan", () => {
       touch(path.join(tmp, "c.py"), "x=1");
       const pi = assembleIntelligence(tmp);
       const plan = pickVerifyPlan(tmp, pi);
+      const stack = toLegacyTechStack(tmp, pi);
       assert.equal(plan.test, "python -m unittest");
       assert.equal(plan.lint, null);
       assert.equal(plan.typecheck, "pyright");
+      assert.equal(stack.language, "python");
+      assert.equal(stack.languageDecisionMode, "auto");
+    });
+  });
+
+  it("does not generate verify commands from suggest language", () => {
+    withTmp((tmp) => {
+      fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({
+        name: "x",
+        scripts: {
+          test: "vitest run",
+          lint: "eslint .",
+          typecheck: "tsc --noEmit",
+          build: "tsc",
+        },
+      }), "utf-8");
+      const language = { key: "language.primary", selected: "typescript", mode: "suggest" as const, confidence: 0.55, reason: ["package.json"], alternatives: [] };
+      const buildSystem = { key: "build.system", selected: null, mode: "unknown" as const, confidence: 0, reason: ["no descriptor"], alternatives: [] };
+      const pi = {
+        language,
+        buildSystem,
+        capabilities: deriveCapabilities(language, buildSystem),
+        facts: [],
+      };
+      const plan = pickVerifyPlan(tmp, pi);
+      assert.deepEqual(plan, { test: null, lint: null, typecheck: null, build: null });
+    });
+  });
+
+  it("does not let blocked decisions fall back to default verify commands", () => {
+    withTmp((tmp) => {
+      fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({
+        name: "x",
+        scripts: { test: "vitest run" },
+      }), "utf-8");
+      const pi = {
+        language: { key: "language.primary", selected: "typescript", mode: "blocked" as const, confidence: 0, reason: ["forbidden"], alternatives: [] },
+        buildSystem: { key: "build.system", selected: null, mode: "blocked" as const, confidence: 0, reason: ["forbidden"], alternatives: [] },
+        capabilities: [],
+        facts: [],
+      };
+      const plan = pickVerifyPlan(tmp, pi);
+      assert.deepEqual(plan, { test: null, lint: null, typecheck: null, build: null });
     });
   });
 
