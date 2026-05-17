@@ -102,15 +102,15 @@
     {
       "fixture": "rh-test-dashboard-version",
       "repo": "release-hub",
-      "failureType": "wrong_verification_command",
-      "status": "regressed",
+      "failureType": "high_variance",
+      "status": "pending_replication",
       "requiresReplicatedConfirmation": true,
-      "lastEvidence": "docs/reports/runlogs/260517074552-pie-replicated/results.json",
-      "notes": "Single smoke passed earlier, but partial replicated closeout run regressed: card_on 0/1 with semantic NPE in VersionUpdateAppServiceTest, card_off 0/1 with no files changed.",
+      "lastEvidence": "docs/reports/runlogs/260517133604-pie-replicated/results.json",
+      "notes": "Reclassified 2026-05-18 from wrong_verification_command/regressed to high_variance after a fixture-validity audit. The verification-command root cause was already resolved; the fixture itself is valid: the two target test files are absent at benchmark ref commit 180de500, the runner cleanup (reset --hard + clean -fd on every run path) removes untracked leftovers so there is no state leak, and single smoke 260517-222513 produced a clean passing solution. Remaining N=3 instability (260517133604 card_on 0/3 / card_off 0/3) is genuine model output variance on a hard JUnit5+Mockito CREATE task: List<Port> constructor injection defeats @InjectMocks, strict-stub and invented-enum-constant compile errors, and partial 1-of-2 file creation. Fixture-reactive harness patches that lifted run 260517154138 to card_on 2/3 were reverted as patch-style / comparability risk.",
       "governance": {
         "comparabilityRisk": true,
         "evidencePolicy": "label_required",
-        "notes": "Unresolved replicated regression; keep fixture-level hardening out of the prompt and label results separately until repaired through general behavior."
+        "notes": "High-variance fixture per BLUEPRINT methodology §2.5 item 3 (pass rate ~25-75%). Label its results separately; do not use single-fixture variance as a Phase 3 hard gate. Do not add fixture-level answer hints or harness-side fixture-prompt scraping to make it pass."
       }
     },
     {
