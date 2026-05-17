@@ -4,8 +4,10 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   auditFixtureContamination,
+  auditFixtureMetadata,
   auditFixtureVerificationCoverage,
   auditFixturesForContamination,
+  auditFixturesForMetadata,
   auditFixturesForVerificationCoverage,
   collectVerificationExtensionCandidates,
 } from "./fixture-audit.js";
@@ -105,6 +107,50 @@ describe("fixture contamination audit", () => {
       .sort();
 
     assert.deepEqual(matrixIds, auditIds);
+  });
+});
+
+describe("fixture metadata audit", () => {
+  it("flags controlled benchmark fixtures without isolation and goal metadata", () => {
+    const findings = auditFixtureMetadata({
+      id: "pi-missing-metadata",
+      category: "bugfix",
+      benchmarkRef: undefined,
+      preflightFiles: [],
+      designGoal: "",
+      verificationGoal: undefined,
+    });
+
+    assert.deepEqual(findings.map((finding) => finding.ruleId), [
+      "controlled_fixture_missing_benchmark_ref",
+      "controlled_fixture_missing_preflight_files",
+      "controlled_fixture_missing_design_goal",
+      "controlled_fixture_missing_verification_goal",
+    ]);
+    assert.ok(findings.every((finding) => finding.severity === "metadata_gap"));
+  });
+
+  it("does not require controlled benchmark metadata for legacy toy fixtures", () => {
+    const findings = auditFixtureMetadata({
+      id: "bugfix-token-expiry",
+      category: "bugfix",
+      benchmarkRef: undefined,
+      preflightFiles: [],
+      designGoal: undefined,
+      verificationGoal: undefined,
+    });
+
+    assert.deepEqual(findings, []);
+  });
+
+  it("keeps a machine-readable baseline of current real-fixture metadata gaps", () => {
+    const fixturesDir = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "fixtures",
+    );
+    const findings = auditFixturesForMetadata(loadAllFixtures(fixturesDir));
+
+    assert.deepEqual(findings, []);
   });
 });
 

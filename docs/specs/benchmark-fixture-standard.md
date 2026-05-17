@@ -49,9 +49,9 @@ Forbidden:
 - DSH patch-protocol coaching, such as forcing CREATE/PATCH/SEARCH_REPLACE in the prompt.
 - Hints that target a known stack trace or known benchmark failure rather than the underlying task.
 
-The automated guard is `auditFixturesForContamination()` in
-`packages/eval/src/fixture-audit.ts`, covered by
-`packages/eval/src/fixture-audit.test.ts`.
+The automated guards are `auditFixturesForContamination()` and
+`auditFixturesForMetadata()` in `packages/eval/src/fixture-audit.ts`, covered
+by `packages/eval/src/fixture-audit.test.ts`.
 
 ## 3. Verification Standard
 
@@ -91,6 +91,14 @@ Required practices:
 - `preflightFiles` must list tracked baseline files that the fixture depends on.
 - Generated artifacts or `.dsh` state from previous fixtures must not be part of success.
 - If a fixture relies on a target file not existing, verify that through the benchmark base or an explicit preflight/design note.
+
+For controlled benchmark fixtures (`pi-*`, `loam-*`, `rh-*`, or any fixture
+with `benchmarkRef`), `auditFixturesForMetadata()` enforces:
+
+- `benchmarkRef.branch` and `benchmarkRef.commit`
+- non-empty `preflightFiles`
+- non-empty `designGoal`
+- non-empty `verificationGoal`
 
 ## 6. Contamination And Comparability
 

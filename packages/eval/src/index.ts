@@ -7,8 +7,10 @@ export type { TaskFixture, LoadedFixture, ProtocolOp } from "./task-fixtures.js"
 
 export {
   auditFixtureContamination,
+  auditFixtureMetadata,
   auditFixtureVerificationCoverage,
   auditFixturesForContamination,
+  auditFixturesForMetadata,
   auditFixturesForVerificationCoverage,
 } from "./fixture-audit.js";
 export type {

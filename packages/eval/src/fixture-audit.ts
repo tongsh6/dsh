@@ -3,14 +3,19 @@ import type { LoadedFixture, TaskFixture, VerifyAssertion } from "./task-fixture
 export type FixtureAuditSeverity =
   | "strict_contamination"
   | "comparability_risk"
-  | "verification_gap";
+  | "verification_gap"
+  | "metadata_gap";
 
 export type FixtureAuditRuleId =
   | "literal_implementation_snippet"
   | "failure_specific_workaround_phrase"
   | "dsh_protocol_coaching"
   | "scope_or_comparability_risk"
-  | "expected_file_not_verified";
+  | "expected_file_not_verified"
+  | "controlled_fixture_missing_benchmark_ref"
+  | "controlled_fixture_missing_preflight_files"
+  | "controlled_fixture_missing_design_goal"
+  | "controlled_fixture_missing_verification_goal";
 
 export interface FixtureAuditFinding {
   fixtureId: string;
@@ -34,6 +39,8 @@ const COMPARABILITY_RISK_FIXTURES = new Set([
   "rh-refactor-branch-orchestrator-service-attach",
   "rh-test-dashboard-version",
 ]);
+
+const CONTROLLED_BENCHMARK_ID_PATTERN = /^(?:loam|pi|rh)-/;
 
 const IMPLEMENTATION_SNIPPET_PATTERNS: RegExp[] = [
   /re\.findall\(\s*r['"]\^\\s\*/i,
@@ -127,6 +134,81 @@ export function auditFixturesForContamination(
   fixtures: Array<Pick<LoadedFixture, "id" | "taskPrompt">>,
 ): FixtureAuditFinding[] {
   return fixtures.flatMap((fixture) => auditFixtureContamination(fixture));
+}
+
+function hasText(value: string | undefined): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isControlledBenchmarkFixture(
+  fixture: Pick<TaskFixture, "id" | "category" | "benchmarkRef">,
+): boolean {
+  if (fixture.category === "failure_mode") return false;
+  return fixture.benchmarkRef !== undefined || CONTROLLED_BENCHMARK_ID_PATTERN.test(fixture.id);
+}
+
+export function auditFixtureMetadata(
+  fixture: Pick<
+    TaskFixture,
+    "id" | "category" | "benchmarkRef" | "preflightFiles" | "designGoal" | "verificationGoal"
+  >,
+): FixtureAuditFinding[] {
+  if (!isControlledBenchmarkFixture(fixture)) return [];
+
+  const findings: FixtureAuditFinding[] = [];
+
+  if (!fixture.benchmarkRef?.commit || !fixture.benchmarkRef.branch) {
+    findings.push({
+      fixtureId: fixture.id,
+      ruleId: "controlled_fixture_missing_benchmark_ref",
+      severity: "metadata_gap",
+      message: "Controlled benchmark fixture must pin both benchmarkRef.branch and benchmarkRef.commit.",
+      evidence: "benchmarkRef.branch + benchmarkRef.commit",
+    });
+  }
+
+  if (fixture.preflightFiles.length === 0) {
+    findings.push({
+      fixtureId: fixture.id,
+      ruleId: "controlled_fixture_missing_preflight_files",
+      severity: "metadata_gap",
+      message: "Controlled benchmark fixture must declare preflightFiles for isolation checks.",
+      evidence: "preflightFiles",
+    });
+  }
+
+  if (!hasText(fixture.designGoal)) {
+    findings.push({
+      fixtureId: fixture.id,
+      ruleId: "controlled_fixture_missing_design_goal",
+      severity: "metadata_gap",
+      message: "Controlled benchmark fixture must declare the capability or scenario it measures.",
+      evidence: "designGoal",
+    });
+  }
+
+  if (!hasText(fixture.verificationGoal)) {
+    findings.push({
+      fixtureId: fixture.id,
+      ruleId: "controlled_fixture_missing_verification_goal",
+      severity: "metadata_gap",
+      message: "Controlled benchmark fixture must declare the physical evidence that proves success.",
+      evidence: "verificationGoal",
+    });
+  }
+
+  return findings;
+}
+
+export function auditFixturesForMetadata(
+  fixtures: Array<
+    Pick<
+      LoadedFixture,
+      "id" | "category" | "benchmarkRef" | "preflightFiles" | "designGoal" | "verificationGoal"
+    >
+  >,
+): FixtureAuditFinding[] {
+  return fixtures.flatMap((fixture) => auditFixtureMetadata(fixture));
 }
 
 function normalizeFixturePath(filePath: string): string {
