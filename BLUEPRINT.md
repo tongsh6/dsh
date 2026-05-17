@@ -1,4 +1,4 @@
-# DSH 产品蓝图 v1.0
+# DSH 产品蓝图 v1.2
 
 > 状态: active | 日期: 2026-05-02
 >
@@ -208,7 +208,7 @@ Phase 3 可以退出，当且仅当以下条件都有证据支撑：
 - [ ] **ProjectIntelligence 唯一主路径** — `init` / `pipeline` / context builder 均通过 `assembleIntelligence`、`generateRepoContext`、Project Card 工作；`suggest` 只作为候选，不能投影成确定事实。
 - [ ] **入口文档状态一致** — README / BLUEPRINT / project-ledger / GitHub 可见 README 都描述为 Phase 3 收口验证期，不把 historical benchmark 当作当前状态。
 - [ ] **最新 N=3 replicated benchmark 达标** — Project Card on 仍达到 Phase 3 `testsPassed >60%` 目标，并与 off 组保持正向差异。
-- [ ] **hard-fail smoke 修复经过复审** — single smoke PASS 的 fixture 必须经过新的 N=3 / full benchmark 确认稳定性。
+- [ ] **hard-fail / high-variance fixture 经复审分流** — single smoke PASS 的 fixture 必须经过新的 N=3 / full benchmark 复审；复审后 pass rate 落入 §2.5 高方差区间（约 25%–75%）的 fixture，在 failure matrix 标注为 high-variance 并单独报告，不作为 Phase 3 退出的单 fixture 硬门禁——Phase 3 退出以上一条「最新 N=3 replicated benchmark 达标」的聚合 `testsPassed >60%` 为准。
 - [ ] **failure matrix 机器可读** — `packages/eval/src/failure-matrix.json` 可被测试校验，并可被 benchmark metadata 读取。
 - [ ] **legacy scanner 防回流** — 生产路径不得 import 或调用旧 `detectTechStack` / `detectVerifyCommands`，并有自动化测试防止回流。
 - [ ] **最小产品入口可用** — `dsh run` / `dsh doctor` 通过 CLI 测试，并能展示 ProjectIntelligence / Project Card 相关状态。
@@ -265,3 +265,4 @@ Phase 4 只能在上述条件满足后进入正式实现；在此之前只允许
 |------|------|------|
 | 2026-05-02 | v1.0 | 初始蓝图：产品形态、5 个维度演进路线、7 阶段划分 |
 | 2026-05-05 | v1.1 | Phase 2 退出条件追加「长期跟踪事项复审」checkbox；新增 §3.1 Phase 退出复审协议（依据 CONSTITUTION v1.1 原则 8） |
+| 2026-05-18 | v1.2 | Phase 3 退出条件 B 改为「hard-fail / high-variance fixture 经复审分流」，与 §2.5 高方差方法论对齐：复审后落入 25%–75% 区间的 fixture 标注为 high-variance 并单独报告，不作单 fixture 硬门禁；Phase 3 退出以聚合 `testsPassed >60%` 为准 |
