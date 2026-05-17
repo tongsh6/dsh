@@ -4,7 +4,9 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   auditFixtureContamination,
+  auditFixtureVerificationCoverage,
   auditFixturesForContamination,
+  auditFixturesForVerificationCoverage,
 } from "./fixture-audit.js";
 import { loadFailureMatrix } from "./failure-matrix.js";
 import { loadAllFixtures } from "./task-fixtures.js";
@@ -102,5 +104,72 @@ describe("fixture contamination audit", () => {
       .sort();
 
     assert.deepEqual(matrixIds, auditIds);
+  });
+});
+
+describe("fixture verification coverage audit", () => {
+  it("flags expected files that are not explicitly verified", () => {
+    const findings = auditFixtureVerificationCoverage({
+      id: "coverage-gap",
+      expectedFiles: ["src/a.ts", "src/b.ts"],
+      verificationCommands: ["npx eslint src/a.ts"],
+      verifications: [],
+    });
+
+    assert.deepEqual(findings.map((finding) => finding.evidence), ["src/b.ts"]);
+    assert.equal(findings[0]!.ruleId, "expected_file_not_verified");
+    assert.equal(findings[0]!.severity, "verification_gap");
+  });
+
+  it("treats structured file assertions as explicit coverage", () => {
+    const findings = auditFixtureVerificationCoverage({
+      id: "structured-coverage",
+      expectedFiles: ["src/a.ts", "src/obsolete.ts"],
+      verificationCommands: [],
+      verifications: [
+        { type: "file_contains", file: "src/a.ts", pattern: "export function a" },
+        { type: "file_not_exists", file: "src/obsolete.ts" },
+      ],
+    });
+
+    assert.deepEqual(findings, []);
+  });
+
+  it("treats targeted Maven test classes as explicit coverage for matching Java test files", () => {
+    const findings = auditFixtureVerificationCoverage({
+      id: "maven-test-coverage",
+      expectedFiles: [
+        "backend/releasehub-application/src/test/java/io/releasehub/application/window/AttachAppServiceTest.java",
+      ],
+      verificationCommands: [],
+      verifications: [
+        {
+          type: "maven_test",
+          module: "releasehub-application",
+          tests: "AttachAppServiceTest",
+        },
+      ],
+    });
+
+    assert.deepEqual(findings, []);
+  });
+
+  it("keeps a machine-readable baseline of current real-fixture verification gaps", () => {
+    const fixturesDir = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "fixtures",
+    );
+    const findings = auditFixturesForVerificationCoverage(loadAllFixtures(fixturesDir));
+
+    assert.ok(findings.length > 0, "current fixture set should expose false-positive audit candidates");
+    assert.ok(
+      findings.some((finding) => finding.fixtureId === "loam-refactor-provider-dedup"),
+      "known broad-command fixture should remain visible to the audit",
+    );
+    assert.equal(
+      findings.some((finding) => finding.fixtureId === "rh-test-dashboard-version"),
+      false,
+      "fixed fixture should have explicit file assertions",
+    );
   });
 });

@@ -17,6 +17,7 @@ Automation added after this manual audit:
 - `packages/eval/src/fixture-audit.ts` exposes `auditFixtureContamination()` and `auditFixturesForContamination()`.
 - `packages/eval/src/fixture-audit.test.ts` locks the current strict-contamination and comparability-risk baseline so future fixture edits cannot silently move failure-specific answers into prompts.
 - `packages/eval/src/failure-matrix.json` now carries machine-readable `governance.comparabilityRisk` and `governance.evidencePolicy` fields so benchmark metadata can label or exclude risky evidence without reparsing this report.
+- `packages/eval/src/fixture-audit.ts` also exposes `auditFixtureVerificationCoverage()` and `auditFixturesForVerificationCoverage()` to flag expectedFiles that are not explicitly referenced by structured file assertions or shell verification commands.
 
 This audit excludes the discarded local change that added `VersionUpdateAppService` constructor guidance and `@InjectMocks` rejection to `rh-test-dashboard-version`. That change was not committed because it would leak a failure-specific answer into the benchmark.
 
@@ -56,6 +57,26 @@ These fixtures are not necessarily invalid benchmark items, but their results sh
 | `rh-mixed-dashboard-generated-at-backend` | `Instant.now().toString()` is a product-level implementation detail in the task, not a known failure workaround. |
 | `loam-docs-readme-distill-observability` | Section-title and placement assertions are normal documentation acceptance criteria. |
 
+### Expected-file verification coverage
+
+Follow-up automation now checks whether each `expectedFiles` path is explicitly referenced by a structured file assertion or legacy shell verification command. Targeted `maven_test.tests` entries count as coverage for matching Java test files.
+
+Current machine-readable baseline:
+
+- Total fixtures: 53
+- Affected fixtures: 25
+- Candidate gaps: 47
+- `rh-test-dashboard-version` is no longer in this gap set because both expected test files have explicit `file_exists` assertions.
+
+Representative remaining candidates:
+
+| Fixture | Gap |
+|---|---|
+| `loam-refactor-provider-dedup` | Broad `pnpm` verification does not explicitly assert the four expected provider files. |
+| `loam-bugfix-cli-error-handling` | Broad CLI/package tests do not explicitly assert the three expected source files. |
+| `pi-bugfix-count-defs` | Pytest verifies behavior but does not explicitly assert `tools/check_v2_constraints.py`. |
+| `rh-mixed-dashboard-generated-at-backend` | Controller assertion exists, but `DashboardAppService.java` is only covered indirectly by Maven tests. |
+
 ## Policy conclusion
 
 Benchmark repair should not move failure-specific answers into fixture prompts or verification shape assertions. If a fixture fails because the agent did not inspect enough code or did not recover from a stack trace, the fix belongs in general DSH behavior: source exploration, repair feedback use, prompt policy, or verifier diagnostics.
@@ -74,3 +95,4 @@ The machine-readable policy source is `packages/eval/src/failure-matrix.json`:
 3. Keep `rh-test-dashboard-version` un-hardened at the fixture level; fix the failure through general repair/source-inspection behavior.
 4. Done: add a lightweight fixture lint/audit rule that flags literal implementation snippets, failure-specific workaround phrases, and DSH protocol coaching in benchmark task prompts.
 5. Done: add machine-readable comparability / evidence-policy metadata to the failure matrix.
+6. Next: migrate high-value false-positive candidates to structured file assertions in small batches, using the verification coverage audit as the candidate source.

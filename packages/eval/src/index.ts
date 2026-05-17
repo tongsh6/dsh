@@ -7,7 +7,9 @@ export type { TaskFixture, LoadedFixture, ProtocolOp } from "./task-fixtures.js"
 
 export {
   auditFixtureContamination,
+  auditFixtureVerificationCoverage,
   auditFixturesForContamination,
+  auditFixturesForVerificationCoverage,
 } from "./fixture-audit.js";
 export type {
   FixtureAuditFinding,
@@ -34,6 +36,7 @@ export {
   FailureMatrixSchema,
   defaultFailureMatrixPath,
   loadFailureMatrix,
+  selectFailureMatrixFixtureGovernance,
   summarizeFailureMatrix,
 } from "./failure-matrix.js";
 export type {
@@ -43,4 +46,5 @@ export type {
   FailureMatrixEntry,
   FailureMatrix,
   FailureMatrixSummary,
+  FailureMatrixFixtureGovernance,
 } from "./failure-matrix.js";

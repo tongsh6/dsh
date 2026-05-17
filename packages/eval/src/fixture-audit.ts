@@ -1,12 +1,16 @@
-import type { LoadedFixture, TaskFixture } from "./task-fixtures.js";
+import type { LoadedFixture, TaskFixture, VerifyAssertion } from "./task-fixtures.js";
 
-export type FixtureAuditSeverity = "strict_contamination" | "comparability_risk";
+export type FixtureAuditSeverity =
+  | "strict_contamination"
+  | "comparability_risk"
+  | "verification_gap";
 
 export type FixtureAuditRuleId =
   | "literal_implementation_snippet"
   | "failure_specific_workaround_phrase"
   | "dsh_protocol_coaching"
-  | "scope_or_comparability_risk";
+  | "scope_or_comparability_risk"
+  | "expected_file_not_verified";
 
 export interface FixtureAuditFinding {
   fixtureId: string;
@@ -117,4 +121,65 @@ export function auditFixturesForContamination(
   fixtures: Array<Pick<LoadedFixture, "id" | "taskPrompt">>,
 ): FixtureAuditFinding[] {
   return fixtures.flatMap((fixture) => auditFixtureContamination(fixture));
+}
+
+function normalizeFixturePath(filePath: string): string {
+  return filePath.replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+function commandMentionsFile(command: string, expectedFile: string): boolean {
+  const normalizedCommand = command.replace(/\\/g, "/");
+  const normalizedFile = normalizeFixturePath(expectedFile);
+  return normalizedCommand.includes(normalizedFile);
+}
+
+function assertionMentionsFile(assertion: VerifyAssertion, expectedFile: string): boolean {
+  if (assertion.type === "shell") {
+    return commandMentionsFile(assertion.command, expectedFile);
+  }
+  if (assertion.type === "maven_test") {
+    const fileName = normalizeFixturePath(expectedFile).split("/").at(-1) ?? expectedFile;
+    const javaClassName = fileName.endsWith(".java") ? fileName.slice(0, -".java".length) : fileName;
+    return (assertion.tests ?? "")
+      .split(",")
+      .map((test) => test.trim())
+      .includes(javaClassName);
+  }
+  if (
+    assertion.type === "file_exists" ||
+    assertion.type === "file_not_exists" ||
+    assertion.type === "file_contains" ||
+    assertion.type === "file_not_contains"
+  ) {
+    return normalizeFixturePath(assertion.file) === normalizeFixturePath(expectedFile);
+  }
+  return false;
+}
+
+export function auditFixtureVerificationCoverage(
+  fixture: Pick<TaskFixture, "id" | "expectedFiles" | "verificationCommands" | "verifications">,
+): FixtureAuditFinding[] {
+  return fixture.expectedFiles
+    .filter((expectedFile) => {
+      const structuredCovered = (fixture.verifications ?? []).some((assertion) =>
+        assertionMentionsFile(assertion, expectedFile),
+      );
+      const commandCovered = fixture.verificationCommands.some((command) =>
+        commandMentionsFile(command, expectedFile),
+      );
+      return !structuredCovered && !commandCovered;
+    })
+    .map((expectedFile) => ({
+      fixtureId: fixture.id,
+      ruleId: "expected_file_not_verified" as const,
+      severity: "verification_gap" as const,
+      message: "Expected file is not explicitly referenced by any verification assertion or command.",
+      evidence: expectedFile,
+    }));
+}
+
+export function auditFixturesForVerificationCoverage(
+  fixtures: Array<Pick<LoadedFixture, "id" | "expectedFiles" | "verificationCommands" | "verifications">>,
+): FixtureAuditFinding[] {
+  return fixtures.flatMap((fixture) => auditFixtureVerificationCoverage(fixture));
 }
