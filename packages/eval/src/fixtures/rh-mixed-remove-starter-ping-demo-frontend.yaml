@@ -17,10 +17,16 @@ expectedFiles:
   - frontend/src/components/HelloWorld.vue
   - frontend/src/components/__tests__/HelloWorld.spec.ts
 expectPass: true
-verificationCommands:
-  - "! test -f frontend/src/components/HelloWorld.vue"
-  - "! test -f frontend/src/components/__tests__/HelloWorld.spec.ts"
-  - "(cd frontend && pnpm typecheck)"
+verifications:
+  - type: file_not_exists
+    file: frontend/src/components/HelloWorld.vue
+    name: helloworld_component_removed
+  - type: file_not_exists
+    file: frontend/src/components/__tests__/HelloWorld.spec.ts
+    name: helloworld_test_removed
+  - type: shell
+    command: "(cd frontend && pnpm typecheck)"
+    name: frontend_typecheck
 architectureRules:
   - 只删除前端 Vue 文件
   - 不修改业务组件

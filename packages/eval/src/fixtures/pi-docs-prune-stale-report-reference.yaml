@@ -19,10 +19,17 @@ expectedFiles:
   - matching_reports/mr-20260228000000.yaml
   - README.md
 expectPass: true
-verificationCommands:
-  - "! test -f matching_reports/mr-20260228000000.yaml"
-  - "grep -q 'matching report 不再随仓库保存为固定样例' README.md"
-  - "python3 -m pytest tests/ -q"
+verifications:
+  - type: file_not_exists
+    file: matching_reports/mr-20260228000000.yaml
+    name: stale_matching_report_removed
+  - type: file_contains
+    file: README.md
+    pattern: matching report 不再随仓库保存为固定样例
+    name: readme_documents_matching_report_policy
+  - type: shell
+    command: "python3 -m pytest tests/ -q"
+    name: pytest_all
 architectureRules:
   - 不修改 Python 源代码
   - README 修改限定在示例说明附近

@@ -15,10 +15,18 @@ expectedFiles:
   - frontend/src/api/dashboardApi.ts
   - frontend/src/views/dashboard/Dashboard.vue
 expectPass: true
-verificationCommands:
-  - "grep -q 'generatedAt' frontend/src/api/dashboardApi.ts"
-  - "grep -q 'generatedAt' frontend/src/views/dashboard/Dashboard.vue"
-  - "(cd frontend && pnpm typecheck)"
+verifications:
+  - type: file_contains
+    file: frontend/src/api/dashboardApi.ts
+    pattern: generatedAt
+    name: dashboard_api_has_generated_at
+  - type: file_contains
+    file: frontend/src/views/dashboard/Dashboard.vue
+    pattern: generatedAt
+    name: dashboard_view_has_generated_at
+  - type: shell
+    command: "(cd frontend && pnpm typecheck)"
+    name: frontend_typecheck
 architectureRules:
   - 只改前端，不改后端 Java
   - generatedAt 使用 ISO 8601 格式（string 类型）

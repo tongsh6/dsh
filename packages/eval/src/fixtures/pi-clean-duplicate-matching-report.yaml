@@ -16,9 +16,13 @@ taskPrompt: |
 expectedFiles:
   - matching_reports/mr-20260227235900.yaml
 expectPass: true
-verificationCommands:
-  - "! test -f matching_reports/mr-20260227235900.yaml"
-  - "python3 -m pytest tests/ -q"
+verifications:
+  - type: file_not_exists
+    file: matching_reports/mr-20260227235900.yaml
+    name: old_matching_report_removed
+  - type: shell
+    command: "python3 -m pytest tests/ -q"
+    name: pytest_all
 architectureRules:
   - 不修改任何 Python 源代码
   - 不删除其他 matching report 文件

@@ -17,8 +17,10 @@ taskPrompt: |
 expectedFiles:
   - docs/providers.md
 expectPass: true
-verificationCommands:
-  - "test -f docs/providers.md"
+verifications:
+  - type: file_exists
+    file: docs/providers.md
+    name: providers_doc_exists
 architectureRules:
   - 文档内容必须与 shared.ts 中的配置接口一致
   - 不修改任何源代码文件

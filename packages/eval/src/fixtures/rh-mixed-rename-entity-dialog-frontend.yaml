@@ -14,10 +14,16 @@ taskPrompt: |
 expectedFiles:
   - frontend/src/components/common/CrudEntityDialog.vue
 expectPass: true
-verificationCommands:
-  - "test -f frontend/src/components/common/CrudEntityDialog.vue"
-  - "! test -f frontend/src/components/common/EntityDialog.vue"
-  - "(cd frontend && pnpm typecheck)"
+verifications:
+  - type: file_exists
+    file: frontend/src/components/common/CrudEntityDialog.vue
+    name: crud_entity_dialog_exists
+  - type: file_not_exists
+    file: frontend/src/components/common/EntityDialog.vue
+    name: old_entity_dialog_removed
+  - type: shell
+    command: "(cd frontend && pnpm typecheck)"
+    name: frontend_typecheck
 architectureRules:
   - 文件内容主体不变
   - 只改前端，不改后端

@@ -268,4 +268,30 @@ describe("real fixture validation", () => {
     const fixtures = loadAllFixtures(fixturesDir);
     assert.ok(fixtures.length > 0, "should load at least one fixture");
   });
+
+  it("keeps simple file assertions in structured verifications", () => {
+    const fixturesDir = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "fixtures",
+    );
+    const fixtures = loadAllFixtures(fixturesDir);
+    const simpleFileAssertionPatterns = [
+      /^test\s+-f\s+\S+$/,
+      /^!\s*test\s+-f\s+\S+$/,
+      /^grep\s+-q\s+.+\s+\S+$/,
+      /^ls\s+\S+\s+2>&1\s+\|\s+grep\s+['"]No such file['"]$/,
+    ];
+    const offenders: string[] = [];
+
+    for (const fixture of fixtures) {
+      for (const command of fixture.verificationCommands) {
+        const trimmed = command.trim();
+        if (simpleFileAssertionPatterns.some((pattern) => pattern.test(trimmed))) {
+          offenders.push(`${fixture.id}: ${command}`);
+        }
+      }
+    }
+
+    assert.deepEqual(offenders, []);
+  });
 });

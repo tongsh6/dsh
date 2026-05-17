@@ -14,10 +14,16 @@ taskPrompt: |
 expectedFiles:
   - backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SystemSettingsController.java
 expectPass: true
-verificationCommands:
-  - "test -f backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SystemSettingsController.java"
-  - "ls backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SettingsController.java 2>&1 | grep 'No such file'"
-  - "(cd backend && mvn test -pl releasehub-interfaces -am -q)"
+verifications:
+  - type: file_exists
+    file: backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SystemSettingsController.java
+    name: system_settings_controller_exists
+  - type: file_not_exists
+    file: backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/settings/SettingsController.java
+    name: old_settings_controller_removed
+  - type: shell
+    command: "(cd backend && mvn test -pl releasehub-interfaces -am -q)"
+    name: interfaces_maven_tests
 architectureRules:
   - 文件内容主体不变，只改类名
   - RequestMapping 路径不变

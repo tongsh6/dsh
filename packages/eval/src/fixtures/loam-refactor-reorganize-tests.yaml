@@ -16,11 +16,20 @@ taskPrompt: |
 expectedFiles:
   - packages/distill/src/distill-dag-runner.test.ts
 expectPass: true
-verificationCommands:
-  - "test -f packages/distill/src/distill-dag-runner.test.ts"
-  - "! test -f packages/distill/src/dag-runner.test.ts"
-  - "grep -q 'describe(\"createDistillDAG\"' packages/distill/src/distill-dag-runner.test.ts"
-  - "pnpm test"
+verifications:
+  - type: file_exists
+    file: packages/distill/src/distill-dag-runner.test.ts
+    name: renamed_distill_dag_runner_test_exists
+  - type: file_not_exists
+    file: packages/distill/src/dag-runner.test.ts
+    name: old_dag_runner_test_removed
+  - type: file_contains
+    file: packages/distill/src/distill-dag-runner.test.ts
+    pattern: describe("createDistillDAG"
+    name: renamed_test_keeps_distill_dag_suite
+  - type: shell
+    command: "pnpm test"
+    name: pnpm_test
 architectureRules:
   - 文件内容保持不变
   - 不修改任何源代码
