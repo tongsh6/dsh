@@ -5,6 +5,7 @@ import {
   FAILURE_STATUSES,
   FAILURE_TYPES,
   loadFailureMatrix,
+  selectFailureMatrixFixtureGovernance,
   summarizeFailureMatrix,
 } from "./failure-matrix.js";
 
@@ -46,5 +47,24 @@ describe("failure matrix", () => {
     assert.equal(summary.comparabilityRisk, 6);
     assert.equal(summary.labelRequired, 6);
     assert.equal(summary.phase3ExitExcluded > 0, true);
+  });
+
+  it("selects governance metadata for benchmark fixture ids", () => {
+    const matrix = loadFailureMatrix();
+    const entries = selectFailureMatrixFixtureGovernance(matrix, [
+      "missing-fixture",
+      "rh-refactor-branch-orchestrator-create",
+      "rh-refactor-branch-orchestrator-create",
+      "pi-bugfix-count-defs",
+    ]);
+
+    assert.deepEqual(
+      entries.map((entry) => entry.fixture),
+      ["rh-refactor-branch-orchestrator-create", "pi-bugfix-count-defs"],
+    );
+    assert.equal(entries[0]!.evidencePolicy, "label_required");
+    assert.equal(entries[0]!.comparabilityRisk, true);
+    assert.equal(entries[1]!.evidencePolicy, "exclude_from_phase3_exit");
+    assert.equal(entries[1]!.contamination, "neutralized_prompt_contamination");
   });
 });

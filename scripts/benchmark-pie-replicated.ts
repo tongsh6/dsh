@@ -30,6 +30,8 @@ import {
 } from "../packages/eval/dist/benchmark-runner.js";
 import {
   loadFailureMatrix,
+  type FailureMatrixFixtureGovernance,
+  selectFailureMatrixFixtureGovernance,
   summarizeFailureMatrix,
 } from "../packages/eval/dist/failure-matrix.js";
 import { injectCardContext } from "../packages/core/dist/inject-card-context.js";
@@ -129,6 +131,24 @@ interface TrialResult extends Record<string, unknown> {
   startedAt: string;
   completedAt: string;
   elapsedMs: number;
+  completed?: boolean;
+  testsPassed?: boolean;
+}
+
+interface ReplicatedBenchmarkMetadata {
+  runId: string;
+  seed: number;
+  reps: number;
+  configs: readonly Config[];
+  fixtureCount: number;
+  totalTrials: number;
+  failureMatrixFixtures: readonly FailureMatrixFixtureGovernance[];
+  summary?: {
+    card_on_pass: number;
+    card_on_total: number;
+    card_off_pass: number;
+    card_off_total: number;
+  };
 }
 
 export function loadDurationEstimates(resultsPath: string): Map<string, number> {
@@ -194,6 +214,58 @@ export function scheduleLpt<T extends { fixture: { id: string } }>(
   }
 
   return lanes;
+}
+
+export function formatReplicatedBenchmarkReport(
+  metadata: ReplicatedBenchmarkMetadata,
+  results: readonly TrialResult[],
+): string {
+  const passOn = metadata.summary?.card_on_pass ?? results.filter((r) => r.config === "card_on" && r.testsPassed).length;
+  const totalOn = metadata.summary?.card_on_total ?? results.filter((r) => r.config === "card_on").length;
+  const passOff = metadata.summary?.card_off_pass ?? results.filter((r) => r.config === "card_off" && r.testsPassed).length;
+  const totalOff = metadata.summary?.card_off_total ?? results.filter((r) => r.config === "card_off").length;
+  const governedFixtures = metadata.failureMatrixFixtures.filter((entry) =>
+    entry.evidencePolicy !== "standard" ||
+    entry.comparabilityRisk ||
+    entry.requiresReplicatedConfirmation
+  );
+
+  const lines: string[] = [];
+  lines.push("# PIE Replicated Benchmark Summary");
+  lines.push("");
+  lines.push("## Run");
+  lines.push("");
+  lines.push(`- runId: ${metadata.runId}`);
+  lines.push(`- seed: ${metadata.seed}`);
+  lines.push(`- reps: ${metadata.reps}`);
+  lines.push(`- fixtures: ${metadata.fixtureCount}`);
+  lines.push(`- trials: ${results.length}/${metadata.totalTrials}`);
+  lines.push("");
+  lines.push("## Results");
+  lines.push("");
+  lines.push(`- Card ON: ${passOn}/${totalOn}`);
+  lines.push(`- Card OFF: ${passOff}/${totalOff}`);
+  lines.push("");
+  lines.push("## Evidence Governance");
+  lines.push("");
+  lines.push("This section is generated from metadata.failureMatrixFixtures.");
+  lines.push("");
+
+  if (governedFixtures.length === 0) {
+    lines.push("No governed fixtures were included in this run.");
+  } else {
+    lines.push("| Fixture | Policy | Comparability Risk | Status | Notes |");
+    lines.push("|---------|--------|--------------------|--------|-------|");
+    for (const entry of governedFixtures) {
+      const notes = entry.governanceNotes ?? entry.notes;
+      lines.push(
+        `| ${entry.fixture} | ${entry.evidencePolicy} | ${entry.comparabilityRisk ? "yes" : "no"} | ${entry.status} | ${notes.replace(/\|/g, "\\|")} |`,
+      );
+    }
+  }
+
+  lines.push("");
+  return `${lines.join("\n")}\n`;
 }
 
 function createLaneWorktree(sourceRepoPath: string, lanePath: string): void {
@@ -272,7 +344,12 @@ async function main(): Promise<void> {
   }
 
   const durationEstimates = loadDurationEstimates(ESTIMATE_RESULTS);
-  const failureMatrixSummary = summarizeFailureMatrix(loadFailureMatrix());
+  const failureMatrix = loadFailureMatrix();
+  const failureMatrixSummary = summarizeFailureMatrix(failureMatrix);
+  const failureMatrixFixtures = selectFailureMatrixFixtureGovernance(
+    failureMatrix,
+    benchFixtures.map((fixture) => fixture.id),
+  );
   if (durationEstimates.size > 0) {
     console.log(`Loaded duration estimates for ${durationEstimates.size} fixtures from ${ESTIMATE_RESULTS}`);
   } else {
@@ -304,7 +381,7 @@ async function main(): Promise<void> {
   }
 
   // Write metadata
-  fs.writeFileSync(path.join(runDir, "metadata.json"), JSON.stringify({
+  const initialMetadata: ReplicatedBenchmarkMetadata & Record<string, unknown> = {
     runId, seed: SEED, reps: REPS, configs: CONFIGS,
     lanesPerRepo: LANES_PER_REPO,
     estimateResults: fs.existsSync(ESTIMATE_RESULTS) ? ESTIMATE_RESULTS : null,
@@ -312,6 +389,7 @@ async function main(): Promise<void> {
     fixtureCount: benchFixtures.length,
     totalTrials: trials.length,
     failureMatrixSummary,
+    failureMatrixFixtures,
     repoBreakdown: Object.fromEntries(
       [...byRepo.entries()].map(([p, ts]) => [path.basename(p), ts.length]),
     ),
@@ -323,7 +401,8 @@ async function main(): Promise<void> {
       worktree: lane.lanePath,
       requestedLanesPerRepo: LANES_PER_REPO,
     })),
-  }, null, 2));
+  };
+  fs.writeFileSync(path.join(runDir, "metadata.json"), JSON.stringify(initialMetadata, null, 2));
 
   // ---- Init DeepSeek client ----
   const apiKey = readApiKey(PROJECT_ROOT);
@@ -422,7 +501,7 @@ async function main(): Promise<void> {
   console.log(`Card OFF: ${passOff}/${totalOff} testsPassed`);
   console.log(`Artifacts: ${runDir}`);
 
-  fs.writeFileSync(path.join(runDir, "metadata.json"), JSON.stringify({
+  const finalMetadata: ReplicatedBenchmarkMetadata & Record<string, unknown> = {
     runId, seed: SEED, reps: REPS, configs: CONFIGS,
     lanesPerRepo: LANES_PER_REPO,
     estimateResults: fs.existsSync(ESTIMATE_RESULTS) ? ESTIMATE_RESULTS : null,
@@ -432,6 +511,7 @@ async function main(): Promise<void> {
     fixtureCount: benchFixtures.length,
     totalTrials: trials.length,
     failureMatrixSummary,
+    failureMatrixFixtures,
     repoBreakdown: Object.fromEntries(
       [...byRepo.entries()].map(([p, ts]) => [path.basename(p), ts.length]),
     ),
@@ -444,7 +524,9 @@ async function main(): Promise<void> {
       requestedLanesPerRepo: LANES_PER_REPO,
     })),
     summary: { card_on_pass: passOn, card_on_total: totalOn, card_off_pass: passOff, card_off_total: totalOff },
-  }, null, 2));
+  };
+  fs.writeFileSync(path.join(runDir, "metadata.json"), JSON.stringify(finalMetadata, null, 2));
+  fs.writeFileSync(path.join(runDir, "summary.md"), formatReplicatedBenchmarkReport(finalMetadata, results));
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

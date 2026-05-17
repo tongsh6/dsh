@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { loadDurationEstimates, scheduleLpt } from "./benchmark-pie-replicated.js";
+import {
+  formatReplicatedBenchmarkReport,
+  loadDurationEstimates,
+  scheduleLpt,
+} from "./benchmark-pie-replicated.js";
 
 function trial(id: string): { fixture: { id: string } } {
   return { fixture: { id } };
@@ -85,5 +89,57 @@ describe("scheduleLpt", () => {
 
     assert.equal(lanes.length, 1);
     assert.equal(lanes[0]!.estimatedMs, 14);
+  });
+});
+
+describe("formatReplicatedBenchmarkReport", () => {
+  it("renders governance labels from metadata failureMatrixFixtures", () => {
+    const md = formatReplicatedBenchmarkReport(
+      {
+        runId: "260517000000",
+        seed: 123,
+        reps: 3,
+        configs: ["card_on", "card_off"] as const,
+        fixtureCount: 1,
+        totalTrials: 2,
+        failureMatrixFixtures: [
+          {
+            fixture: "rh-test-dashboard-version",
+            repo: "release-hub",
+            failureType: "wrong_verification_command",
+            status: "regressed",
+            requiresReplicatedConfirmation: true,
+            evidencePolicy: "label_required",
+            comparabilityRisk: true,
+            lastEvidence: "docs/reports/runlogs/example/results.json",
+            notes: "replicated regression",
+            governanceNotes: "label separately until repaired",
+          },
+        ],
+        summary: {
+          card_on_pass: 0,
+          card_on_total: 1,
+          card_off_pass: 1,
+          card_off_total: 1,
+        },
+      },
+      [
+        {
+          fixtureId: "rh-test-dashboard-version",
+          config: "card_on",
+          rep: 0,
+          trialIndex: 1,
+          startedAt: "2026-05-17T00:00:00.000Z",
+          completedAt: "2026-05-17T00:01:00.000Z",
+          elapsedMs: 60_000,
+          testsPassed: false,
+        },
+      ],
+    );
+
+    assert.match(md, /metadata\.failureMatrixFixtures/);
+    assert.match(md, /\| rh-test-dashboard-version \| label_required \| yes \| regressed \| label separately until repaired \|/);
+    assert.match(md, /Card ON: 0\/1/);
+    assert.match(md, /Card OFF: 1\/1/);
   });
 });

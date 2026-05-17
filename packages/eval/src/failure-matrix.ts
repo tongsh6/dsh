@@ -81,6 +81,20 @@ export interface FailureMatrixSummary {
   phase3ExitExcluded: number;
 }
 
+export interface FailureMatrixFixtureGovernance {
+  fixture: string;
+  repo: string;
+  failureType: FailureType;
+  status: FailureStatus;
+  requiresReplicatedConfirmation: boolean;
+  evidencePolicy: EvidencePolicy;
+  comparabilityRisk: boolean;
+  contamination?: "neutralized_prompt_contamination" | "historical_evidence_contaminated";
+  lastEvidence: string;
+  notes: string;
+  governanceNotes?: string;
+}
+
 export function defaultFailureMatrixPath(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/failure-matrix.json");
 }
@@ -105,4 +119,37 @@ export function summarizeFailureMatrix(matrix: FailureMatrix): FailureMatrixSumm
     labelRequired: matrix.entries.filter((e) => e.governance?.evidencePolicy === "label_required").length,
     phase3ExitExcluded: matrix.entries.filter((e) => e.governance?.evidencePolicy === "exclude_from_phase3_exit").length,
   };
+}
+
+export function selectFailureMatrixFixtureGovernance(
+  matrix: FailureMatrix,
+  fixtureIds: readonly string[],
+): FailureMatrixFixtureGovernance[] {
+  const entriesByFixture = new Map(matrix.entries.map((entry) => [entry.fixture, entry]));
+  const seen = new Set<string>();
+  const selected: FailureMatrixFixtureGovernance[] = [];
+
+  for (const fixtureId of fixtureIds) {
+    if (seen.has(fixtureId)) continue;
+    seen.add(fixtureId);
+
+    const entry = entriesByFixture.get(fixtureId);
+    if (!entry) continue;
+
+    selected.push({
+      fixture: entry.fixture,
+      repo: entry.repo,
+      failureType: entry.failureType,
+      status: entry.status,
+      requiresReplicatedConfirmation: entry.requiresReplicatedConfirmation,
+      evidencePolicy: entry.governance?.evidencePolicy ?? "standard",
+      comparabilityRisk: entry.governance?.comparabilityRisk === true,
+      contamination: entry.governance?.contamination,
+      lastEvidence: entry.lastEvidence,
+      notes: entry.notes,
+      governanceNotes: entry.governance?.notes,
+    });
+  }
+
+  return selected;
 }
