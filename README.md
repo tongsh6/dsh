@@ -2,7 +2,7 @@
 
 一个围绕 DeepSeek 模型行为深度优化的终端编程助手，覆盖从任务理解、代码生成、验证修复到交接沉淀的验证闭环。
 
-DSH provides a DeepSeek-oriented provider with official Chat Completion support, V4 Pro/Flash routing, thinking mode, streaming, staged tool calls, and cache-aware usage reporting. Advanced beta capabilities such as strict tool calls, chat prefix, and FIM are exposed as experimental feature-flagged extension points, not enabled by default.
+DSH provides a DeepSeek-oriented provider with official Chat Completion support, V4 Pro/Flash routing, thinking mode, streaming, staged tool calls, error retry semantics, cache/reasoning-token usage reporting, execution contracts, and persisted task evidence. Advanced beta capabilities such as strict tool calls, chat prefix, and FIM are exposed as experimental feature-flagged extension points, not enabled by default.
 
 **核心流程:** Plan → Patch → Verify → Repair → Handoff
 **当前阶段:** Phase 3 收口验证期
@@ -84,6 +84,9 @@ pnpm run scan         # 全量质量门禁（lint + typecheck + test）
 - [项目宪法](CONSTITUTION.md) — 核心原则与协作规则
 - [产品蓝图](BLUEPRINT.md) — 最终产品形态与 7 阶段演进路线
 - [DeepSeek API Compatibility](docs/specs/deepseek-api-compatibility.md) — Provider 兼容性矩阵与 DeepSeek API 语义
+- [Execution Contract](docs/specs/execution-contract.md) — Plan/Patch/Verify/Repair/Handoff 阶段契约
+- [State And Evidence](docs/specs/state-evidence.md) — `.dsh` 状态与证据文件
+- [DeepSeek Coding Harness Eval](docs/evals/deepseek-coding-harness-eval.md) — DeepSeek V4 Pro/Flash、high/max 回归设计
 - [设计 Spec](docs/specs/) — 功能设计说明
 - [实现计划](docs/plans/) — 分阶段实施计划
 
@@ -91,6 +94,10 @@ pnpm run scan         # 全量质量门禁（lint + typecheck + test）
 
 - **版本:** 0.1.0（活跃开发中）
 - **定位:** DeepSeek-native, benchmark-gated, verify-first Coding Harness
+- **已支持:** official `/chat/completions`、V4 Pro/Flash、thinking `enabled/disabled`、`reasoning_effort high/max`、function tool calls、streaming、JSON output、usage/cache/reasoning token 观测、阶段化工具策略、验证/修复闭环、状态证据 sidecars
+- **部分支持:** eval 回归、成本治理、版本漂移治理、长上下文治理
+- **Experimental:** strict tool calls、chat prefix、FIM、`user_id`，均需显式 feature flag 与 beta endpoint
+- **尚未支持:** Anthropic-compatible DeepSeek API、默认启用 beta API、美元成本估算、全自动 API drift live check
 - **阶段:** Phase 3 收口验证期
 - **当前基线:** testsPassed 11/24 = 45%
 - **目标:** testsPassed >60%

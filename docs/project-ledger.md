@@ -13,7 +13,7 @@
 - **议题 B (verify-protocol-structured)**: ✅ P1-P6 已实施，结构化验证协议上线。
 - **议题 C (goal-driven-verify)**: ✅ P1-P2 已实施，代码已合并（config redaction + autonomous verification prompts + PLAN retry + scope 软化 + DONE 接受放松）。
 - **议题 D (transactional-self-correction)**: ✅ P1 已实施并通过本地测试（双轨 checkpoint + managed_files + 物理回滚 + ANSI 剥离）；loam smoke PASS，rh smoke `260513-013656` PASS，repairSuccess 1/1。
-- **DeepSeek provider hardening**: ✅ 已实施（official `/chat/completions` endpoint、`thinking.type` + `reasoning_effort`、cache/reasoning usage、HTTP retry、阶段化 tool policy、JSON/strict/prefix/FIM 扩展点）；`pnpm test` / `pnpm typecheck` / `pnpm lint` PASS。
+- **DeepSeek-native adaptation**: ✅ 已实施（official `/chat/completions` endpoint、`thinking.type` + `reasoning_effort high/max`、cache/reasoning usage、HTTP retry/error metadata、message/tool/stream normalizer、capability registry、阶段化 tool policy、状态证据 sidecars、JSON/strict/prefix/FIM 扩展点）；`pnpm test` / `pnpm typecheck` / `pnpm lint` PASS。
 - **Phase 3 起点基线**: testsPassed 11/24 = 45%（`260508-003359` / `260509-165142`）。
 - **目标**: testsPassed > 60%.
 - **最新 replicated benchmark evidence**: Project Card on `60/72 = 83.3%` over 24 fixtures × 3 reps — `docs/reports/knowledge/20260514-pie-phase2-3-baseline.md`；该结果已超过 Phase 3 `>60%` 目标，但 hard-fail smoke 修复仍需新的 N=3 / full benchmark 复审。
@@ -79,6 +79,7 @@
 | 工具 API 集成 | 2026-05-04 | `packages/core/src/pipeline.ts` L272-338 | 测试通过 | 5 轮调用循环 |
 | 修复循环工具支持 | 2026-05-04 | `packages/core/src/repair-loop.ts` L208-238 | 测试通过 | 2→3 轮工具循环 |
 | DeepSeek provider hardening | 2026-05-17 | `packages/provider/src/client.ts` + `docs/specs/deepseek-api-compatibility.md` | `pnpm test` / `pnpm typecheck` / `pnpm lint` PASS | official endpoint、thinking.type、usage/cache、retry、staged tool policy、实验性高级能力扩展点 |
+| DeepSeek-native adaptation L1-L7 | 2026-05-17 | `packages/provider/src/client.ts` + `normalizer.ts` + `capability-registry.ts`; `packages/core/src/task-state.ts`; `docs/specs/deepseek-api-compatibility.md`; `docs/specs/execution-contract.md`; `docs/specs/state-evidence.md`; `docs/evals/deepseek-coding-harness-eval.md` | `pnpm test` / `pnpm typecheck` / `pnpm lint` PASS | P0-P2 最小闭环：API 语义、provider normalizer、错误 metadata、capability registry、state evidence sidecars、eval 设计与文档矩阵 |
 | Benchmark 系统 | 2026-05-02 | `packages/eval/` + `run-benchmark.ts` | 24 eval 测试通过 | 多项目多语言 fixtures |
 | CI 质量门禁 | 2026-05-02 | `.github/workflows/scan.yml` | PR CI 通过 | lint+typecheck+test |
 | Benchmark CI | 2026-05-02 | `.github/workflows/benchmark.yml` | 每周六定时 | GitHub Actions |
@@ -88,7 +89,7 @@
 
 | 事项 | 验证方式 | 报告路径 | 结论 |
 |------|---------|---------|------|
-| 536 单元测试 | `pnpm run test` | — | 全部通过（2026-05-13 本地验证；provider 23 + repo 63 + core 385 + cli 23 + eval 43） |
+| 564 单元测试 | `pnpm test` | — | 全部通过（2026-05-17 本地验证；provider 48 + repo 92 + core 428 + cli 34 + eval 54） |
 | DSH vs OpenCode 对比 | Benchmark（5 fixtures, pi-proof-forge） | `docs/reports/runlogs/compare-20260502-120419/` | DSH 60% vs OC 100%，修复质量有差距 |
 | DSH vs mini-cc 对比 | 代码/架构审阅（本地 dsh + `/private/tmp/mini-cc`） | 本台账 §8 `dsh-vs-mini-cc-comparison` | mini-cc 优势在交互式 UX、多 provider、工具/MCP 扩展；dsh 优势在验证闭环、可审计状态、patch 安全、benchmark 文化 |
 | 工具系统 Benchmark（loamlog） | Benchmark（5 fixtures） | `docs/reports/runlogs/260504-140432/` | 80% 完成，0/2 修复成功，工具零调用 |
@@ -100,6 +101,7 @@
 | rh smoke repair 诊断增强验证 | Benchmark（1 fixture） | `docs/reports/runlogs/260513-011828/` | PARTIAL；patch loop DONE=✓，CREATE/PATCH/SEARCH_REPLACE 均有统计，Maven 测试已进入运行期；剩余失败为 `ExportAppServiceTest.createRunItem` 触发 `RunItem.rehydrate`/`BaseEntity` NPE，repairSuccess 仍 0/1 |
 | rh smoke blocker 收敛验证 | Benchmark（1 fixture） | `docs/reports/runlogs/260513-013656/` | PASS；`rh-bugfix-csv-export` completed 1/1，testsPassed 1/1，repairSuccess 1/1，score 99；首轮 Maven 测试失败后 repair 追加测试补丁并通过第二轮结构化 Maven verify |
 | DeepSeek provider hardening | 本地质量门禁 | `docs/specs/deepseek-api-compatibility.md` | PASS；provider endpoint/thinking/retry/usage/stream tests，core staged tool loop tests，root `pnpm test` / `pnpm typecheck` / `pnpm lint` 全部通过 |
+| DeepSeek-native L1-L7 adaptation | 本地质量门禁 + 官方文档核对 | `docs/specs/deepseek-api-compatibility.md` + `docs/specs/execution-contract.md` + `docs/specs/state-evidence.md` + `docs/evals/deepseek-coding-harness-eval.md` | PASS；P0 provider semantics、P1 execution/state evidence、P2 registry/eval design 已落地；root `pnpm test` / `pnpm typecheck` / `pnpm lint` 全部通过 |
 
 ## 4. 进行中事项
 
