@@ -21,12 +21,30 @@ expectedFiles:
   - packages/distill/src/engine.ts
   - packages/distill/src/index.ts
 expectPass: true
-verificationCommands:
-  - "test -f packages/distill/src/distill-state.ts"
-  - "! test -f packages/distill/src/state.ts"
-  - "git show HEAD:packages/distill/src/state.ts | cmp - packages/distill/src/distill-state.ts"
-  - "pnpm typecheck"
-  - "pnpm test"
+verifications:
+  - type: file_exists
+    file: packages/distill/src/distill-state.ts
+    name: distill_state_file_exists
+  - type: file_not_exists
+    file: packages/distill/src/state.ts
+    name: old_state_file_removed
+  - type: file_contains
+    file: packages/distill/src/engine.ts
+    pattern: "./distill-state.js"
+    name: engine_imports_distill_state
+  - type: file_contains
+    file: packages/distill/src/index.ts
+    pattern: "./distill-state.js"
+    name: index_exports_distill_state
+  - type: shell
+    command: "git show HEAD:packages/distill/src/state.ts | cmp - packages/distill/src/distill-state.ts"
+    name: renamed_file_content_unchanged
+  - type: shell
+    command: "pnpm typecheck"
+    name: workspace_typecheck_passes
+  - type: shell
+    command: "pnpm test"
+    name: workspace_tests_pass
 architectureRules:
   - 文件内容保持不变
   - 所有 import 路径必须更新

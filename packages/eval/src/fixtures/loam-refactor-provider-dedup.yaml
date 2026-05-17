@@ -34,9 +34,29 @@ expectedFiles:
   - packages/distill/src/providers/deepseek.ts
   - packages/distill/src/providers/anthropic.ts
 expectPass: true
-verificationCommands:
-  - "pnpm run typecheck"
-  - "pnpm --filter @loamlog/distill test"
+verifications:
+  - type: file_contains
+    file: packages/distill/src/providers/shared.ts
+    pattern: "buildAuthHeaders"
+    name: shared_exports_auth_header_helper
+  - type: file_contains
+    file: packages/distill/src/providers/openai.ts
+    pattern: "buildAuthHeaders"
+    name: openai_uses_shared_auth_header_helper
+  - type: file_contains
+    file: packages/distill/src/providers/deepseek.ts
+    pattern: "buildAuthHeaders"
+    name: deepseek_uses_shared_auth_header_helper
+  - type: file_contains
+    file: packages/distill/src/providers/anthropic.ts
+    pattern: "buildAuthHeaders"
+    name: anthropic_uses_shared_auth_header_helper
+  - type: shell
+    command: "pnpm run typecheck"
+    name: workspace_typecheck_passes
+  - type: shell
+    command: "pnpm --filter @loamlog/distill test"
+    name: distill_tests_pass
 architectureRules:
   - 不改变 Provider 的对外接口（保持向后兼容）
   - 提取到 shared.ts 的函数必须充分测试

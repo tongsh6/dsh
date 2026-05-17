@@ -18,6 +18,8 @@ Automation added after this manual audit:
 - `packages/eval/src/fixture-audit.test.ts` locks the current strict-contamination and comparability-risk baseline so future fixture edits cannot silently move failure-specific answers into prompts.
 - `packages/eval/src/failure-matrix.json` now carries machine-readable `governance.comparabilityRisk` and `governance.evidencePolicy` fields so benchmark metadata can label or exclude risky evidence without reparsing this report.
 - `packages/eval/src/fixture-audit.ts` also exposes `auditFixtureVerificationCoverage()` and `auditFixturesForVerificationCoverage()` to flag expectedFiles that are not explicitly referenced by structured file assertions or shell verification commands.
+- First verification-coverage cleanup batch migrated `pi-docs-check-tools`, `pi-bugfix-count-defs`, `loam-test-distill-engine`, and `loam-test-distill-state` from broad shell-only checks to structured assertions plus shell verification.
+- Second verification-coverage cleanup batch migrated `loam-refactor-provider-dedup`, `loam-refactor-rename-distill-state`, and `rh-mixed-dashboard-generated-at-backend` to structured assertions.
 
 This audit excludes the discarded local change that added `VersionUpdateAppService` constructor guidance and `@InjectMocks` rejection to `rh-test-dashboard-version`. That change was not committed because it would leak a failure-specific answer into the benchmark.
 
@@ -64,18 +66,18 @@ Follow-up automation now checks whether each `expectedFiles` path is explicitly 
 Current machine-readable baseline:
 
 - Total fixtures: 53
-- Affected fixtures: 25
-- Candidate gaps: 47
+- Affected fixtures: 18
+- Candidate gaps: 36
 - `rh-test-dashboard-version` is no longer in this gap set because both expected test files have explicit `file_exists` assertions.
+- `pi-docs-check-tools`, `pi-bugfix-count-defs`, `loam-test-distill-engine`, `loam-test-distill-state`, `loam-refactor-provider-dedup`, `loam-refactor-rename-distill-state`, and `rh-mixed-dashboard-generated-at-backend` are no longer in this gap set after the first two cleanup batches.
 
 Representative remaining candidates:
 
 | Fixture | Gap |
 |---|---|
-| `loam-refactor-provider-dedup` | Broad `pnpm` verification does not explicitly assert the four expected provider files. |
 | `loam-bugfix-cli-error-handling` | Broad CLI/package tests do not explicitly assert the three expected source files. |
-| `pi-bugfix-count-defs` | Pytest verifies behavior but does not explicitly assert `tools/check_v2_constraints.py`. |
-| `rh-mixed-dashboard-generated-at-backend` | Controller assertion exists, but `DashboardAppService.java` is only covered indirectly by Maven tests. |
+| `bugfix-token-expiry` | Broad test verification does not explicitly assert the two expected auth files. |
+| `feature-pagination` | Broad test verification does not explicitly assert the expected controller/service files. |
 
 ## Policy conclusion
 
@@ -95,4 +97,4 @@ The machine-readable policy source is `packages/eval/src/failure-matrix.json`:
 3. Keep `rh-test-dashboard-version` un-hardened at the fixture level; fix the failure through general repair/source-inspection behavior.
 4. Done: add a lightweight fixture lint/audit rule that flags literal implementation snippets, failure-specific workaround phrases, and DSH protocol coaching in benchmark task prompts.
 5. Done: add machine-readable comparability / evidence-policy metadata to the failure matrix.
-6. Next: migrate high-value false-positive candidates to structured file assertions in small batches, using the verification coverage audit as the candidate source.
+6. In progress: migrate high-value false-positive candidates to structured file assertions in small batches, using the verification coverage audit as the candidate source. The first two batches reduced the baseline from 25 affected fixtures / 47 gaps to 18 affected fixtures / 36 gaps.

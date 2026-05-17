@@ -12,8 +12,14 @@ taskPrompt: |
 expectedFiles:
   - tools/check_v2_constraints.py
 expectPass: true
-verificationCommands:
-  - python3 -m pytest tests/unit/domain/test_check_v2_constraints.py -v
+verifications:
+  - type: file_contains
+    file: tools/check_v2_constraints.py
+    pattern: "^\\s*def"
+    name: count_definitions_allows_indented_defs
+  - type: shell
+    command: python3 -m pytest tests/unit/domain/test_check_v2_constraints.py -v
+    name: check_v2_constraints_tests_pass
 architectureRules:
   - 不修改 check_v2_constraints.py 的 main() 函数和退出码约定
   - 不用 AST 解析，保持实现简单

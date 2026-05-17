@@ -20,6 +20,10 @@ verifications:
     file: backend/releasehub-interfaces/src/main/java/io/releasehub/interfaces/api/dashboard/DashboardController.java
     pattern: generatedAt
     name: controller_has_generatedAt
+  - type: file_contains
+    file: backend/releasehub-application/src/main/java/io/releasehub/application/dashboard/DashboardAppService.java
+    pattern: generatedAt
+    name: app_service_has_generatedAt
   - type: shell
     command: cd backend && mvn test -pl releasehub-interfaces -am -q
     name: maven_test_passes

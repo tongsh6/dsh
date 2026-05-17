@@ -21,8 +21,22 @@ taskPrompt: |
 expectedFiles:
   - tools/README.md
 expectPass: true
-verificationCommands:
-  - python3 tools/check_v2_constraints.py --root .
+verifications:
+  - type: file_contains
+    file: tools/README.md
+    pattern: "## 架构检查与门禁"
+    name: tools_gate_section_documented
+  - type: file_contains
+    file: tools/README.md
+    pattern: "tools/check_v2_constraints.py"
+    name: v2_constraints_tool_documented
+  - type: file_contains
+    file: tools/README.md
+    pattern: "tools/check_submission_readiness.py"
+    name: submission_readiness_tool_documented
+  - type: shell
+    command: python3 tools/check_v2_constraints.py --root .
+    name: v2_constraints_passes
 architectureRules:
   - 保持 tools/README.md 现有 Markdown 风格一致
   - 新增章节放在 "CI 校验" 之前

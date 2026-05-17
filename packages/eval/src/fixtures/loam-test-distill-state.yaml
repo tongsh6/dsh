@@ -17,8 +17,13 @@ taskPrompt: |
 expectedFiles:
   - packages/distill/src/state.test.ts
 expectPass: true
-verificationCommands:
-  - "pnpm --filter @loamlog/distill test"
+verifications:
+  - type: file_exists
+    file: packages/distill/src/state.test.ts
+    name: state_test_file_exists
+  - type: shell
+    command: "pnpm --filter @loamlog/distill test"
+    name: distill_tests_pass
 architectureRules:
   - 不修改 state.ts 的源代码（纯测试任务）
   - 使用 node:test + node:assert/strict（与项目现有测试一致）
