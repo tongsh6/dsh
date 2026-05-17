@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  EVIDENCE_POLICIES,
   FAILURE_STATUSES,
   FAILURE_TYPES,
   loadFailureMatrix,
@@ -21,6 +22,18 @@ describe("failure matrix", () => {
       assert.ok(FAILURE_STATUSES.includes(entry.status), `${entry.fixture}: invalid status`);
       assert.ok(entry.lastEvidence, `${entry.fixture}: lastEvidence is required`);
       assert.ok(entry.notes, `${entry.fixture}: notes are required`);
+      if (entry.governance?.evidencePolicy) {
+        assert.ok(
+          EVIDENCE_POLICIES.includes(entry.governance.evidencePolicy),
+          `${entry.fixture}: invalid evidence policy`,
+        );
+      }
+      if (entry.governance?.comparabilityRisk) {
+        assert.ok(
+          entry.governance.evidencePolicy,
+          `${entry.fixture}: comparability risk requires an evidence policy`,
+        );
+      }
     }
   });
 
@@ -30,5 +43,8 @@ describe("failure matrix", () => {
     assert.equal(summary.fixedPendingReplication > 0, true);
     assert.equal(summary.highVariance > 0, true);
     assert.equal(summary.confirmedStable > 0, true);
+    assert.equal(summary.comparabilityRisk, 6);
+    assert.equal(summary.labelRequired, 6);
+    assert.equal(summary.phase3ExitExcluded > 0, true);
   });
 });

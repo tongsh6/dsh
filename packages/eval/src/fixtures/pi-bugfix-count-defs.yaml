@@ -5,12 +5,8 @@ taskPrompt: |
   在 tools/check_v2_constraints.py 中，count_definitions() 函数使用 text.count(signature) 做朴素子串匹配，
   这会将注释、docstring、字符串字面量中的 def xxx( 也统计进去，产生假阳性或假阴性。
 
-  请将 count_definitions() 改为使用正则表达式，只匹配一行开头（允许前导空白）的函数或方法声明：
-  re.findall(r'^\s*' + re.escape(signature), text, re.MULTILINE)。
-  注意：tools/infra/llm/client.py 中的 post_json() 和 extract_content() 是类方法，前面有缩进；
-  如果只匹配第 0 列的 def，会把这些真实定义漏掉。find_pattern() 函数不需要修改。
-
-  在文件顶部添加 import re。
+  请将 count_definitions() 改为只统计真实函数或方法声明行，匹配时必须允许 def 前存在缩进，
+  以覆盖类方法定义；不要统计注释、docstring 或字符串字面量中的文本。find_pattern() 函数不需要修改。
 
   相关文件：tools/check_v2_constraints.py
 expectedFiles:

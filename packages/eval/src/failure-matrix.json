@@ -9,7 +9,12 @@
       "status": "single_smoke_passed",
       "requiresReplicatedConfirmation": true,
       "lastEvidence": "docs/reports/runlogs/260515-015045",
-      "notes": "Fixture hint was updated for indented class methods; single smoke passed and still needs N=3 confirmation."
+      "notes": "Fixture hint was updated for indented class methods; single smoke passed and still needs N=3 confirmation.",
+      "governance": {
+        "contamination": "neutralized_prompt_contamination",
+        "evidencePolicy": "exclude_from_phase3_exit",
+        "notes": "Historical runs before prompt cleanup used an answer-leaking prompt and are not Phase 3 exit evidence."
+      }
     },
     {
       "fixture": "rh-refactor-branch-orchestrator",
@@ -18,7 +23,11 @@
       "status": "ignored",
       "requiresReplicatedConfirmation": false,
       "lastEvidence": "docs/reports/runlogs/260515-024737",
-      "notes": "Original monolith fixture remains out of current benchmark scope after being split into smaller fixtures."
+      "notes": "Original monolith fixture remains out of current benchmark scope after being split into smaller fixtures.",
+      "governance": {
+        "evidencePolicy": "exclude_from_phase3_exit",
+        "notes": "Do not compare split fixture results as equivalent recovery of this original monolith."
+      }
     },
     {
       "fixture": "rh-refactor-branch-orchestrator-create",
@@ -27,7 +36,12 @@
       "status": "single_smoke_passed",
       "requiresReplicatedConfirmation": true,
       "lastEvidence": "docs/reports/runlogs/260515-025747",
-      "notes": "Split fixture replacing the original monolith; single smoke passed."
+      "notes": "Split fixture replacing the original monolith; single smoke passed.",
+      "governance": {
+        "comparabilityRisk": true,
+        "evidencePolicy": "label_required",
+        "notes": "Split-task replacement; report under a new benchmark scope, not as equivalent recovery of the original monolith."
+      }
     },
     {
       "fixture": "rh-refactor-branch-orchestrator-tests",
@@ -36,7 +50,12 @@
       "status": "single_smoke_passed",
       "requiresReplicatedConfirmation": true,
       "lastEvidence": "docs/reports/runlogs/260515-025747",
-      "notes": "Split fixture replacing the original monolith; single smoke passed."
+      "notes": "Split fixture replacing the original monolith; single smoke passed.",
+      "governance": {
+        "comparabilityRisk": true,
+        "evidencePolicy": "label_required",
+        "notes": "Split-task replacement; report under a new benchmark scope, not as equivalent recovery of the original monolith."
+      }
     },
     {
       "fixture": "rh-refactor-branch-orchestrator-service-code-merge",
@@ -45,7 +64,12 @@
       "status": "single_smoke_passed",
       "requiresReplicatedConfirmation": true,
       "lastEvidence": "docs/reports/runlogs/260515-035901",
-      "notes": "Split fixture replacing the original monolith; single smoke passed."
+      "notes": "Split fixture replacing the original monolith; single smoke passed.",
+      "governance": {
+        "comparabilityRisk": true,
+        "evidencePolicy": "label_required",
+        "notes": "Split-task replacement; report under a new benchmark scope, not as equivalent recovery of the original monolith."
+      }
     },
     {
       "fixture": "rh-refactor-branch-orchestrator-service-release-branch",
@@ -54,7 +78,12 @@
       "status": "single_smoke_passed",
       "requiresReplicatedConfirmation": true,
       "lastEvidence": "docs/reports/runlogs/260515-031851",
-      "notes": "Split fixture replacing the original monolith; single smoke passed."
+      "notes": "Split fixture replacing the original monolith; single smoke passed.",
+      "governance": {
+        "comparabilityRisk": true,
+        "evidencePolicy": "label_required",
+        "notes": "Split-task replacement; report under a new benchmark scope, not as equivalent recovery of the original monolith."
+      }
     },
     {
       "fixture": "rh-refactor-branch-orchestrator-service-attach",
@@ -63,7 +92,12 @@
       "status": "single_smoke_passed",
       "requiresReplicatedConfirmation": true,
       "lastEvidence": "docs/reports/runlogs/260515-044458",
-      "notes": "Split fixture replacing the original monolith; single smoke passed with repairSuccess 1/1."
+      "notes": "Split fixture replacing the original monolith; single smoke passed with repairSuccess 1/1.",
+      "governance": {
+        "comparabilityRisk": true,
+        "evidencePolicy": "label_required",
+        "notes": "Split-task replacement; report under a new benchmark scope, not as equivalent recovery of the original monolith."
+      }
     },
     {
       "fixture": "rh-test-dashboard-version",
@@ -72,7 +106,12 @@
       "status": "regressed",
       "requiresReplicatedConfirmation": true,
       "lastEvidence": "docs/reports/runlogs/260517074552-pie-replicated/results.json",
-      "notes": "Single smoke passed earlier, but partial replicated closeout run regressed: card_on 0/1 with semantic NPE in VersionUpdateAppServiceTest, card_off 0/1 with no files changed."
+      "notes": "Single smoke passed earlier, but partial replicated closeout run regressed: card_on 0/1 with semantic NPE in VersionUpdateAppServiceTest, card_off 0/1 with no files changed.",
+      "governance": {
+        "comparabilityRisk": true,
+        "evidencePolicy": "label_required",
+        "notes": "Unresolved replicated regression; keep fixture-level hardening out of the prompt and label results separately until repaired through general behavior."
+      }
     },
     {
       "fixture": "loam-refactor-rename-distill-state",

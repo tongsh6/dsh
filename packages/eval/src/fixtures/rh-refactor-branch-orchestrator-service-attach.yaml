@@ -8,8 +8,6 @@ taskPrompt: |
   - 新增 io.releasehub.application.release.BranchOperationOrchestrator
   - 编排器封装分支存在性检查、创建分支、mergeBranch 调用和日志
   - AttachAppService 注入并使用 BranchOperationOrchestrator
-  - 只能对 BranchOperationOrchestrator.java 使用 CREATE；AttachAppService.java 与 AttachAppServiceTest.java 已存在，必须用 PATCH 或 SEARCH/REPLACE 做局部修改
-  - 禁止用 `package io.releasehub...`、单个 import 行或其他很短锚点替换成整份 Java 文件内容
   - 保持 attach、createReleaseBranchForIteration、mergeFeatureToRelease、detach 等 public 方法签名不变
   - 保持现有错误处理语义和返回类型不变
   - 同步更新现有 AttachAppServiceTest 以适配构造器注入变化；不要新增测试文件

@@ -32,6 +32,12 @@ export const FAILURE_STATUSES = [
   "unknown",
 ] as const;
 
+export const EVIDENCE_POLICIES = [
+  "standard",
+  "label_required",
+  "exclude_from_phase3_exit",
+] as const;
+
 export const FailureMatrixEntrySchema = z.object({
   fixture: z.string().min(1),
   repo: z.string().min(1),
@@ -40,6 +46,15 @@ export const FailureMatrixEntrySchema = z.object({
   requiresReplicatedConfirmation: z.boolean(),
   lastEvidence: z.string().min(1),
   notes: z.string().min(1),
+  governance: z.object({
+    comparabilityRisk: z.boolean().optional(),
+    evidencePolicy: z.enum(EVIDENCE_POLICIES).optional(),
+    contamination: z.enum([
+      "neutralized_prompt_contamination",
+      "historical_evidence_contaminated",
+    ]).optional(),
+    notes: z.string().min(1).optional(),
+  }).optional(),
 });
 
 export const FailureMatrixSchema = z.object({
@@ -50,6 +65,7 @@ export const FailureMatrixSchema = z.object({
 
 export type FailureType = (typeof FAILURE_TYPES)[number];
 export type FailureStatus = (typeof FAILURE_STATUSES)[number];
+export type EvidencePolicy = (typeof EVIDENCE_POLICIES)[number];
 export type FailureMatrixEntry = z.infer<typeof FailureMatrixEntrySchema>;
 export type FailureMatrix = z.infer<typeof FailureMatrixSchema>;
 
@@ -60,6 +76,9 @@ export interface FailureMatrixSummary {
   highVariance: number;
   confirmedStable: number;
   regressed: number;
+  comparabilityRisk: number;
+  labelRequired: number;
+  phase3ExitExcluded: number;
 }
 
 export function defaultFailureMatrixPath(): string {
@@ -82,5 +101,8 @@ export function summarizeFailureMatrix(matrix: FailureMatrix): FailureMatrixSumm
     highVariance: matrix.entries.filter((e) => e.failureType === "high_variance" || e.status === "pending_replication").length,
     confirmedStable: matrix.entries.filter((e) => e.status === "confirmed_stable").length,
     regressed: matrix.entries.filter((e) => e.status === "regressed").length,
+    comparabilityRisk: matrix.entries.filter((e) => e.governance?.comparabilityRisk === true).length,
+    labelRequired: matrix.entries.filter((e) => e.governance?.evidencePolicy === "label_required").length,
+    phase3ExitExcluded: matrix.entries.filter((e) => e.governance?.evidencePolicy === "exclude_from_phase3_exit").length,
   };
 }

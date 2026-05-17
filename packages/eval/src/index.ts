@@ -6,6 +6,16 @@ export {
 export type { TaskFixture, LoadedFixture, ProtocolOp } from "./task-fixtures.js";
 
 export {
+  auditFixtureContamination,
+  auditFixturesForContamination,
+} from "./fixture-audit.js";
+export type {
+  FixtureAuditFinding,
+  FixtureAuditRuleId,
+  FixtureAuditSeverity,
+} from "./fixture-audit.js";
+
+export {
   createEmptyResult,
   scoreResult,
   compareResults,
@@ -17,6 +27,7 @@ export {
 export type { TaskResult, ComparisonReport } from "./benchmark-runner.js";
 
 export {
+  EVIDENCE_POLICIES,
   FAILURE_TYPES,
   FAILURE_STATUSES,
   FailureMatrixEntrySchema,
@@ -28,6 +39,7 @@ export {
 export type {
   FailureType,
   FailureStatus,
+  EvidencePolicy,
   FailureMatrixEntry,
   FailureMatrix,
   FailureMatrixSummary,
