@@ -26,14 +26,16 @@
 - **记录要求**：任何 benchmark 运行都应说明目的、baseline、结论和下一步；如果只是验证本地代码正确性，应选择更小的测试命令。
 
 ### Phase 3 退出条件
-- [ ] ProjectIntelligence 是 init / pipeline / context 的唯一主路径。
-- [ ] README / BLUEPRINT / project-ledger / GitHub 可见 README 状态一致。
+- [x] ProjectIntelligence 是 init / pipeline / context 的唯一主路径。
+- [x] README / BLUEPRINT / project-ledger / GitHub 可见 README 状态一致。
 - [ ] 最新 N=3 replicated benchmark 达到 Phase 3 目标，且 Project Card on 收益持续。
 - [ ] hard-fail smoke 修复经过 replicated benchmark 复审。
 - [x] failure matrix 已机器可读：`packages/eval/src/failure-matrix.json`。
 - [x] legacy scanner 有防回流测试：`packages/repo/src/legacy-scanner-guard.test.ts`。
-- [ ] `dsh run` / `dsh doctor` 作为最小产品入口通过测试。
-- [ ] build / typecheck / lint / test 全部通过。
+- [x] `dsh run` / `dsh doctor` 作为最小产品入口通过测试。
+- [x] build / typecheck / lint / test 全部通过。
+
+当前剩余退出 blocker 是 benchmark 证据闭环，而不是文档入口、legacy scanner 或 ProjectIntelligence wiring。2026-05-17 收口提交 `454f731` 已完成文档一致性、failure matrix JSON、legacy 防回流测试、ProjectIntelligence decision mode 收紧和质量门禁；但 partial replicated run 已证明 `rh-test-dashboard-version` 回归，因此 Phase 3 仍不可退出。
 
 ### Phase 2 终态（已退出，归档参考）
 - [x] 静态扫描 Phase 2-3（Top N 可解释选择）
@@ -103,6 +105,7 @@
 | Phase 3 failure matrix | 已结构化 | `packages/eval/src/failure-matrix.json` 已建立，Markdown 报告保留解释口径 | benchmark metadata 读取 JSON summary；后续 AI 先读 JSON，不重新拼散落报告 |
 | hard-fail fixture 根因分析 | 未闭环 | `pi-bugfix-count-defs` partial replicated on/off 各 3/3 PASS；`rh-test-dashboard-version` partial replicated 已回归；`rh-refactor-branch-orchestrator` 5 个小 fixture 仍待 N=3 | 先修 `rh-test-dashboard-version`，再跑 hard-fail 定向 N=3；原 monolith 不再作为单 fixture 继续优化 |
 | 最小 `dsh run` | 已补 CLI 入口 | core 已有 `runFullPipeline`，CLI 已提供一键入口 | 继续通过 CLI 测试和真实 dry-run/smoke 验证输出体验 |
+| Phase 3 收口证据台账 | 已更新 | commit `454f731` + `docs/reports/knowledge/20260517-phase3-closeout-review.md` | 本轮结论明确：不进入 Phase 4，先修 benchmark blocker |
 
 ## 5. 已废弃事项
 
