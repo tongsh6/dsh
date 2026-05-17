@@ -3,7 +3,7 @@ name: Benchmark
 on:
   workflow_dispatch:
   schedule:
-    - cron: '3 2 * * 6'
+    - cron: '0 2 * * 6'
 
 jobs:
   benchmark:
