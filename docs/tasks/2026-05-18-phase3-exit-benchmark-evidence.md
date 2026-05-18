@@ -1,6 +1,6 @@
 ---
 id: "phase3-exit-benchmark-evidence"
-status: blocked
+status: in_review
 priority: p0
 type: test
 spec_ref: "BLUEPRINT.md"
@@ -19,15 +19,15 @@ assignee: "ai"
 当前 Phase 3 剩余退出 blocker 是 benchmark 证据闭环，不是 fixture contamination、legacy scanner 或 ProjectIntelligence wiring。`benchmark-fixture-contamination-audit` 已收口；本任务必须保留 failure matrix 的 `evidencePolicy` 标签，避免历史污染 evidence 或 scope-reshaping fixture 被错误纳入退出判断。
 
 ## Acceptance Criteria
-- [ ] 使用 N>=3 replicated benchmark，记录 seed、样本量、配置、随机化方式和 hard cleanup 策略。
-- [ ] 报告包含 `failureMatrixSummary` 和本轮涉及的 `failureMatrixFixtures`，并明确 `label_required` / `exclude_from_phase3_exit` 的处理方式。
-- [ ] Project Card on 聚合 `testsPassed >60%`。
-- [ ] Project Card on 相对 off 保持正向；如果不正向，报告必须给出 fixture 级归因和 Phase 3 是否可退出的结论。
-- [ ] `rh-refactor-branch-orchestrator-*` 拆分 fixture 的 N=3 结果单独标注，不作为原 monolith 的等价恢复。
-- [ ] high-variance fixture 单独报告，不作单 fixture 硬门禁。
-- [ ] 归档报告到 `docs/reports/knowledge/<YYYYMMDD>-phase3-exit-benchmark.md`。
-- [ ] 更新 `docs/project-ledger.md` §1、§3、§4、§6 中的 Phase 3 退出证据状态。
-- [ ] `pnpm run scan` 通过，或报告中明确非本轮引入的失败证据。
+- [x] 使用 N>=3 replicated benchmark，记录 seed、样本量、配置、随机化方式和 hard cleanup 策略。
+- [x] 报告包含 `failureMatrixSummary` 和本轮涉及的 `failureMatrixFixtures`，并明确 `label_required` / `exclude_from_phase3_exit` 的处理方式。
+- [x] Project Card on 聚合 `testsPassed >60%`。
+- [x] Project Card on 相对 off 保持正向；如果不正向，报告必须给出 fixture 级归因和 Phase 3 是否可退出的结论。
+- [x] `rh-refactor-branch-orchestrator-*` 拆分 fixture 的 N=3 结果单独标注，不作为原 monolith 的等价恢复。
+- [x] high-variance fixture 单独报告，不作单 fixture 硬门禁。
+- [x] 归档报告到 `docs/reports/knowledge/<YYYYMMDD>-phase3-exit-benchmark.md`。
+- [x] 更新 `docs/project-ledger.md` §1、§3、§4、§6 中的 Phase 3 退出证据状态。
+- [x] `pnpm run scan` 通过，或报告中明确非本轮引入的失败证据。
 
 ## Steps
 
@@ -45,6 +45,8 @@ assignee: "ai"
 - AI 不得把相关 task 自行置为 done；完成后停在 `in_review` 等人类 review。
 
 ## Notes
-- Blocked until `fixture-metadata-audit` and `failure-matrix-governance-invariants` pass human review or are otherwise approved for use as Phase 3 exit evidence prerequisites.
+- 已用 `fixture-metadata-audit` 和 `failure-matrix-governance-invariants` 的 in-review 结果作为本轮 evidence governance 前置；本任务同样停在 `in_review` 等人类 review。
+- 2026-05-18 完成 full N=3 replicated benchmark `docs/reports/runlogs/260517183641-pie-replicated/`：Project Card on 59/84 (70.2%)，off 61/84 (72.6%)。结论为 Phase 3 不可退出，因为 on 未保持正向收益。
+- 本轮 benchmark 在 dirty workspace 上运行，包含本地 SEARCH/REPLACE deterministic apply 改动；报告已标注为 dirty-tree evidence。
 - 需要可用 `DEEPSEEK_API_KEY` 和可接受的 benchmark 成本/耗时。
 - 不允许为了提升单 fixture 通过率添加 fixture-specific answer hints 或 harness-side prompt scraping。
