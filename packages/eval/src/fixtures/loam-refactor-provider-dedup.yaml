@@ -21,17 +21,17 @@ taskPrompt: |
   - parseSSEStream(stream: ReadableStream): AsyncIterable<string>
   - withRetry<T>(fn: () => Promise<T>, maxRetries: number): Promise<T>
 
-  然后更新至少 3 个 Provider（openai.ts, deepseek.ts, anthropic.ts）改为使用 shared.ts 中的公共函数。
+  其中 openai.ts 和 deepseek.ts 通过 openai-compatible.ts 共享 OpenAI-compatible Provider 工厂；
+  因此请更新 openai-compatible.ts，使 OpenAI / DeepSeek / Ollama / LM Studio 这类兼容 Provider
+  通过共享工厂受益，同时更新 anthropic.ts 使用 shared.ts 中适用的公共函数。
 
   相关文件：
   - packages/distill/src/providers/shared.ts
-  - packages/distill/src/providers/openai.ts
-  - packages/distill/src/providers/deepseek.ts
+  - packages/distill/src/providers/openai-compatible.ts
   - packages/distill/src/providers/anthropic.ts
 expectedFiles:
   - packages/distill/src/providers/shared.ts
-  - packages/distill/src/providers/openai.ts
-  - packages/distill/src/providers/deepseek.ts
+  - packages/distill/src/providers/openai-compatible.ts
   - packages/distill/src/providers/anthropic.ts
 expectPass: true
 verifications:
@@ -40,13 +40,9 @@ verifications:
     pattern: "buildAuthHeaders"
     name: shared_exports_auth_header_helper
   - type: file_contains
-    file: packages/distill/src/providers/openai.ts
+    file: packages/distill/src/providers/openai-compatible.ts
     pattern: "buildAuthHeaders"
-    name: openai_uses_shared_auth_header_helper
-  - type: file_contains
-    file: packages/distill/src/providers/deepseek.ts
-    pattern: "buildAuthHeaders"
-    name: deepseek_uses_shared_auth_header_helper
+    name: openai_compatible_uses_shared_auth_header_helper
   - type: file_contains
     file: packages/distill/src/providers/anthropic.ts
     pattern: "buildAuthHeaders"
@@ -59,7 +55,6 @@ verifications:
     name: distill_tests_pass
 architectureRules:
   - 不改变 Provider 的对外接口（保持向后兼容）
-  - 提取到 shared.ts 的函数必须充分测试
   - 已有的 Provider 测试必须继续通过
   - 只提取真正重复的逻辑，不做过度抽象
 maxRepairRounds: 2
@@ -71,9 +66,9 @@ preflightFiles:
   - packages/distill/src/providers/shared.ts
   - packages/distill/src/providers/openai.ts
   - packages/distill/src/providers/deepseek.ts
+  - packages/distill/src/providers/openai-compatible.ts
   - packages/distill/src/providers/anthropic.ts
-designGoal: 验证真实多文件 Provider 重构中新增共享函数并改造多个实现的复合能力
+designGoal: 验证真实多文件 Provider 重构中新增共享函数并改造共享工厂与独立 Provider 实现的复合能力
 verificationGoal: distill 包测试和 workspace typecheck 证明公共抽取保持对外接口兼容
 expectedProtocolOperations:
-  - CREATE
   - PATCH

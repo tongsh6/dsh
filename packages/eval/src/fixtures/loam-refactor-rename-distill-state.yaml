@@ -17,9 +17,12 @@ taskPrompt: |
 
   相关文件：packages/distill/src/state.ts → packages/distill/src/distill-state.ts（重命名）
 expectedFiles:
+  - packages/distill/src/state.ts
   - packages/distill/src/distill-state.ts
   - packages/distill/src/engine.ts
   - packages/distill/src/index.ts
+  - packages/distill/src/index.test.ts
+  - packages/distill/src/dag-runner.test.ts
 expectPass: true
 verifications:
   - type: file_exists
@@ -36,6 +39,14 @@ verifications:
     file: packages/distill/src/index.ts
     pattern: "./distill-state.js"
     name: index_exports_distill_state
+  - type: file_contains
+    file: packages/distill/src/index.test.ts
+    pattern: "./distill-state.js"
+    name: index_test_imports_distill_state
+  - type: file_contains
+    file: packages/distill/src/dag-runner.test.ts
+    pattern: "./distill-state.js"
+    name: dag_runner_test_imports_distill_state
   - type: shell
     command: "git show HEAD:packages/distill/src/state.ts | cmp - packages/distill/src/distill-state.ts"
     name: renamed_file_content_unchanged

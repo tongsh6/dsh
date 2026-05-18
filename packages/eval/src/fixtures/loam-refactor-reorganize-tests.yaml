@@ -14,6 +14,7 @@ taskPrompt: |
 
   相关文件：packages/distill/src/dag-runner.test.ts → packages/distill/src/distill-dag-runner.test.ts（重命名）
 expectedFiles:
+  - packages/distill/src/dag-runner.test.ts
   - packages/distill/src/distill-dag-runner.test.ts
 expectPass: true
 verifications:

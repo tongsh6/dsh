@@ -1,6 +1,6 @@
 # DSH 项目事实台账
 
-> 状态: active | 最后更新: 2026-05-18
+> 状态: active | 最后更新: 2026-05-19
 >
 > 任何新会话 AI 或新人进入项目后，**请先阅读本文件**，以便快速恢复项目状态基线。
 
@@ -21,6 +21,7 @@
 - **2026-05-17 定向 N=3 复审**: `rh-test-dashboard-version` valid rerun `docs/reports/runlogs/260517133604-pie-replicated/` 为 card_on 0/3、card_off 0/3。
 - **2026-05-18 `rh-test-dashboard-version` fixture 有效性审计与重新归类**: 对该 blocker 做了结构化根因分析。结论——**fixture 有效，无设计缺陷**：两个目标测试文件在参考提交 `180de500` 不存在（"新建"前提成立）；benchmark runner 每条运行路径开头都跑 `reset --hard` + `clean -fd`，会清除未跟踪残留，**无状态泄漏**；single smoke `260517-222513` 已产出干净的可通过解（任务可解）；强制 Mockito 与仓库多数派风格（11/19 app 测试）一致。N=3 不稳定的真实原因是**模型在硬 JUnit5+Mockito CREATE 任务上的输出方差**（`List<VersionUpdaterPort>` 构造注入使 `@InjectMocks` 失效、strict-stub、捏造 enum 常量编译错、两文件只产出其一），既不是 DSH bug 也不是 fixture 设计 bug。failure matrix 已将该 fixture 从 `wrong_verification_command`/`regressed` 重新归类为 `high_variance`/`pending_replication`。上一会话为该 fixture 反应式新增的 PLAN/repair 兜底（任务描述路径抓取、PLAN 段 `<FILES>` 恢复、Java FQN 上下文、Mockito hint、repair 空输出重试）已**全部回退**，理由：打补丁式、违反宪法原则 1/3/5、缺类别级证据、含可比性污染（harness 端抓取 fixture 提示里的答案）。BLUEPRINT 已据此升级到 v1.2——Phase 3 退出条件 B 改为「hard-fail / high-variance fixture 经复审分流」：高方差 fixture 单独标注、不作单 fixture 硬门禁，Phase 3 退出以聚合 `testsPassed >60%` 为准。本轮 `pnpm run scan` 全绿（669 测试 0 失败）。
 - **2026-05-18 Phase 3 exit benchmark 复审**: `260517183641-pie-replicated` 是完整 N=3 复审，但结论为负：Project Card on 达标但低于 off。主要负向来自 loamlog（on 15/24 vs off 18/24，`loam-refactor-rename-distill-state` on 1/3 vs off 3/3）；pi-proof-forge 正向（20/21 vs 19/21），release-hub 持平（24/39 vs 24/39）。本轮保留 failure matrix governance：`label_required` split fixture 单独报告、`exclude_from_phase3_exit` 不混入历史污染 evidence。运行时 workspace 为 dirty tree，作为本地完整证据，不作为 clean-commit release signoff。
+- **2026-05-19 loam-refactor Batch 3 blocker 复审**: `docs/reports/runlogs/260518162427-pie-replicated/` 跑 `loam-refactor*` 3 fixtures × on/off × reps=1；Project Card on 1/3，off 1/3。PLAN contract 已不是主 blocker：6 trial 中 `missing_files=0`，仅 1 个 `missing_plan` 被 protocol repair 恢复且最终 PASS。真实 blocker 分两类：`loam-refactor-provider-dedup` 的 fixture contract 过期（benchmark ref 中 `openai.ts` / `deepseek.ts` 已是 `openai-compatible.ts` wrapper，旧 verification 错要求 wrapper 直接包含 `buildAuthHeaders`）；`loam-refactor-rename-distill-state` 的 expectedFiles 漏掉任务明确要求更新的 `state.ts` 删除和测试 import 文件，同时仍暴露 rename/refactor patch loop 连续 invalid 与 scope creep。已修正这两个 fixture 合同，下一步先重跑 loam-refactor Batch 3，再决定是否扩大到 Batch 9。
 - **failure matrix 机器可读资产**: `packages/eval/src/failure-matrix.json` 是后续 AI / benchmark runner 判断 fixture 状态的主入口；Markdown 报告仅作为人读解释。
 
 ### 验证分层原则
@@ -39,7 +40,7 @@
 - [x] `dsh run` / `dsh doctor` 作为最小产品入口通过测试。
 - [x] build / typecheck / lint / test 全部通过。
 
-当前剩余退出 blocker 是 Project Card on 必须在最新 N=3 replicated 中同时满足 `testsPassed >60%` 和相对 off 的持续正向收益，而不是文档入口、legacy scanner、ProjectIntelligence wiring 或单个 high-variance fixture。2026-05-17 收口提交 `454f731` 已完成文档一致性、failure matrix JSON、legacy 防回流测试、ProjectIntelligence decision mode 收紧和质量门禁。`rh-test-dashboard-version` 经 2026-05-18 有效性审计已重新归类为 high-variance fixture（非 regressed、非 DSH bug、非 fixture 设计缺陷），按 BLUEPRINT §2.5 第 3 条单独标注、不作为硬门禁；`260517183641-pie-replicated` 又证明聚合 on 虽达 70.2%，但相对 off 为 -2.4pp，Phase 3 仍不可退出。
+当前剩余退出 blocker 是 Project Card on 必须在最新 N=3 replicated 中同时满足 `testsPassed >60%` 和相对 off 的持续正向收益，而不是文档入口、legacy scanner、ProjectIntelligence wiring 或单个 high-variance fixture。2026-05-17 收口提交 `454f731` 已完成文档一致性、failure matrix JSON、legacy 防回流测试、ProjectIntelligence decision mode 收紧和质量门禁。`rh-test-dashboard-version` 经 2026-05-18 有效性审计已重新归类为 high-variance fixture（非 regressed、非 DSH bug、非 fixture 设计缺陷），按 BLUEPRINT §2.5 第 3 条单独标注、不作为硬门禁；`260517183641-pie-replicated` 又证明聚合 on 虽达 70.2%，但相对 off 为 -2.4pp，Phase 3 仍不可退出。2026-05-19 的 loam-refactor Batch 3 进一步表明 PLAN protocol 修复已把 `<FILES>` 类 blocker 推到次要位置，当前应先消除 fixture contract false positives，再处理 rename/refactor patch loop 的连续 invalid 和 scope 控制。
 
 ### Phase 2 终态（已退出，归档参考）
 - [x] 静态扫描 Phase 2-3（Top N 可解释选择）
@@ -131,8 +132,8 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|---------|
-| P0 | PLAN contract finalization 通用修复 | 已创建 spec `docs/specs/2026-05-18-plan-contract-finalization.md` 和 task `plan-contract-finalization`。`260517183641` 显示 27 个 `<FILES>` 协议失败全部发生在 plan 阶段 5 轮只读工具后，根因是工具探索态到机器契约态切换不稳，而不是单一 fixture 设计缺陷 | 不做 fixture-specific hint；按 spec 先补 PLAN 失败可审计 diagnostics，再拆 explore/finalize/validate，最后做只基于模型上一轮输出的 protocol repair；targeted N=3 证明 `model_protocol_plan_invalid` 下降 |
-| P0 | Phase 3 Project Card lift 回归复审 | `phase3-exit-benchmark-evidence` 已完成 full N=3 并进入 in_review；结论为 Phase 3 不可退出：Project Card on 59/84 (70.2%) 达标但低于 off 61/84 (72.6%)。本轮 failureClass 已落地：ON 为 protocol 16 / provider 2 / repair 7，OFF 为 protocol 11 / provider 1 / repair 11；ON 侧早期协议/外部失败更多，真实 repair exhaustion 则 OFF 更多 | 依赖 PLAN contract finalization 先降低协议失败；之后再做 loam Project Card 回归分析（优先 `loam-refactor-rename-distill-state`），最后用 clean tree 重跑 N=3 证明 on >60% 且相对 off 正向 |
+| P0 | PLAN contract finalization 通用修复 | 已合并并通过 `pnpm run scan`；targeted smoke 与 loam-refactor Batch 3 均显示 `missing_files=0`，真实 benchmark 中 protocol repair 可从 `missing_plan` 恢复并最终 PASS | 保持结构化 diagnostics；下一轮 N=3/full 用 failureClass 验证 `model_protocol_plan_invalid` 是否显著下降，不再把 PLAN 当作唯一主 blocker |
+| P0 | Phase 3 Project Card lift 回归复审 | `phase3-exit-benchmark-evidence` 已完成 full N=3 并进入 in_review；结论为 Phase 3 不可退出：Project Card on 59/84 (70.2%) 达标但低于 off 61/84 (72.6%)。2026-05-19 loam-refactor Batch 3 显示 on/off 均为 1/3，主要失败是 fixture contract false positive、repair_exhausted、scopeViolation 和 rename/refactor patch invalid | 已修 `loam-refactor-provider-dedup` 与 `loam-refactor-rename-distill-state` fixture 合同；先重跑 loam-refactor Batch 3，若 false positive 消失且 patch loop blocker 收敛，再扩大到 Batch 9 / clean N=3 |
 | P1 | `rh-refactor-branch-orchestrator` 拆分后 N=3 复审 | 原 single fixture 在干净 runner 下仍 PARTIAL (`260515-024737`，30 rounds / 0 changes)，已拆为 5 个小 fixture；create/tests/release/code-merge/attach 已全部 single PASS，attach 最新 `260515-044458` PASS | 下次 replicated benchmark 确认 5 个小 fixture 稳定，不恢复 monolith |
 | P2 | `rh-test-dashboard-version` 已归类 high-variance（不再是 blocker） | 2026-05-18 有效性审计确认 fixture 有效、失败为模型输出方差；failure matrix 已标 `high_variance`，反应式补丁已回退 | 不再为该 fixture 单独打补丁；如要系统提升 Java 测试 CREATE 通过率，立「多文件 CREATE 完整性 + Java 编译错误 repair」通用 spec，跨 Java fixture 验证 |
 | P1 | `pi-bugfix-count-defs` semantic failure 复审 | 已修正 fixture source-context hint 并 single smoke PASS (`260515-015045`)；等待下一轮 N=3/全量确认稳定性 | 下次 replicated benchmark 不再 0/6；pytest 定向验证持续通过 |
