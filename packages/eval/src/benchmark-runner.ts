@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import type { DeepSeekClient } from "@dsh/provider";
 import { detectProtocolOpsFromText, readTaskState } from "@dsh/core";
-import type { PatchRecord, ProtocolOp, TaskState } from "@dsh/core";
+import type { PatchRecord, PlanContractFailureReason, ProtocolOp, TaskState } from "@dsh/core";
 import { runPlan, runPreflight, runPatch, runVerify, runRepair, runHandoff } from "@dsh/core";
 import { writeDshConfig, getBaseBranch, assembleIntelligence, toLegacyTechStack } from "@dsh/repo";
 import { PROTOCOL_OP_SCHEMA } from "./task-fixtures.js";
@@ -42,6 +42,7 @@ export interface TaskResult {
   patchRounds: number;
   patchRoundActions: { round: number; action: string; toolCalls?: { name: string; status: string }[] }[];
   verifyOutput: { command: string }[];
+  planDiagnostics?: PlanDiagnostics;
   diagnostics?: TaskDiagnostics;
 }
 
@@ -75,6 +76,14 @@ export interface TaskDiagnostics {
     rollback_reason?: string;
     patch: string;
   }>;
+}
+
+export interface PlanDiagnostics {
+  finalizeAttempts: number;
+  repairAttempts: number;
+  protocolRecovered: boolean;
+  failureReason?: PlanContractFailureReason;
+  finalResponseExcerpt?: string;
 }
 
 // ---- Existing Functions ----
@@ -176,10 +185,29 @@ export function collectTaskDiagnostics(state: TaskState): TaskDiagnostics {
   };
 }
 
+export function collectPlanDiagnostics(state: TaskState): PlanDiagnostics | undefined {
+  const attempts = state.plan_contract_attempts ?? [];
+  if (attempts.length === 0) return undefined;
+
+  const invalidOrProvider = [...attempts].reverse().find((attempt) => attempt.status !== "valid");
+  const lastAttempt = attempts.at(-1);
+  return {
+    finalizeAttempts: attempts.filter((attempt) => attempt.stage === "finalize").length,
+    repairAttempts: attempts.filter((attempt) => attempt.stage === "protocol_repair").length,
+    protocolRecovered: attempts.some((attempt) => attempt.protocol_recovered === true),
+    failureReason: invalidOrProvider?.failure_reason as PlanContractFailureReason | undefined,
+    finalResponseExcerpt: lastAttempt?.response_excerpt,
+  };
+}
+
 export function classifyTaskFailure(
-  result: Pick<TaskResult, "testsPassed" | "completed" | "error" | "diagnostics">,
+  result: Pick<TaskResult, "testsPassed" | "completed" | "error" | "diagnostics" | "planDiagnostics">,
 ): TaskFailureClass | undefined {
   if (result.testsPassed) return undefined;
+
+  if (result.planDiagnostics?.failureReason) {
+    return "model_protocol_plan_invalid";
+  }
 
   const error = result.error ?? "";
   const lowerError = error.toLowerCase();
@@ -191,7 +219,7 @@ export function classifyTaskFailure(
   if (lowerError.includes("network error") || lowerError.includes("fetch failed") || lowerError.includes("terminated")) {
     return "provider_network_error";
   }
-  if (error.includes("DeepSeek 未返回有效的 FILES 块") || error.includes("DeepSeek 未返回有效的 PLAN 块")) {
+  if (error.startsWith("plan_contract_invalid:") || error.includes("DeepSeek 未返回有效的 FILES 块") || error.includes("DeepSeek 未返回有效的 PLAN 块")) {
     return "model_protocol_plan_invalid";
   }
   if (error.startsWith("handoff failed:")) return "handoff_failure";
@@ -575,6 +603,7 @@ export async function runTask(
         verify_commands: state.plan.verify_commands,
       };
     }
+    result.planDiagnostics = collectPlanDiagnostics(state);
 
     // 4. Preflight
     state = await runPreflight({ cwd: repoPath, client });
@@ -706,6 +735,7 @@ export async function runTask(
     result.extraFiles = extraFiles;
     result.scopeViolation = extraFiles.length > 0;
     result.diagnostics = collectTaskDiagnostics(state);
+    result.planDiagnostics = collectPlanDiagnostics(state);
     result.failureClass = classifyTaskFailure(result);
 
   } catch (err) {
@@ -759,6 +789,7 @@ export async function runTask(
       result.filesChanged = patchSummary.filesChanged;
       result.actualProtocolOps = patchSummary.actualProtocolOps;
       result.diagnostics = collectTaskDiagnostics(stateOnDisk);
+      result.planDiagnostics = collectPlanDiagnostics(stateOnDisk);
     }
     result.failureClass = classifyTaskFailure(result);
   } finally {
@@ -826,6 +857,36 @@ export function formatEvaluationReport(results: TaskResult[]): string {
   lines.push(`| 平均修复轮数 | ${avgRepairRounds.toFixed(1)} |`);
   lines.push(`| 平均人工介入 | ${avgInterventions.toFixed(1)} |`);
   lines.push("");
+
+  const planDiagnosticsResults = results.filter((r) => r.planDiagnostics);
+  const protocolRecovered = results.filter((r) => r.planDiagnostics?.protocolRecovered).length;
+  const recoveredTestsPassed = results.filter((r) => r.planDiagnostics?.protocolRecovered && r.testsPassed).length;
+  const reasonCounts: Record<string, number> = {};
+  for (const r of results) {
+    const reason = r.planDiagnostics?.failureReason;
+    if (reason) reasonCounts[reason] = (reasonCounts[reason] ?? 0) + 1;
+  }
+
+  lines.push("## PLAN 协议诊断");
+  lines.push("");
+  lines.push("| 指标 | 数值 |");
+  lines.push("|--------|-------|");
+  lines.push(`| 有 PLAN diagnostics 的 fixture | ${planDiagnosticsResults.length}/${total} |`);
+  lines.push(`| Protocol recovered | ${protocolRecovered} |`);
+  lines.push(`| Recovered 后 testsPassed | ${recoveredTestsPassed}/${protocolRecovered || "N/A"} |`);
+  lines.push(`| missing_files | ${reasonCounts["missing_files"] ?? 0} |`);
+  lines.push(`| natural_language_only | ${reasonCounts["natural_language_only"] ?? 0} |`);
+  lines.push(`| tool_call_in_finalize | ${reasonCounts["tool_call_in_finalize"] ?? 0} |`);
+  lines.push(`| truncated_or_empty | ${reasonCounts["truncated_or_empty"] ?? 0} |`);
+  lines.push("");
+  if (Object.keys(reasonCounts).length > 0) {
+    lines.push("| Failure reason | Count |");
+    lines.push("|----------------|-------|");
+    for (const [reason, count] of Object.entries(reasonCounts).sort(([a], [b]) => a.localeCompare(b))) {
+      lines.push(`| ${reason} | ${count} |`);
+    }
+    lines.push("");
+  }
 
   // 协议操作覆盖
   lines.push("## 协议操作覆盖");
@@ -991,6 +1052,9 @@ export function formatEvaluationReport(results: TaskResult[]): string {
     }
     if (r.failureClass) {
       lines.push(`| 失败分类 | ${r.failureClass} |`);
+    }
+    if (r.planDiagnostics) {
+      lines.push(`| PLAN diagnostics | finalize=${r.planDiagnostics.finalizeAttempts}, repair=${r.planDiagnostics.repairAttempts}, recovered=${r.planDiagnostics.protocolRecovered ? "true" : "false"}${r.planDiagnostics.failureReason ? ", reason=" + r.planDiagnostics.failureReason : ""} |`);
     }
     lines.push("");
   }

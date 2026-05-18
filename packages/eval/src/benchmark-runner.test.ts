@@ -17,6 +17,7 @@ import {
   formatEvaluationReport,
   summarizePatchRecords,
   collectTaskDiagnostics,
+  collectPlanDiagnostics,
   classifyTaskFailure,
 } from "./benchmark-runner.js";
 import type { TaskResult } from "./benchmark-runner.js";
@@ -268,6 +269,7 @@ describe("collectTaskDiagnostics", () => {
       patches: [{ round: 1, patch: "<PATCH>...</PATCH>", apply_status: "ok", files_changed: ["Foo.java"] }],
       patch_rounds: [],
       tool_rounds: [],
+      plan_contract_attempts: [],
       preflight_results: [],
       verify_results: [{
         round: 1,
@@ -293,6 +295,27 @@ describe("collectTaskDiagnostics", () => {
 });
 
 describe("classifyTaskFailure", () => {
+  it("classifies structured plan diagnostics without relying on localized error text", () => {
+    assert.equal(
+      classifyTaskFailure(makeResult({
+        error: "plan failed",
+        planDiagnostics: {
+          finalizeAttempts: 1,
+          repairAttempts: 1,
+          protocolRecovered: false,
+          failureReason: "missing_files",
+          finalResponseExcerpt: "<PLAN>...</PLAN>",
+        },
+        diagnostics: {
+          finalStatus: "init",
+          verifyResults: [],
+          patches: [],
+        },
+      })),
+      "model_protocol_plan_invalid",
+    );
+  });
+
   it("classifies invalid plan protocol before patching", () => {
     assert.equal(
       classifyTaskFailure(makeResult({
@@ -342,6 +365,53 @@ describe("classifyTaskFailure", () => {
       })),
       "repair_exhausted",
     );
+  });
+});
+
+describe("collectPlanDiagnostics", () => {
+  it("reads plan contract attempts from task state", () => {
+    const diagnostics = collectPlanDiagnostics({
+      version: "0.1",
+      status: "init",
+      task: { description: "fix", type: "bugfix", created_at: "2026-05-18T00:00:00.000Z" },
+      patches: [],
+      patch_rounds: [],
+      tool_rounds: [],
+      plan_contract_attempts: [
+        {
+          stage: "finalize",
+          attempt: 1,
+          status: "invalid",
+          failure_reason: "missing_files",
+          response_excerpt: "<PLAN>bad</PLAN>",
+          response_sha256: "abc",
+          tool_rounds_before_finalize: 5,
+          created_at: "2026-05-18T00:00:00.000Z",
+        },
+        {
+          stage: "protocol_repair",
+          attempt: 1,
+          status: "valid",
+          response_excerpt: "<PLAN>ok</PLAN>",
+          response_sha256: "def",
+          tool_rounds_before_finalize: 5,
+          protocol_recovered: true,
+          created_at: "2026-05-18T00:00:01.000Z",
+        },
+      ],
+      preflight_results: [],
+      verify_results: [],
+      static_scan_runs: [],
+      static_repair_results: [],
+      deepseek_usage: [],
+      repair_rounds: 0,
+      managed_files: [],
+    });
+
+    assert.equal(diagnostics?.finalizeAttempts, 1);
+    assert.equal(diagnostics?.repairAttempts, 1);
+    assert.equal(diagnostics?.protocolRecovered, true);
+    assert.equal(diagnostics?.failureReason, "missing_files");
   });
 });
 
@@ -464,8 +534,39 @@ describe("formatEvaluationReport", () => {
     assert.ok(report.includes("pi-001"));
     assert.ok(report.includes("pi-002"));
     assert.ok(report.includes("## 协议操作覆盖"));
+    assert.ok(report.includes("## PLAN 协议诊断"));
     assert.ok(report.includes("## 失败分析"));
     assert.ok(report.includes("范围越界"));
+  });
+
+  it("includes protocol recovery statistics", () => {
+    const report = formatEvaluationReport([
+      makeResult({
+        fixtureId: "recovered",
+        completed: true,
+        testsPassed: false,
+        planDiagnostics: {
+          finalizeAttempts: 1,
+          repairAttempts: 1,
+          protocolRecovered: true,
+          failureReason: "missing_files",
+        },
+      }),
+      makeResult({
+        fixtureId: "tool-call",
+        planDiagnostics: {
+          finalizeAttempts: 1,
+          repairAttempts: 1,
+          protocolRecovered: false,
+          failureReason: "tool_call_in_finalize",
+        },
+      }),
+    ]);
+
+    assert.ok(report.includes("Protocol recovered"));
+    assert.ok(report.includes("missing_files"));
+    assert.ok(report.includes("tool_call_in_finalize"));
+    assert.ok(report.includes("Recovered 后 testsPassed"));
   });
 
   it("handles empty results", () => {
