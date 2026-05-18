@@ -9,6 +9,24 @@ describe("classify", () => {
     assert.equal(r.thinking, true);
   });
 
+  it("routes plan/explore to Flash with thinking", () => {
+    const r = classify({ command: "plan/explore" });
+    assert.equal(r.model, "deepseek-v4-flash");
+    assert.equal(r.thinking, true);
+  });
+
+  it("routes plan/finalize to Pro with thinking", () => {
+    const r = classify({ command: "plan/finalize" });
+    assert.equal(r.model, "deepseek-v4-pro");
+    assert.equal(r.thinking, true);
+  });
+
+  it("routes plan/protocol-repair to Pro with thinking", () => {
+    const r = classify({ command: "plan/protocol-repair" });
+    assert.equal(r.model, "deepseek-v4-pro");
+    assert.equal(r.thinking, true);
+  });
+
   it("routes patch/single to Flash with thinking", () => {
     const r = classify({ command: "patch", fileCount: 2 });
     assert.equal(r.model, "deepseek-v4-flash");
@@ -59,5 +77,24 @@ describe("classify", () => {
     assert.equal(plan.model, "custom-plan");
     assert.equal(patchSmall.model, "custom-small");
     assert.equal(patchLarge.model, "custom-large");
+  });
+
+  it("allows plan phase routing overrides", () => {
+    const explore = classify({ command: "plan/explore" }, {
+      planExploreModel: "custom-explore",
+      planExploreThinking: false,
+    });
+    const finalize = classify({ command: "plan/finalize" }, {
+      planFinalizeModel: "custom-finalize",
+      planFinalizeThinking: false,
+    });
+    const repair = classify({ command: "plan/protocol-repair" }, {
+      planProtocolRepairModel: "custom-repair",
+      planProtocolRepairThinking: false,
+    });
+
+    assert.deepEqual(explore, { model: "custom-explore", thinking: false });
+    assert.deepEqual(finalize, { model: "custom-finalize", thinking: false });
+    assert.deepEqual(repair, { model: "custom-repair", thinking: false });
   });
 });

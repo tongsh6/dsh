@@ -4,6 +4,12 @@ export interface RouteTarget {
 }
 
 export interface ModelRoutingConfig {
+  planExploreModel?: string;
+  planExploreThinking?: boolean;
+  planFinalizeModel?: string;
+  planFinalizeThinking?: boolean;
+  planProtocolRepairModel?: string;
+  planProtocolRepairThinking?: boolean;
   planModel?: string;
   patchSmallModel?: string;
   patchLargeModel?: string;
@@ -16,6 +22,9 @@ export interface ModelRoutingConfig {
 
 export type CommandName =
   | "plan"
+  | "plan/explore"
+  | "plan/finalize"
+  | "plan/protocol-repair"
   | "patch"
   | "verify"
   | "repair"
@@ -34,6 +43,18 @@ const DEFAULT_FLASH = "deepseek-v4-flash";
 
 function routes(config: ModelRoutingConfig = {}): Record<CommandName, RouteTarget> {
   return {
+    "plan/explore": {
+      model: config.planExploreModel ?? DEFAULT_FLASH,
+      thinking: config.planExploreThinking ?? true,
+    },
+    "plan/finalize": {
+      model: config.planFinalizeModel ?? config.planModel ?? DEFAULT_PRO,
+      thinking: config.planFinalizeThinking ?? true,
+    },
+    "plan/protocol-repair": {
+      model: config.planProtocolRepairModel ?? config.repairModel ?? DEFAULT_PRO,
+      thinking: config.planProtocolRepairThinking ?? true,
+    },
     "plan": { model: config.planModel ?? DEFAULT_PRO, thinking: true },
     "patch": { model: config.patchSmallModel ?? DEFAULT_FLASH, thinking: true },
     "verify": { model: config.verifyModel ?? DEFAULT_FLASH, thinking: false },

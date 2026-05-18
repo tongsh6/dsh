@@ -47,6 +47,9 @@ export async function initCommand(opts: InitOptions): Promise<void> {
     deepseek: {
       default_model: "deepseek-v4-pro",
       flash_model: "deepseek-v4-flash",
+      plan_explore_model: "deepseek-v4-flash",
+      plan_finalize_model: "deepseek-v4-pro",
+      plan_protocol_repair_model: "deepseek-v4-pro",
       max_repair_rounds: 3,
       thinking_default: true,
     },

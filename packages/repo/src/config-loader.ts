@@ -46,6 +46,12 @@ export interface DshConfig extends Record<string, unknown> {
   deepseek?: {
     default_model?: string;
     flash_model?: string;
+    plan_explore_model?: string;
+    plan_explore_thinking?: boolean;
+    plan_finalize_model?: string;
+    plan_finalize_thinking?: boolean;
+    plan_protocol_repair_model?: string;
+    plan_protocol_repair_thinking?: boolean;
     max_repair_rounds?: number;
     thinking_default?: boolean;
     api_key?: string;

@@ -82,6 +82,8 @@ describe("initCommand", () => {
     // Init-detected fields are present
     assert.ok(configRaw.includes("language: typescript"));
     assert.ok(configRaw.includes("default_model: deepseek-v4-pro"));
+    assert.ok(configRaw.includes("plan_explore_model: deepseek-v4-flash"));
+    assert.ok(configRaw.includes("plan_finalize_model: deepseek-v4-pro"));
     // Manually-set api_key is preserved (not overwritten to empty)
     assert.ok(configRaw.includes("sk-manual-key"));
   });
