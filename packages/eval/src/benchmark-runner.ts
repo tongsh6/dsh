@@ -27,6 +27,7 @@ export interface TaskResult {
   handoffQuality: number; // 0-3
   durationMs: number;
   error?: string;
+  failureClass?: TaskFailureClass;
   plan?: {
     summary: string;
     files: string[];
@@ -43,6 +44,16 @@ export interface TaskResult {
   verifyOutput: { command: string }[];
   diagnostics?: TaskDiagnostics;
 }
+
+export type TaskFailureClass =
+  | "provider_network_error"
+  | "model_protocol_plan_invalid"
+  | "cleanup_failure"
+  | "patch_apply_failure"
+  | "verification_failure"
+  | "repair_exhausted"
+  | "handoff_failure"
+  | "unknown_failure";
 
 export interface TaskDiagnostics {
   finalStatus: TaskState["status"];
@@ -163,6 +174,44 @@ export function collectTaskDiagnostics(state: TaskState): TaskDiagnostics {
       patch: patch.patch,
     })),
   };
+}
+
+export function classifyTaskFailure(
+  result: Pick<TaskResult, "testsPassed" | "completed" | "error" | "diagnostics">,
+): TaskFailureClass | undefined {
+  if (result.testsPassed) return undefined;
+
+  const error = result.error ?? "";
+  const lowerError = error.toLowerCase();
+  const finalStatus = result.diagnostics?.finalStatus;
+  const verifyResults = result.diagnostics?.verifyResults ?? [];
+  const patches = result.diagnostics?.patches ?? [];
+
+  if (error.startsWith("cleanup-failed:")) return "cleanup_failure";
+  if (lowerError.includes("network error") || lowerError.includes("fetch failed") || lowerError.includes("terminated")) {
+    return "provider_network_error";
+  }
+  if (error.includes("DeepSeek 未返回有效的 FILES 块") || error.includes("DeepSeek 未返回有效的 PLAN 块")) {
+    return "model_protocol_plan_invalid";
+  }
+  if (error.startsWith("handoff failed:")) return "handoff_failure";
+  if (finalStatus === "repair_exhausted") return "repair_exhausted";
+  if (finalStatus === "patch_failed") return "patch_apply_failure";
+  if (finalStatus === "verification_failed") return "verification_failure";
+
+  const hasFailedVerify = verifyResults.some((round) =>
+    round.results.some((verify) => verify.status === "failed")
+  );
+  if (hasFailedVerify) return "verification_failure";
+
+  const hasFailedPatch = patches.some((patch) => patch.apply_status === "failed");
+  if (hasFailedPatch) return "patch_apply_failure";
+
+  if (finalStatus === "init" || finalStatus === "planned") return "model_protocol_plan_invalid";
+  if (finalStatus === "preflighted" || finalStatus === "preflight_failed") return "patch_apply_failure";
+
+  if (!result.completed || error) return "unknown_failure";
+  return "unknown_failure";
 }
 
 export interface ComparisonReport {
@@ -657,6 +706,7 @@ export async function runTask(
     result.extraFiles = extraFiles;
     result.scopeViolation = extraFiles.length > 0;
     result.diagnostics = collectTaskDiagnostics(state);
+    result.failureClass = classifyTaskFailure(result);
 
   } catch (err) {
     result.completed = false;
@@ -710,6 +760,7 @@ export async function runTask(
       result.actualProtocolOps = patchSummary.actualProtocolOps;
       result.diagnostics = collectTaskDiagnostics(stateOnDisk);
     }
+    result.failureClass = classifyTaskFailure(result);
   } finally {
     if (!opts?.skipBranchSetup) {
       resetToBenchmarkBase(repoPath, fixture);
@@ -938,6 +989,9 @@ export function formatEvaluationReport(results: TaskResult[]): string {
     if (r.error) {
       lines.push(`| 错误 | ${r.error} |`);
     }
+    if (r.failureClass) {
+      lines.push(`| 失败分类 | ${r.failureClass} |`);
+    }
     lines.push("");
   }
 
@@ -952,6 +1006,7 @@ export function formatEvaluationReport(results: TaskResult[]): string {
       if (f.scopeViolation) reasons.push("范围越界");
       if (!f.testsPassed && !f.repairSuccess) reasons.push("修复耗尽");
       if (f.ruleViolations.length > 0) reasons.push("规则违规: " + f.ruleViolations.join(", "));
+      if (f.failureClass) reasons.push("失败分类: " + f.failureClass);
       lines.push(`- **${f.fixtureId}**: ${reasons.join("; ") || "未知"}`);
     }
     lines.push("");

@@ -25,6 +25,7 @@ import { readApiKey } from "../packages/repo/dist/config-loader.js";
 import { loadAllFixtures } from "../packages/eval/dist/task-fixtures.js";
 import type { LoadedFixture } from "../packages/eval/dist/task-fixtures.js";
 import {
+  classifyTaskFailure,
   runTask,
   cleanBenchmarkWorktreeHard,
 } from "../packages/eval/dist/benchmark-runner.js";
@@ -133,6 +134,7 @@ interface TrialResult extends Record<string, unknown> {
   elapsedMs: number;
   completed?: boolean;
   testsPassed?: boolean;
+  failureClass?: string;
 }
 
 interface ReplicatedBenchmarkMetadata {
@@ -148,7 +150,39 @@ interface ReplicatedBenchmarkMetadata {
     card_on_total: number;
     card_off_pass: number;
     card_off_total: number;
+    failureClasses?: Record<Config, Record<string, number>>;
   };
+}
+
+function summarizeFailureClasses(results: readonly TrialResult[]): Record<Config, Record<string, number>> {
+  return {
+    card_on: summarizeFailureClassesForConfig(results, "card_on"),
+    card_off: summarizeFailureClassesForConfig(results, "card_off"),
+  };
+}
+
+function summarizeFailureClassesForConfig(
+  results: readonly TrialResult[],
+  config: Config,
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const result of results.filter((r) => r.config === config && !r.testsPassed)) {
+    const failureClass = result.failureClass ?? classifyTrialFailure(result) ?? "unknown_failure";
+    counts[failureClass] = (counts[failureClass] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function classifyTrialFailure(result: TrialResult): string | undefined {
+  const diagnostics = result.diagnostics && typeof result.diagnostics === "object"
+    ? result.diagnostics as Parameters<typeof classifyTaskFailure>[0]["diagnostics"]
+    : undefined;
+  return classifyTaskFailure({
+    testsPassed: result.testsPassed === true,
+    completed: result.completed === true,
+    error: typeof result.error === "string" ? result.error : undefined,
+    diagnostics,
+  });
 }
 
 export function loadDurationEstimates(resultsPath: string): Map<string, number> {
@@ -245,6 +279,25 @@ export function formatReplicatedBenchmarkReport(
   lines.push("");
   lines.push(`- Card ON: ${passOn}/${totalOn}`);
   lines.push(`- Card OFF: ${passOff}/${totalOff}`);
+  lines.push("");
+  lines.push("## Failure Classification");
+  lines.push("");
+  lines.push("Failure classes do not change testsPassed; they separate protocol/provider failures from implementation failures.");
+  lines.push("");
+  const failureClasses = metadata.summary?.failureClasses ?? summarizeFailureClasses(results);
+  const classes = [...new Set([
+    ...Object.keys(failureClasses.card_on ?? {}),
+    ...Object.keys(failureClasses.card_off ?? {}),
+  ])].sort();
+  if (classes.length === 0) {
+    lines.push("No failed trials.");
+  } else {
+    lines.push("| Failure Class | Card ON | Card OFF |");
+    lines.push("|---------------|---------|----------|");
+    for (const failureClass of classes) {
+      lines.push(`| ${failureClass} | ${failureClasses.card_on?.[failureClass] ?? 0} | ${failureClasses.card_off?.[failureClass] ?? 0} |`);
+    }
+  }
   lines.push("");
   lines.push("## Evidence Governance");
   lines.push("");
@@ -438,12 +491,14 @@ async function main(): Promise<void> {
         cleanBenchmarkWorktreeHard(repoPath, baselineRef, groupId);
       } catch (e) {
         console.error(`  ✖ cleanup failed: ${e instanceof Error ? e.message : String(e)}`);
-        results.push({
+        const failedResult: TrialResult = {
           fixtureId: t.fixture.id, config: t.config, rep: t.rep, trialIndex: myIndex,
           startedAt, completedAt: new Date().toISOString(), elapsedMs: Date.now() - tStart,
           error: `cleanup-failed: ${e instanceof Error ? e.message : String(e)}`,
           completed: false, testsPassed: false,
-        });
+        };
+        failedResult.failureClass = classifyTrialFailure(failedResult);
+        results.push(failedResult);
         fs.writeFileSync(resultsPath, JSON.stringify(results, null, 2));
         continue;
       }
@@ -469,12 +524,14 @@ async function main(): Promise<void> {
         console.log(`  -> ${result.testsPassed ? "PASS" : "FAIL"} (${((Date.now() - tStart) / 1000).toFixed(0)}s, repair=${result.repairRounds})`);
       } catch (e) {
         console.error(`  ✖ trial threw: ${e instanceof Error ? e.message : String(e)}`);
-        results.push({
+        const failedResult: TrialResult = {
           fixtureId: t.fixture.id, config: t.config, rep: t.rep, trialIndex: myIndex,
           startedAt, completedAt: new Date().toISOString(), elapsedMs: Date.now() - tStart,
           error: `run-threw: ${e instanceof Error ? e.message : String(e)}`,
           completed: false, testsPassed: false,
-        });
+        };
+        failedResult.failureClass = classifyTrialFailure(failedResult);
+        results.push(failedResult);
       }
 
       // Persist incrementally
@@ -523,7 +580,13 @@ async function main(): Promise<void> {
       worktree: lane.lanePath,
       requestedLanesPerRepo: LANES_PER_REPO,
     })),
-    summary: { card_on_pass: passOn, card_on_total: totalOn, card_off_pass: passOff, card_off_total: totalOff },
+    summary: {
+      card_on_pass: passOn,
+      card_on_total: totalOn,
+      card_off_pass: passOff,
+      card_off_total: totalOff,
+      failureClasses: summarizeFailureClasses(results),
+    },
   };
   fs.writeFileSync(path.join(runDir, "metadata.json"), JSON.stringify(finalMetadata, null, 2));
   fs.writeFileSync(path.join(runDir, "summary.md"), formatReplicatedBenchmarkReport(finalMetadata, results));

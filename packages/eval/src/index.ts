@@ -24,11 +24,12 @@ export {
   scoreResult,
   compareResults,
   formatComparisonReport,
+  classifyTaskFailure,
   runTask,
   runAll,
   formatEvaluationReport,
 } from "./benchmark-runner.js";
-export type { TaskResult, ComparisonReport } from "./benchmark-runner.js";
+export type { TaskResult, TaskFailureClass, ComparisonReport } from "./benchmark-runner.js";
 
 export {
   EVIDENCE_POLICIES,

@@ -17,6 +17,7 @@ import {
   formatEvaluationReport,
   summarizePatchRecords,
   collectTaskDiagnostics,
+  classifyTaskFailure,
 } from "./benchmark-runner.js";
 import type { TaskResult } from "./benchmark-runner.js";
 import { detectProtocolOpsFromText } from "@dsh/core";
@@ -288,6 +289,59 @@ describe("collectTaskDiagnostics", () => {
     assert.equal(diagnostics.finalStatus, "repair_exhausted");
     assert.equal(diagnostics.verifyResults[0]!.results[0]!.output, longOutput);
     assert.ok(diagnostics.verifyResults[0]!.results[0]!.output.length > 1000);
+  });
+});
+
+describe("classifyTaskFailure", () => {
+  it("classifies invalid plan protocol before patching", () => {
+    assert.equal(
+      classifyTaskFailure(makeResult({
+        error: "DeepSeek 未返回有效的 FILES 块",
+        diagnostics: {
+          finalStatus: "init",
+          verifyResults: [],
+          patches: [],
+        },
+      })),
+      "model_protocol_plan_invalid",
+    );
+  });
+
+  it("classifies provider network failures separately from implementation failures", () => {
+    assert.equal(
+      classifyTaskFailure(makeResult({
+        error: "Network error: fetch failed",
+        diagnostics: {
+          finalStatus: "preflighted",
+          verifyResults: [],
+          patches: [],
+        },
+      })),
+      "provider_network_error",
+    );
+  });
+
+  it("classifies repair exhaustion using final task status", () => {
+    assert.equal(
+      classifyTaskFailure(makeResult({
+        completed: true,
+        diagnostics: {
+          finalStatus: "repair_exhausted",
+          verifyResults: [{
+            round: 1,
+            results: [{
+              command: "pnpm test",
+              status: "failed",
+              exit_code: 1,
+              output: "AssertionError",
+              duration_ms: 10,
+            }],
+          }],
+          patches: [],
+        },
+      })),
+      "repair_exhausted",
+    );
   });
 });
 

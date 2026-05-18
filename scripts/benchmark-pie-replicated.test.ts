@@ -121,6 +121,10 @@ describe("formatReplicatedBenchmarkReport", () => {
           card_on_total: 1,
           card_off_pass: 1,
           card_off_total: 1,
+          failureClasses: {
+            card_on: { model_protocol_plan_invalid: 1 },
+            card_off: {},
+          },
         },
       },
       [
@@ -133,6 +137,8 @@ describe("formatReplicatedBenchmarkReport", () => {
           completedAt: "2026-05-17T00:01:00.000Z",
           elapsedMs: 60_000,
           testsPassed: false,
+          error: "DeepSeek 未返回有效的 FILES 块",
+          failureClass: "model_protocol_plan_invalid",
         },
       ],
     );
@@ -141,5 +147,7 @@ describe("formatReplicatedBenchmarkReport", () => {
     assert.match(md, /\| rh-test-dashboard-version \| label_required \| yes \| regressed \| label separately until repaired \|/);
     assert.match(md, /Card ON: 0\/1/);
     assert.match(md, /Card OFF: 1\/1/);
+    assert.match(md, /Failure Classification/);
+    assert.match(md, /\| model_protocol_plan_invalid \| 1 \| 0 \|/);
   });
 });
