@@ -16,10 +16,11 @@
 - **DeepSeek-native adaptation**: ✅ 已实施（official `/chat/completions` endpoint、`thinking.type` + `reasoning_effort high/max`、cache/reasoning usage、HTTP retry/error metadata、message/tool/stream normalizer、capability registry、阶段化 tool policy、状态证据 sidecars、JSON/strict/prefix/FIM 扩展点）；`pnpm test` / `pnpm typecheck` / `pnpm lint` PASS。
 - **Phase 3 起点基线**: testsPassed 11/24 = 45%（`260508-003359` / `260509-165142`）。
 - **目标**: testsPassed > 60%.
-- **最新 replicated benchmark evidence**: Project Card on `60/72 = 83.3%` over 24 fixtures × 3 reps — `docs/reports/knowledge/20260514-pie-phase2-3-baseline.md`；该结果已超过 Phase 3 `>60%` 目标，但 hard-fail smoke 修复仍需新的 N=3 / full benchmark 复审。
+- **最新 replicated benchmark evidence**: full N=3 `docs/reports/runlogs/260517183641-pie-replicated/`（28 fixtures × 3 reps × on/off = 168 trials）完成；Project Card on `59/84 = 70.2%`，off `61/84 = 72.6%`。on 超过 Phase 3 `>60%` 绝对目标，但未保持相对 off 的正向收益，因此 **Phase 3 仍不可退出**。详见 `docs/reports/knowledge/20260518-phase3-exit-benchmark.md`。
 - **2026-05-17 收口复审**: full replicated run `docs/reports/runlogs/260517074552-pie-replicated/` 因成本控制在 12/168 trials 后中断；partial evidence 已足够判定 Phase 3 不可退出：`rh-test-dashboard-version` card_on 0/1、card_off 0/1，single smoke PASS 未在 replicated 环境稳定复现。
 - **2026-05-17 定向 N=3 复审**: `rh-test-dashboard-version` valid rerun `docs/reports/runlogs/260517133604-pie-replicated/` 为 card_on 0/3、card_off 0/3。
 - **2026-05-18 `rh-test-dashboard-version` fixture 有效性审计与重新归类**: 对该 blocker 做了结构化根因分析。结论——**fixture 有效，无设计缺陷**：两个目标测试文件在参考提交 `180de500` 不存在（"新建"前提成立）；benchmark runner 每条运行路径开头都跑 `reset --hard` + `clean -fd`，会清除未跟踪残留，**无状态泄漏**；single smoke `260517-222513` 已产出干净的可通过解（任务可解）；强制 Mockito 与仓库多数派风格（11/19 app 测试）一致。N=3 不稳定的真实原因是**模型在硬 JUnit5+Mockito CREATE 任务上的输出方差**（`List<VersionUpdaterPort>` 构造注入使 `@InjectMocks` 失效、strict-stub、捏造 enum 常量编译错、两文件只产出其一），既不是 DSH bug 也不是 fixture 设计 bug。failure matrix 已将该 fixture 从 `wrong_verification_command`/`regressed` 重新归类为 `high_variance`/`pending_replication`。上一会话为该 fixture 反应式新增的 PLAN/repair 兜底（任务描述路径抓取、PLAN 段 `<FILES>` 恢复、Java FQN 上下文、Mockito hint、repair 空输出重试）已**全部回退**，理由：打补丁式、违反宪法原则 1/3/5、缺类别级证据、含可比性污染（harness 端抓取 fixture 提示里的答案）。BLUEPRINT 已据此升级到 v1.2——Phase 3 退出条件 B 改为「hard-fail / high-variance fixture 经复审分流」：高方差 fixture 单独标注、不作单 fixture 硬门禁，Phase 3 退出以聚合 `testsPassed >60%` 为准。本轮 `pnpm run scan` 全绿（669 测试 0 失败）。
+- **2026-05-18 Phase 3 exit benchmark 复审**: `260517183641-pie-replicated` 是完整 N=3 复审，但结论为负：Project Card on 达标但低于 off。主要负向来自 loamlog（on 15/24 vs off 18/24，`loam-refactor-rename-distill-state` on 1/3 vs off 3/3）；pi-proof-forge 正向（20/21 vs 19/21），release-hub 持平（24/39 vs 24/39）。本轮保留 failure matrix governance：`label_required` split fixture 单独报告、`exclude_from_phase3_exit` 不混入历史污染 evidence。运行时 workspace 为 dirty tree，作为本地完整证据，不作为 clean-commit release signoff。
 - **failure matrix 机器可读资产**: `packages/eval/src/failure-matrix.json` 是后续 AI / benchmark runner 判断 fixture 状态的主入口；Markdown 报告仅作为人读解释。
 
 ### 验证分层原则
@@ -31,14 +32,14 @@
 ### Phase 3 退出条件
 - [x] ProjectIntelligence 是 init / pipeline / context 的唯一主路径。
 - [x] README / BLUEPRINT / project-ledger / GitHub 可见 README 状态一致。
-- [ ] 最新 N=3 replicated benchmark 达到 Phase 3 目标，且 Project Card on 收益持续。
-- [ ] hard-fail / high-variance fixture 经复审分流：复审后落入 §2.5 高方差区间（约 25%–75%）的 fixture 标注为 high-variance 并单独报告，不作单 fixture 硬门禁（详见 BLUEPRINT §3 Phase 3 退出条件）。
+- [ ] 最新 N=3 replicated benchmark 达到 Phase 3 目标，且 Project Card on 收益持续。（2026-05-18 复审 on 59/84 >60%，但 off 61/84，收益不持续）
+- [x] hard-fail / high-variance fixture 经复审分流：复审后落入 §2.5 高方差区间（约 25%–75%）的 fixture 标注为 high-variance 并单独报告，不作单 fixture 硬门禁（详见 BLUEPRINT §3 Phase 3 退出条件）。
 - [x] failure matrix 已机器可读：`packages/eval/src/failure-matrix.json`。
 - [x] legacy scanner 有防回流测试：`packages/repo/src/legacy-scanner-guard.test.ts`。
 - [x] `dsh run` / `dsh doctor` 作为最小产品入口通过测试。
 - [x] build / typecheck / lint / test 全部通过。
 
-当前剩余退出 blocker 是 benchmark 证据闭环，而不是文档入口、legacy scanner 或 ProjectIntelligence wiring。2026-05-17 收口提交 `454f731` 已完成文档一致性、failure matrix JSON、legacy 防回流测试、ProjectIntelligence decision mode 收紧和质量门禁。`rh-test-dashboard-version` 经 2026-05-18 有效性审计已重新归类为 high-variance fixture（非 regressed、非 DSH bug、非 fixture 设计缺陷），按 BLUEPRINT §2.5 第 3 条单独标注、不作为硬门禁；Phase 3 退出改以最新 N=3 replicated 的**聚合 testsPassed >60%** 为判据，单 fixture 高方差不再单独阻断退出。
+当前剩余退出 blocker 是 Project Card on 必须在最新 N=3 replicated 中同时满足 `testsPassed >60%` 和相对 off 的持续正向收益，而不是文档入口、legacy scanner、ProjectIntelligence wiring 或单个 high-variance fixture。2026-05-17 收口提交 `454f731` 已完成文档一致性、failure matrix JSON、legacy 防回流测试、ProjectIntelligence decision mode 收紧和质量门禁。`rh-test-dashboard-version` 经 2026-05-18 有效性审计已重新归类为 high-variance fixture（非 regressed、非 DSH bug、非 fixture 设计缺陷），按 BLUEPRINT §2.5 第 3 条单独标注、不作为硬门禁；`260517183641-pie-replicated` 又证明聚合 on 虽达 70.2%，但相对 off 为 -2.4pp，Phase 3 仍不可退出。
 
 ### Phase 2 终态（已退出，归档参考）
 - [x] 静态扫描 Phase 2-3（Top N 可解释选择）
@@ -55,7 +56,7 @@
 - baseline（原始）: testsPassed 11/24 (45%) — `260508-003359`
 - **最新稳定全量**: testsPassed 11/24 (45%) — `260509-165142`（parallel=3, 2087s, 3x 加速）
   - pi: 5/7 (71%), loam: 4/8 (50%), rh: 2/9 (22%)
-- **最新 replicated evidence**: Project Card on `60/72 = 83.3%`（24 fixtures × 3 reps），约等价 `20/24`；详见 `docs/reports/knowledge/20260514-pie-phase2-3-baseline.md`
+- **最新 replicated evidence**: Project Card on `59/84 = 70.2%`，off `61/84 = 72.6%`（28 fixtures × 3 reps × on/off，完整 168 trials）；详见 `docs/reports/knowledge/20260518-phase3-exit-benchmark.md`。结论：绝对目标达标，但 Project Card lift 未达标，Phase 3 不可退出。
 - **最新 targeted replicated evidence**: `rh-test-dashboard-version` N=3 `260517133604-pie-replicated` 为 card_on 0/3、card_off 0/3；2026-05-18 已重新归类为 high-variance fixture（fixture 有效，失败源于模型输出方差，详见 §1）。
 - **rh debug 后**: 3/9 (33%) — `260509-181614`。NoSuchMethodError 已修（mvn install），剩余 PARTIAL 是模型输出不完整（1/2 files changed）
 - 目标: testsPassed >60%
@@ -108,16 +109,17 @@
 | DeepSeek-native L1-L7 adaptation | 本地质量门禁 + 官方文档核对 | `docs/specs/deepseek-api-compatibility.md` + `docs/specs/execution-contract.md` + `docs/specs/state-evidence.md` + `docs/evals/deepseek-coding-harness-eval.md` | PASS；P0 provider semantics、P1 execution/state evidence、P2 registry/eval design 已落地；root `pnpm test` / `pnpm typecheck` / `pnpm lint` 全部通过 |
 | `rh-test-dashboard-version` 定向 N=3 复审 | Benchmark（1 fixture × card_on/off × 3 reps） | `docs/reports/runlogs/260517133604-pie-replicated/` | card_on 0/3、card_off 0/3。1 次进入 patch/repair 但 Maven compile fail，5 次 PLAN 缺 `<FILES>`。2026-05-18 有效性审计后归类为 high-variance fixture（见 §1） |
 | `rh-test-dashboard-version` fixture 有效性审计 | 仓库源码核对 + runner 清理逻辑核对 + 单跑证据复核 | 本台账 §1（2026-05-18 条目）+ `packages/eval/src/failure-matrix.json` | fixture 有效、无设计缺陷、无状态泄漏、任务可解；N=3 不稳定源于模型输出方差；归类为 `high_variance`，反应式补丁已回退 |
+| Phase 3 exit N=3 benchmark | Benchmark（28 fixtures × card_on/off × 3 reps） | `docs/reports/runlogs/260517183641-pie-replicated/` + `docs/reports/knowledge/20260518-phase3-exit-benchmark.md` | full 168/168 完成；Project Card on 59/84 (70.2%)、off 61/84 (72.6%)。on 超过绝对目标但未保持正向收益，Phase 3 不可退出；run metadata 保留 failure matrix governance 标签 |
 
 ## 4. 进行中事项
 
 | 事项 | 当前状态 | 阻塞点 | 下一步 |
 |------|---------|--------|--------|
 | Phase 3 failure matrix | 已结构化 | `packages/eval/src/failure-matrix.json` 已建立，含 `governance.comparabilityRisk` / `evidencePolicy` 标记；replicated benchmark metadata 已写入 `failureMatrixSummary` 和本次 fixture 的 `failureMatrixFixtures` 治理标注；`summary.md` 报告从 metadata 消费治理标注 | 后续 Phase 3 benchmark 复审必须保留 evidencePolicy 标签，不重新拼散落 Markdown 报告 |
-| hard-fail fixture 根因分析 | 部分闭环 | `pi-bugfix-count-defs` partial replicated on/off 各 3/3 PASS 但历史 evidence 需按污染治理重新标注；`rh-test-dashboard-version` 已闭环——2026-05-18 审计确认 fixture 有效、失败为模型输出方差，归类 high-variance；`rh-refactor-branch-orchestrator` 5 个小 fixture 仍待 N=3 且需标注 scope reshaping | 不再为 `rh-test-dashboard-version` 单独打补丁；如要提升其通过率，走「多文件 CREATE 完整性 + Java 编译错误 repair」通用能力 spec 并跨 Java fixture 验证；其余 fixture 按污染治理重新标注 |
+| hard-fail fixture 根因分析 | 已分流，仍需能力提升 | `pi-bugfix-count-defs` 本轮 fresh N=3 on/off 各 3/3 PASS，但历史 evidence 仍按污染治理排除；`rh-test-dashboard-version` 已闭环为 high-variance，本轮 on 1/3、off 0/3；`rh-refactor-branch-orchestrator` 5 个 split fixture 已跑 N=3 并按 `label_required` 单独标注，不作为 monolith 等价恢复 | 不再为单 fixture 打补丁；下一步按类别处理 init/preflighted 外部失败、loam Project Card 回归、Java/Vue 多文件 partial 与 repair exhaustion |
 | Benchmark fixture 标准与 contamination audit | 已收口并自动化 | `docs/specs/benchmark-fixture-standard.md` 是新增/修改 fixture 的 canonical 标准；`docs/reports/knowledge/20260517-fixture-contamination-audit.md` 确认 53 个 current fixture 中 0 个 remaining strict contamination risk、6 个 scope reshaping / comparability risk；`packages/eval/src/fixture-audit.ts` 已锁定自动审计；新增 expectedFiles verification coverage audit，四批补充 25 个 fixture 的结构化断言后，当前 baseline 为 0/53 fixture、0 条候选缺口；2026-05-18 新增受控 benchmark fixture metadata audit，真实 `pi-*` / `loam-*` / `rh-*` fixture 的 `benchmarkRef` / `preflightFiles` / `designGoal` / `verificationGoal` 缺口 baseline 为 0；failure matrix schema + 测试已锁定 comparability risk → `label_required`、contamination → `exclude_from_phase3_exit` | 不把 fixture-specific answer hints 当作能力修复；历史污染 evidence 不进入 Phase 3 exit evidence；后续 fixture 修改必须保持审计为 0 gap |
 | 最小 `dsh run` | 已补 CLI 入口 | core 已有 `runFullPipeline`，CLI 已提供一键入口 | 继续通过 CLI 测试和真实 dry-run/smoke 验证输出体验 |
-| Phase 3 收口证据台账 | 已更新 | commit `454f731` + `docs/reports/knowledge/20260517-phase3-closeout-review.md` + `docs/reports/runlogs/260517133604-pie-replicated/` | `rh-test-dashboard-version` blocker 已闭环（2026-05-18 归类 high-variance，不作硬门禁）；Phase 3 退出待一次最新 N=3 replicated 确认聚合 testsPassed >60% |
+| Phase 3 收口证据台账 | 已更新，本轮结论未通过 | commit `454f731` + `docs/reports/knowledge/20260517-phase3-closeout-review.md` + `docs/reports/runlogs/260517133604-pie-replicated/` + `docs/reports/knowledge/20260518-phase3-exit-benchmark.md` | `rh-test-dashboard-version` blocker 已闭环（2026-05-18 归类 high-variance，不作硬门禁）；最新 full N=3 `260517183641` on 59/84、off 61/84，Phase 3 不可退出；2026-05-18 已落地 benchmark failureClass 报告字段，下一步聚焦通用 PLAN 协议恢复与 Project Card lift 回归 |
 
 ## 5. 已废弃事项
 
@@ -129,7 +131,8 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|---------|
-| P0 | Phase 3 最新 N=3 replicated benchmark 退出证据 | 已创建 task `phase3-exit-benchmark-evidence`（blocked，待 `fixture-metadata-audit` / `failure-matrix-governance-invariants` 人类 review 或批准作为退出证据前置）；benchmark contamination 治理已收口，当前剩余退出 blocker 是聚合能力证据闭环；历史污染 evidence 不进入 Phase 3 exit evidence，后续复审必须保留 failure matrix evidencePolicy 标签 | 新建 `docs/reports/knowledge/<YYYYMMDD>-phase3-exit-benchmark.md`；记录 baseline、样本量、随机化方式、hard cleanup、failureMatrixSummary / failureMatrixFixtures、Card on/off 聚合 testsPassed；Project Card on 达到 `>60%` 且相对 off 保持正向或解释清楚 |
+| P0 | PLAN contract finalization 通用修复 | 已创建 spec `docs/specs/2026-05-18-plan-contract-finalization.md` 和 task `plan-contract-finalization`。`260517183641` 显示 27 个 `<FILES>` 协议失败全部发生在 plan 阶段 5 轮只读工具后，根因是工具探索态到机器契约态切换不稳，而不是单一 fixture 设计缺陷 | 不做 fixture-specific hint；按 spec 先补 PLAN 失败可审计 diagnostics，再拆 explore/finalize/validate，最后做只基于模型上一轮输出的 protocol repair；targeted N=3 证明 `model_protocol_plan_invalid` 下降 |
+| P0 | Phase 3 Project Card lift 回归复审 | `phase3-exit-benchmark-evidence` 已完成 full N=3 并进入 in_review；结论为 Phase 3 不可退出：Project Card on 59/84 (70.2%) 达标但低于 off 61/84 (72.6%)。本轮 failureClass 已落地：ON 为 protocol 16 / provider 2 / repair 7，OFF 为 protocol 11 / provider 1 / repair 11；ON 侧早期协议/外部失败更多，真实 repair exhaustion 则 OFF 更多 | 依赖 PLAN contract finalization 先降低协议失败；之后再做 loam Project Card 回归分析（优先 `loam-refactor-rename-distill-state`），最后用 clean tree 重跑 N=3 证明 on >60% 且相对 off 正向 |
 | P1 | `rh-refactor-branch-orchestrator` 拆分后 N=3 复审 | 原 single fixture 在干净 runner 下仍 PARTIAL (`260515-024737`，30 rounds / 0 changes)，已拆为 5 个小 fixture；create/tests/release/code-merge/attach 已全部 single PASS，attach 最新 `260515-044458` PASS | 下次 replicated benchmark 确认 5 个小 fixture 稳定，不恢复 monolith |
 | P2 | `rh-test-dashboard-version` 已归类 high-variance（不再是 blocker） | 2026-05-18 有效性审计确认 fixture 有效、失败为模型输出方差；failure matrix 已标 `high_variance`，反应式补丁已回退 | 不再为该 fixture 单独打补丁；如要系统提升 Java 测试 CREATE 通过率，立「多文件 CREATE 完整性 + Java 编译错误 repair」通用 spec，跨 Java fixture 验证 |
 | P1 | `pi-bugfix-count-defs` semantic failure 复审 | 已修正 fixture source-context hint 并 single smoke PASS (`260515-015045`)；等待下一轮 N=3/全量确认稳定性 | 下次 replicated benchmark 不再 0/6；pytest 定向验证持续通过 |
@@ -142,7 +145,7 @@
 | 产品蓝图 | `BLUEPRINT.md` | 7 阶段演进 + Phase 2 退出条件 |
 | 任务规范 | `docs/TASK-SPEC.md` | 任务格式、生命周期、三层体系 |
 | 最新全量 Benchmark | `docs/reports/runlogs/260509-165142/` | 24 fixtures, parallel=3, 2087s, testsPassed 11/24 (45%) |
-| 最新 replicated Benchmark | `docs/reports/knowledge/20260514-pie-phase2-3-baseline.md` | N=3 randomized hard cleanup；Project Card on 60/72 (83.3%) |
+| 最新 replicated Benchmark | `docs/reports/knowledge/20260518-phase3-exit-benchmark.md` + `docs/reports/runlogs/260517183641-pie-replicated/` | N=3 randomized hard cleanup；168/168 完成；Project Card on 59/84 (70.2%)、off 61/84 (72.6%)；Phase 3 不可退出 |
 | 最新 targeted replicated Benchmark | `docs/reports/runlogs/260517133604-pie-replicated/` | `rh-test-dashboard-version` N=3；card_on 0/3、card_off 0/3。2026-05-18 已归类 high-variance fixture（见 §1） |
 | Phase 3 Failure Matrix | `docs/reports/knowledge/20260514-phase3-failure-matrix.md` + `packages/eval/src/failure-matrix.json` | hard-fail / high-variance fixture 分类与下一轮修复顺序；JSON 含 comparability risk / evidence policy |
 | Benchmark Fixture Standard | `docs/specs/benchmark-fixture-standard.md` | 新增/修改 benchmark fixture 的 canonical 标准；汇总 schema、prompt、verification、protocol ops、isolation、contamination/comparability policy |
@@ -205,7 +208,7 @@
 | deferred | ci-actions-node24-upgrade | code:.github/workflows/*.yml | actions Node.js 20 deprecation | resolved：GitHub Actions 已迁移到 Node 24 兼容主版本：`actions/checkout@v6`、`actions/setup-node@v6`、`actions/upload-artifact@v6`、`pnpm/action-setup@v6`；`gitleaks/gitleaks-action@v2` 无 Node 24 主版本且仍声明 `runs.using: node20`，已改为官方 Gitleaks CLI v8.30.1 容器扫描并按 digest 固定；benchmark 显式 Node runtime 同步为 24；已通过 YAML 解析、workflow action 引用扫描、`pnpm run scan` | P3 | resolved | 2026-05-18 |
 | evidence | patchloop-e2e-selfhost-260505 | report:docs/reports/runlogs/260506-004042 | P6.1 自托管 e2e 验证（已 supersede 原始 report） | superseded 13 fixture full benchmark (260506-004042) | P1 | resolved | 2026-05-06 |
 | deferred | patchloop-done-prompt-weak | code:packages/core/src/prompt-builder.ts | v0.4 DONE 触发（根因在第 7 条：元认知任务） | P1+P2 pipeline 自动终止已从代码层替代 prompt 方案 | P1 | waiting | 2026-05-06 |
-| evidence | patchloop-search-replace-risk-realized | code:packages/core/src/pipeline.ts | SEARCH/REPLACE 行号错位风险已实证 | 长期跟踪；v0.5 考虑 stash-rollback | P2 | waiting | 2026-05-06 |
+| evidence | patchloop-search-replace-risk-realized | code:packages/core/src/patch-parser.ts | SEARCH/REPLACE 行号错位风险已实证 | 已创建 task `search-replace-deterministic-apply` 并收紧应用层语义：拒绝空 SEARCH、重复匹配和关键词锚点猜测；保留唯一精确匹配与唯一全行 trim-agnostic 匹配；待 review 和全量 scan 后关闭 | P2 | in_progress | 2026-05-18 |
 | evidence | patchloop-p62-first-run | report:docs/reports/runlogs/260506-024933 | P6.2 首轮结果（已 supersede） | superseded 由后续多次 run（含 P1+P2 验证）替代 | P1 | resolved | 2026-05-06 |
 | deferred | verify-protocol-structured | spec:docs/specs/2026-05-08-verify-protocol-structured.md | verify 命令从 shell string 升级为结构化断言（file_exists / file_not_exists / file_contains / file_not_contains / shell 等） | resolved：议题 B P1-P6 已实施；2026-05-18 追加迁移剩余简单 shell 文件断言到 `verifications`，并新增真实 fixture 防回流测试，保留测试运行器类命令为 shell | P1 | resolved | 2026-05-18 |
 | evidence | patch-completeness-baseline | spec:docs/specs/2026-05-07-patch-completeness.md | rh-mixed-dashboard 3 次重跑 + 24 fixture 全量 benchmark vs 260506-004042 基线对比 | 3 次单 fixture（260507-235439/260508-000202/260508-000642，plan.files 覆盖率 0/3→2/3）+ 24 fixture 全量（docs/reports/knowledge/260508-24-fixture-benchmark-analysis.md）已完成；P1-P4 净效应正向（2 false-positive 修正 + 1 副作用 + 1 偶发） | P1 | resolved | 2026-05-08 |
@@ -238,6 +241,7 @@
 | bug | benchmark-hardfail-fixtures-3x | report:docs/reports/knowledge/20260514-pie-phase2-3-baseline.md | 3 个 fixture 在 N=3 hard cleanup × Card on/off 6 次跑全 FAIL: pi-bugfix-count-defs / rh-refactor-branch-orchestrator / rh-test-dashboard-version。进展：`rh-test-dashboard-version` 2026-05-18 审计结论为 fixture 有效 + 模型输出方差（归类 high-variance）；`rh-refactor-branch-orchestrator` 已拆为 5 个小 fixture；`pi-bugfix-count-defs` 已修 fixture hint | 剩余每个 fixture 单独复审；不再用单 fixture 打补丁，能力提升走通用 spec | P2 | in_progress | 2026-05-18 |
 | bug | rh-test-dashboard-version-maven-verify | report:docs/reports/knowledge/20260514-phase3-failure-matrix.md | `rh-test-dashboard-version` 在 replicated benchmark 中 0/6；根因确认是 `-am` + `-DfailIfNoTests=true` 触发 upstream no-tests 误伤。已改为结构化 `maven_test`，保留 `-am` 但不设置 `failIfNoTests=true`；single smoke `260515-013524` PASS，testsPassed=true，repairSuccess=true | 下次 N=3/全量 benchmark 复审稳定性 | P0 | resolved | 2026-05-15 |
 | bug | plan-tool-limit-hard-fail | report:docs/reports/runlogs/260517132848-pie-replicated | `rh-test-dashboard-version` targeted N=3 首跑 6/6 均在 PLAN 阶段失败，原因是 plan read-only tools 达到 5 轮后直接抛 `plan tool rounds exceeded 5`，未给模型输出最终 PLAN 的机会 | resolved：plan 阶段只读工具超过 5 轮后暂停工具注入并要求输出最终 PLAN；已补 core 测试，`pnpm run scan` PASS | P0 | resolved | 2026-05-17 |
+| bug | plan-contract-finalization | spec:docs/specs/2026-05-18-plan-contract-finalization.md | PLAN 阶段工具探索态到最终机器契约态切换不稳，导致 27 个 `<FILES>` 缺失失败 | 按 spec 实施 explore/finalize/validate；禁止从 fixture expectedFiles 补答案；targeted N=3 证明 `model_protocol_plan_invalid` 下降后再重跑 clean full N=3 | P0 | waiting | 2026-05-18 |
 | bug | rh-test-dashboard-version-replicated-regression | report:docs/reports/runlogs/260517133604-pie-replicated | cancelled：本条目把该 fixture 框定为「可修的 regression」，但 2026-05-18 有效性审计推翻了这一框定——fixture 有效、无设计缺陷、无状态泄漏、任务可解，N=3 不稳定是模型输出方差。已重新归类为 high-variance，由 failure-matrix `high_variance` 条目 + `benchmark-hardfail-fixtures-3x` 跟踪；为该 fixture 反应式打的补丁已全部回退 | superseded by high-variance 归类 | P0 | cancelled | 2026-05-18 |
 | bug | rh-refactor-branch-orchestrator-patch-apply | report:docs/reports/knowledge/20260514-phase3-failure-matrix.md | 原 monolith clean rerun `260515-024737` 仍 PARTIAL：30 rounds / 0 changes。已删除原 fixture 并拆为 create / tests / service-code-merge / service-release-branch / service-attach：create PASS (`260515-025747`), tests PASS (`260515-025747`), release PASS (`260515-031851`), code-merge PASS after expectedFiles fix (`260515-035901`, repairSuccess 1/1), attach PASS after SEARCH/REPLACE safety + fixture constraints (`260515-044458`, repairSuccess 1/1). 同时修 benchmark runner：每个 fixture 开始时清空 worktree `.dsh`，避免旧 assertions 泄漏。 | 原 hard-fail 已拆解；下次 N=3/全量复审稳定性，不恢复 monolith | P1 | resolved | 2026-05-15 |
 | bug | pi-bugfix-count-defs-semantic | report:docs/reports/knowledge/20260514-phase3-failure-matrix.md | `pi-bugfix-count-defs` 根因确认是 fixture 提示错误：真实 infra definitions 包含缩进类方法，`^def` 第 0 列匹配会漏计。已改为 `^\s*` source-context hint；single smoke `260515-015045` PASS，testsPassed=true | 下次 N=3/全量 benchmark 复审稳定性 | P1 | resolved | 2026-05-15 |
