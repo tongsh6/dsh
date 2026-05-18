@@ -538,111 +538,35 @@ export function applySearchReplace(
       };
     }
 
-    // Try exact match first, then lenient matching
+    const match = findSearchReplaceMatch(content, block.search);
+    if (match.kind === "ambiguous") {
+      return {
+        success: false,
+        files: changedFiles,
+        error: `SEARCH/REPLACE rejected for ${block.filePath}: search block is ambiguous (${match.count} matches). Widen <SEARCH> with surrounding context so it identifies exactly one location.`,
+      };
+    }
+
+    if (match.kind === "empty") {
+      return {
+        success: false,
+        files: changedFiles,
+        error: `SEARCH/REPLACE rejected for ${block.filePath}: search block is empty.`,
+      };
+    }
+
     let newContent: string | null = null;
-
-    // Level 0: case-insensitive substring match
-    if (newContent === null) {
-      const lowerContent = content.toLowerCase();
-      const lowerSearch = block.search.toLowerCase();
-      const idx = lowerContent.indexOf(lowerSearch);
-      if (idx >= 0) {
-        newContent = content.slice(0, idx) + block.replace + content.slice(idx + block.search.length);
-      }
-    }
-
-    // Level 0.5: anchor search — for short search text, find any line containing a keyword
-    if (newContent === null) {
-      const searchLines = block.search.split("\n").filter((l) => l.trim().length > 0);
-      // Extract potential keywords (words with >= 5 chars or containing dots/slashes)
-      const keywords = searchLines.flatMap((l) =>
-        l.match(/[a-zA-Z0-9_/.-]{5,}/g) ?? []
-      );
-      // Prefer file-like patterns
-      const filePattern = block.search.match(/([a-zA-Z0-9_/.-]+\.(?:py|ts|js|md|yml|yaml|json))/);
-      const anchorCandidates = filePattern ? [filePattern[1]!] : keywords;
-
-      if (anchorCandidates.length > 0) {
-        const contentLines = content.split("\n");
-        // Find the first line that contains any anchor keyword
-        let anchorIdx = -1;
-        for (const kw of anchorCandidates) {
-          const idx = contentLines.findIndex((l) => l.includes(kw));
-          if (idx >= 0) { anchorIdx = idx; break; }
-        }
-        if (anchorIdx >= 0) {
-          // Replace the anchored region with the replacement
-          const replaceLines = block.replace.split("\n");
-          // Replace from anchorIdx to anchorIdx + searchLines.length
-          const endIdx = Math.min(anchorIdx + searchLines.length, contentLines.length);
-          const resultLines = [
-            ...contentLines.slice(0, anchorIdx),
-            ...replaceLines,
-            ...contentLines.slice(endIdx),
-          ];
-          newContent = resultLines.join("\n");
-        }
-      }
-    }
-
-    // Level 1: exact match
-    if (newContent === null && content.includes(block.search)) {
-      newContent = content.replace(block.search, block.replace);
-    }
-
-    // Level 2: trim-agnostic (ignore leading/trailing whitespace per line)
-    if (newContent === null) {
-      const searchLines = block.search.split("\n");
+    if (match.kind === "exact") {
+      newContent = content.slice(0, match.start) + block.replace + content.slice(match.end);
+    } else if (match.kind === "trimmed-lines") {
       const contentLines = content.split("\n");
-      // Find the best matching position by comparing trimmed lines
-      let bestPos = -1;
-      let bestScore = 0;
-      for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
-        let score = 0;
-        for (let j = 0; j < searchLines.length; j++) {
-          if ((contentLines[i + j] ?? "").trim() === (searchLines[j] ?? "").trim()) {
-            score++;
-          }
-        }
-        if (score > bestScore) {
-          bestScore = score;
-          bestPos = i;
-        }
-      }
-      // Require at least 80% of lines to match
-      if (bestScore >= searchLines.length * 0.8) {
-        const replaceLines = block.replace.split("\n");
-        const resultLines = [
-          ...contentLines.slice(0, bestPos),
-          ...replaceLines,
-          ...contentLines.slice(bestPos + searchLines.length),
-        ];
-        newContent = resultLines.join("\n");
-      }
-    }
-
-    // Level 3: substring of SEARCH (try the first and last non-empty lines as anchors)
-    if (newContent === null) {
-      const searchTrimmed = block.search.trim();
-      // Try to find a substring that exists in content
-      const searchLines = searchTrimmed.split("\n");
-      if (searchLines.length >= 3) {
-        // Use first and last meaningful lines as anchors
-        const firstLine = searchLines[0]?.trim() ?? "";
-        const lastLine = searchLines[searchLines.length - 1]?.trim() ?? "";
-        const firstIdx = content.split("\n").findIndex((l) => l.trim() === firstLine);
-        const lastIdx = content.split("\n").findIndex((l) => l.trim() === lastLine);
-        if (firstIdx >= 0 && lastIdx > firstIdx) {
-          const contentLines = content.split("\n");
-          const replaceLines = block.replace.split("\n");
-          const resultLines = [
-            ...contentLines.slice(0, firstIdx),
-            ...replaceLines,
-            ...contentLines.slice(lastIdx + 1),
-          ];
-          newContent = resultLines.join("\n");
-        }
-      }
+      const replaceLines = block.replace.split("\n");
+      const resultLines = [
+        ...contentLines.slice(0, match.startLine),
+        ...replaceLines,
+        ...contentLines.slice(match.endLine),
+      ];
+      newContent = resultLines.join("\n");
     }
 
     if (newContent === null) {
@@ -661,6 +585,81 @@ export function applySearchReplace(
   }
 
   return { success: true, files: changedFiles };
+}
+
+type SearchReplaceMatch =
+  | { kind: "exact"; start: number; end: number }
+  | { kind: "trimmed-lines"; startLine: number; endLine: number }
+  | { kind: "ambiguous"; count: number }
+  | { kind: "empty" }
+  | { kind: "none" };
+
+function findSearchReplaceMatch(content: string, search: string): SearchReplaceMatch {
+  if (search.trim().length === 0) return { kind: "empty" };
+
+  const exactMatches = findAllSubstringMatches(content, search)
+    .filter((idx) => !isIndentOnlyLineMatch(content, search, idx));
+  if (exactMatches.length > 1) return { kind: "ambiguous", count: exactMatches.length };
+  if (exactMatches.length === 1) {
+    const start = exactMatches[0]!;
+    return { kind: "exact", start, end: start + search.length };
+  }
+
+  const searchLines = search.split("\n");
+  const meaningfulSearchLines = trimEdgeBlankLines(searchLines);
+  if (meaningfulSearchLines.length === 0) return { kind: "empty" };
+
+  const contentLines = content.split("\n");
+  const trimmedMatches: Array<{ startLine: number; endLine: number }> = [];
+  for (let i = 0; i <= contentLines.length - meaningfulSearchLines.length; i++) {
+    let matched = true;
+    for (let j = 0; j < meaningfulSearchLines.length; j++) {
+      if ((contentLines[i + j] ?? "").trim() !== (meaningfulSearchLines[j] ?? "").trim()) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) {
+      trimmedMatches.push({ startLine: i, endLine: i + meaningfulSearchLines.length });
+    }
+  }
+
+  if (trimmedMatches.length > 1) return { kind: "ambiguous", count: trimmedMatches.length };
+  if (trimmedMatches.length === 1) {
+    return { kind: "trimmed-lines", ...trimmedMatches[0]! };
+  }
+
+  return { kind: "none" };
+}
+
+function findAllSubstringMatches(content: string, search: string): number[] {
+  const matches: number[] = [];
+  let pos = 0;
+  while (pos <= content.length) {
+    const idx = content.indexOf(search, pos);
+    if (idx < 0) break;
+    matches.push(idx);
+    pos = idx + Math.max(search.length, 1);
+  }
+  return matches;
+}
+
+function isIndentOnlyLineMatch(content: string, search: string, idx: number): boolean {
+  if (search.includes("\n")) return false;
+
+  const lineStart = content.lastIndexOf("\n", idx - 1) + 1;
+  const nextNewline = content.indexOf("\n", idx);
+  const lineEnd = nextNewline >= 0 ? nextNewline : content.length;
+  const line = content.slice(lineStart, lineEnd);
+  return line !== search && line.trim() === search.trim();
+}
+
+function trimEdgeBlankLines(lines: string[]): string[] {
+  let start = 0;
+  let end = lines.length;
+  while (start < end && (lines[start] ?? "").trim().length === 0) start++;
+  while (end > start && (lines[end - 1] ?? "").trim().length === 0) end--;
+  return lines.slice(start, end);
 }
 
 // ---- Combined parsing and application ----

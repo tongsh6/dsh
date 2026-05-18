@@ -1222,6 +1222,116 @@ describe("applySearchReplace", () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it("rejects ambiguous search blocks instead of replacing the first match", () => {
+    const tmp = fs.mkdtempSync("dsh-sr-test-");
+    try {
+      fs.mkdirSync(`${tmp}/src`, { recursive: true });
+      fs.writeFileSync(
+        `${tmp}/src/routes.ts`,
+        [
+          "export function adminRoute() {",
+          "  return makeRoute();",
+          "}",
+          "",
+          "export function userRoute() {",
+          "  return makeRoute();",
+          "}",
+          "",
+        ].join("\n"),
+        "utf-8",
+      );
+
+      const result = applySearchReplace(
+        tmp,
+        [{
+          filePath: "src/routes.ts",
+          search: "  return makeRoute();",
+          replace: "  return makeRoute({ auth: true });",
+        }],
+        false,
+      );
+
+      assert.equal(result.success, false);
+      assert.ok(result.error?.includes("ambiguous"));
+      assert.equal(
+        fs.readFileSync(`${tmp}/src/routes.ts`, "utf-8"),
+        [
+          "export function adminRoute() {",
+          "  return makeRoute();",
+          "}",
+          "",
+          "export function userRoute() {",
+          "  return makeRoute();",
+          "}",
+          "",
+        ].join("\n"),
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects keyword-only search blocks instead of guessing an anchor region", () => {
+    const tmp = fs.mkdtempSync("dsh-sr-test-");
+    try {
+      fs.mkdirSync(`${tmp}/src`, { recursive: true });
+      fs.writeFileSync(
+        `${tmp}/src/routes.ts`,
+        "export function buildRoute() {\n  return makeRoute();\n}\n",
+        "utf-8",
+      );
+
+      const result = applySearchReplace(
+        tmp,
+        [{
+          filePath: "src/routes.ts",
+          search: "makeRoute\nmissing context",
+          replace: "makeSecureRoute",
+        }],
+        false,
+      );
+
+      assert.equal(result.success, false);
+      assert.ok(result.error?.includes("Search block not found"));
+      assert.equal(
+        fs.readFileSync(`${tmp}/src/routes.ts`, "utf-8"),
+        "export function buildRoute() {\n  return makeRoute();\n}\n",
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("allows a unique trim-agnostic line match", () => {
+    const tmp = fs.mkdtempSync("dsh-sr-test-");
+    try {
+      fs.mkdirSync(`${tmp}/src`, { recursive: true });
+      fs.writeFileSync(
+        `${tmp}/src/service.ts`,
+        "export function run() {\n    return execute();\n}\n",
+        "utf-8",
+      );
+
+      const result = applySearchReplace(
+        tmp,
+        [{
+          filePath: "src/service.ts",
+          search: "  return execute();",
+          replace: "    return execute({ traced: true });",
+        }],
+        false,
+      );
+
+      assert.equal(result.success, true);
+      assert.equal(
+        fs.readFileSync(`${tmp}/src/service.ts`, "utf-8"),
+        "export function run() {\n    return execute({ traced: true });\n}\n",
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("parseChanges with Search/Replace", () => {
