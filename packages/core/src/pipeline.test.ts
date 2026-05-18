@@ -251,7 +251,7 @@ describe("runPlan", () => {
       const state = await runPlan({ cwd: tmp, client, description: "test source inspection", taskType: "test" });
 
       assert.equal(state.status, "planned");
-      assert.equal(calls, 2);
+      assert.equal(calls, 3);
       assert.equal(state.tool_rounds.length, 1);
       assert.equal(state.tool_rounds[0]!.calls[0]!.name, "read_file");
       const secondCallMessages = seenMessages[1]!;
@@ -261,6 +261,8 @@ describe("runPlan", () => {
         ),
         "second plan request should include read_file output",
       );
+      assert.equal(seenMessages[2]!.some((message) => message.role === "tool"), false);
+      assert.ok(seenMessages[2]![0]!.content.includes("Tool exploration has ended"));
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -326,31 +328,28 @@ describe("runPlan", () => {
       assert.equal(state.tool_rounds.length, 5);
       assert.ok(seenRequests.slice(0, 5).every((request) => (request.tools?.length ?? 0) > 0));
       assert.equal(seenRequests[5]!.tools, undefined);
-      assert.ok(
-        seenRequests[5]!.messages.some(
-          (message) => message.role === "user" && message.content?.includes("Tool access is now paused"),
-        ),
-        "final plan request should include the tool limit warning",
-      );
+      assert.equal(seenRequests[5]!.messages.length, 2);
+      assert.ok(seenRequests[5]!.messages[0]!.content.includes("Tool exploration has ended"));
+      assert.ok(seenRequests[5]!.messages[1]!.content.includes("Compressed Exploration Evidence"));
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 
-  it("throws after 2 attempts when response has no PLAN block and content is too short to use as fallback", async () => {
+  it("throws when response has no PLAN block instead of using a natural-language fallback", async () => {
     const tmp = await setupTempDir();
     try {
       const client = mockClient("No plan here");
       await assert.rejects(
         () => runPlan({ cwd: tmp, client, description: "test", taskType: "bugfix" }),
-        /未返回有效的 PLAN 块/,
+        /plan_contract_invalid:natural_language_only/,
       );
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 
-  it("retries once when PLAN block is missing, succeeds on second attempt", async () => {
+  it("uses a separate finalize request after exploration output", async () => {
     const tmp = await setupTempDir();
     try {
       const client = mockClientSequence(["No plan", VALID_PLAN_RESPONSE]);
@@ -363,21 +362,14 @@ describe("runPlan", () => {
     }
   });
 
-  it("retries when PLAN exists but the mandatory FILES block is empty", async () => {
+  it("finalize request does not include tools and is independent from exploration history", async () => {
     const tmp = await setupTempDir();
     try {
-      let calls = 0;
-      const missingFilesResponse = `<PLAN>
-## Goal
-Fix CSV export
-## Files Involved
-- backend/releasehub-application/src/main/java/io/releasehub/application/export/ExportAppService.java
-- backend/releasehub-application/src/test/java/io/releasehub/application/export/ExportAppServiceTest.java
-</PLAN>`;
+      const requests: Array<{ messages: DeepSeekMessage[]; tools?: unknown[] }> = [];
       const client = {
-        chat: async () => {
-          calls++;
-          const content = calls === 1 ? missingFilesResponse : VALID_PLAN_RESPONSE;
+        chat: async (request: { messages: DeepSeekMessage[]; tools?: unknown[] }) => {
+          requests.push(request);
+          const content = requests.length === 1 ? "exploration note" : VALID_PLAN_RESPONSE;
           return {
             id: "test-id",
             object: "chat.completion",
@@ -396,14 +388,209 @@ Fix CSV export
 
       const state = await runPlan({ cwd: tmp, client, description: "test files retry", taskType: "bugfix" });
 
-      assert.equal(calls, 2);
+      assert.equal(requests.length, 2);
+      assert.ok((requests[0]!.tools?.length ?? 0) > 0);
+      assert.equal(requests[1]!.tools, undefined);
+      assert.equal(requests[1]!.messages.some((message) => message.role === "assistant"), false);
+      assert.ok(requests[1]!.messages[0]!.content.includes("Tool exploration has ended"));
       assert.deepEqual(state.plan!.files, ["tools/check_v2_constraints.py"]);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 
-  it("throws when PLAN keeps omitting the mandatory FILES block", async () => {
+  it("uses configurable plan phase model routing", async () => {
+    const tmp = await setupTempDir();
+    try {
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "python" },
+          verify: { test: "echo ok" },
+          rules: { files: [] },
+          deepseek: {
+            default_model: "custom-default",
+            flash_model: "custom-flash",
+            plan_explore_model: "custom-explore",
+            plan_explore_thinking: false,
+            plan_finalize_model: "custom-finalize",
+            plan_protocol_repair_model: "custom-repair",
+          },
+        }),
+        "utf-8",
+      );
+
+      const requests: Array<{ model: string; thinking?: boolean; messages: DeepSeekMessage[]; tools?: unknown[] }> = [];
+      const invalid = `<PLAN>
+## Goal
+Fix bug
+</PLAN>
+<RISKS>
+- risk one
+- risk two
+</RISKS>`;
+      const client = {
+        chat: async (request: { model: string; thinking?: boolean; messages: DeepSeekMessage[]; tools?: unknown[] }) => {
+          requests.push(request);
+          const content = requests.length === 1
+            ? "explore done"
+            : requests.length === 2
+              ? invalid
+              : VALID_PLAN_RESPONSE;
+          return {
+            id: "test-id",
+            object: "chat.completion",
+            created: Date.now(),
+            model: request.model,
+            choices: [{
+              index: 0,
+              message: { role: "assistant" as const, content },
+              finish_reason: "stop" as const,
+            }],
+            usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      const state = await runPlan({ cwd: tmp, client, description: "test configurable routing", taskType: "bugfix" });
+
+      assert.equal(state.status, "planned");
+      assert.equal(requests[0]!.model, "custom-explore");
+      assert.equal(requests[0]!.thinking, false);
+      assert.equal(requests[1]!.model, "custom-finalize");
+      assert.equal(requests[2]!.model, "custom-repair");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("runs one protocol repair after invalid finalize and records recovery", async () => {
+    const tmp = await setupTempDir();
+    try {
+      const invalid = `<PLAN>
+## Goal
+Fix CSV export
+## Files Involved
+- backend/service.ts
+</PLAN>
+<RISKS>
+- risk one
+- risk two
+</RISKS>`;
+      const requests: Array<{ messages: DeepSeekMessage[]; tools?: unknown[] }> = [];
+      const client = {
+        chat: async (request: { messages: DeepSeekMessage[]; tools?: unknown[] }) => {
+          requests.push(request);
+          const content = requests.length === 1
+            ? "explore done"
+            : requests.length === 2
+              ? invalid
+              : VALID_PLAN_RESPONSE;
+          return {
+            id: "test-id",
+            object: "chat.completion",
+            created: Date.now(),
+            model: "deepseek-v4-pro",
+            choices: [{
+              index: 0,
+              message: { role: "assistant" as const, content },
+              finish_reason: "stop" as const,
+            }],
+            usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      const state = await runPlan({ cwd: tmp, client, description: "test protocol repair", taskType: "bugfix" });
+
+      assert.equal(state.status, "planned");
+      assert.equal(state.plan_contract_attempts.length, 2);
+      assert.equal(state.plan_contract_attempts[0]!.failure_reason, "missing_files");
+      assert.equal(state.plan_contract_attempts[1]!.protocol_recovered, true);
+      assert.equal(state.plan_contract_attempts[1]!.protocol_recovery_reason, "missing_files");
+      assert.deepEqual(state.plan!.files, ["tools/check_v2_constraints.py"]);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("protocol repair request excludes task prompt, repo context, exploration evidence, and tool results", async () => {
+    const tmp = await setupTempDir();
+    try {
+      fs.writeFileSync(path.join(tmp, "dummy.py"), "TOOL_RESULT_SECRET\n", "utf-8");
+      const invalid = `<PLAN>
+## Goal
+Fix it
+</PLAN>
+<RISKS>
+- risk one
+- risk two
+</RISKS>`;
+      const requests: Array<{ messages: DeepSeekMessage[]; tools?: unknown[] }> = [];
+      const client = {
+        chat: async (request: { messages: DeepSeekMessage[]; tools?: unknown[] }) => {
+          requests.push(request);
+          if (requests.length === 1) {
+            return {
+              id: "plan-tool",
+              object: "chat.completion",
+              created: Date.now(),
+              model: "deepseek-v4-pro",
+              choices: [{
+                index: 0,
+                message: {
+                  role: "assistant" as const,
+                  content: "",
+                  tool_calls: [{
+                    id: "call_read",
+                    type: "function" as const,
+                    function: { name: "read_file", arguments: '{"path":"dummy.py"}' },
+                  }],
+                },
+                finish_reason: "tool_calls" as const,
+              }],
+              usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
+            };
+          }
+          const content = requests.length === 2
+            ? "exploration done"
+            : requests.length === 3
+              ? invalid
+              : VALID_PLAN_RESPONSE;
+          return {
+            id: "test-id",
+            object: "chat.completion",
+            created: Date.now(),
+            model: "deepseek-v4-pro",
+            choices: [{
+              index: 0,
+              message: { role: "assistant" as const, content },
+              finish_reason: "stop" as const,
+            }],
+            usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      await runPlan({ cwd: tmp, client, description: "SECRET_TASK_PROMPT", taskType: "bugfix" });
+
+      const repairPrompt = requests[3]!.messages.map((message) => message.content).join("\n");
+      assert.ok(repairPrompt.includes("Invalid Finalize Response"));
+      assert.ok(!repairPrompt.includes("SECRET_TASK_PROMPT"));
+      assert.ok(!repairPrompt.includes("TOOL_RESULT_SECRET"));
+      assert.ok(!repairPrompt.includes("Task Context"));
+      assert.ok(!repairPrompt.includes("Compressed Exploration Evidence"));
+      assert.ok(!repairPrompt.includes("expectedFiles"));
+      assert.equal(requests[3]!.tools, undefined);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("writes diagnostics sidecar and throws when protocol repair fails", async () => {
     const tmp = await setupTempDir();
     try {
       const client = mockClient(`<PLAN>
@@ -415,7 +602,36 @@ Fix CSV export
 
       await assert.rejects(
         () => runPlan({ cwd: tmp, client, description: "test files missing", taskType: "bugfix" }),
-        /未返回有效的 FILES 块/,
+        /plan_contract_invalid:missing_files/,
+      );
+      const diagnosticsPath = path.join(tmp, ".dsh", "plan-contract-diagnostics.json");
+      assert.equal(fs.existsSync(diagnosticsPath), true);
+      const diagnostics = JSON.parse(fs.readFileSync(diagnosticsPath, "utf-8"));
+      assert.equal(diagnostics.final_failure_reason, "missing_files");
+      assert.equal(diagnostics.protocol_recovered, false);
+      assert.equal(diagnostics.attempts.length, 2);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("does not treat PLAN-internal file lists as the FILES contract", async () => {
+    const tmp = await setupTempDir();
+    try {
+      const content = `<PLAN>
+## Goal
+Fix bug
+## Files Involved
+- dummy.py
+</PLAN>
+<RISKS>
+- risk one
+- risk two
+</RISKS>`;
+      const client = mockClient(content);
+      await assert.rejects(
+        () => runPlan({ cwd: tmp, client, description: "test files missing", taskType: "bugfix" }),
+        /plan_contract_invalid:missing_files/,
       );
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -1880,10 +2096,11 @@ Append a comment line
 - dummy.py
 </FILES>
 <RISKS>
-- Trivial
+- Trivial change could still miss newline expectations
+- Verification command may not cover formatting
 </RISKS>
 `;
-      const client = mockClientSequence([planResponse, "<DONE/>", V4_PATCH_DUMMY, V4_DONE]);
+      const client = mockClientSequence(["explore done", planResponse, "<DONE/>", V4_PATCH_DUMMY, V4_DONE]);
       const state = await runFullPipeline({
         cwd: tmp, client, description: "Fix bug", taskType: "bugfix",
       });
@@ -1907,10 +2124,11 @@ Fix dummy file
 - dummy.py
 </FILES>
 <RISKS>
-- Trivial
+- Trivial change could still miss newline expectations
+- Verification command may not cover formatting
 </RISKS>
 `;
-      const client = mockClientSequence([planResponse, "<DONE/>", V4_PATCH_DUMMY, V4_DONE]);
+      const client = mockClientSequence(["explore done", planResponse, "<DONE/>", V4_PATCH_DUMMY, V4_DONE]);
       const state = await runFullPipeline({
         cwd: tmp, client, description: "Fix bug", taskType: "bugfix",
       });
@@ -1946,10 +2164,11 @@ Fix dummy file
 - dummy.py
 </FILES>
 <RISKS>
-- Trivial
+- Trivial change could still miss newline expectations
+- Verification command may not cover formatting
 </RISKS>
 `;
-      const client = mockClientSequence([planResponse, "<DONE/>", V4_PATCH_DUMMY, V4_DONE]);
+      const client = mockClientSequence(["explore done", planResponse, "<DONE/>", V4_PATCH_DUMMY, V4_DONE]);
       const state = await runFullPipeline({
         cwd: tmp, client, description: "Fix bug", taskType: "bugfix",
       });

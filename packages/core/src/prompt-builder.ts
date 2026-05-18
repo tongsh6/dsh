@@ -19,9 +19,6 @@ Your response MUST contain these blocks in order:
 ## Goal
 [What you will accomplish — be specific and concrete]
 
-## Files Involved
-[List each file with the reason it needs to change]
-
 ## Strategy
 [Step-by-step approach: what to change, in what order, and why]
 
@@ -30,8 +27,8 @@ Your response MUST contain these blocks in order:
 </PLAN>
 
 <FILES>
-- [file path 1]: [one-line description of what change this file needs]
-- [file path 2]: [one-line description of what change this file needs]
+- path/to/file.ts
+- path/to/another-file.ts
 </FILES>
 
 <VERIFY_STRATEGY>
@@ -53,7 +50,7 @@ npx tsc --noEmit
 
 1. Only reference files and APIs that exist in the provided context
 2. Be specific about which functions, classes, or modules need to change
-3. **<FILES> CRITICAL**: ONLY list files you will ACTUALLY MODIFY — do NOT list files you only need to read, reference, or inspect. Each file MUST include a one-line description of the specific change needed (e.g., "add error handling in capture()" or "extract shared type to new interface"). This list drives the patch phase — overlisting causes patch failure.
+3. **<FILES> CRITICAL**: <FILES> is the only machine-readable file contract. ONLY list files you will ACTUALLY MODIFY — do NOT list files you only need to read, reference, or inspect. Each non-empty line in <FILES> must be exactly one repo-relative file path. Do not include descriptions, reasons, globs, absolute paths, directories, "N/A", "none", or "../" entries.
 4. **AUTONOMOUS VERIFICATION**: You are responsible for determining how to verify your code. Inspect the project structure (e.g., package.json, pom.xml, tests/ directory) to find the appropriate test and build commands. Suggest real commands that match the project's actual toolchain.
 5. List at least 2 concrete, actionable risks — never write "无风险" or "No risks"
 6. Output ONLY the XML blocks. Do not add conversational text before or after

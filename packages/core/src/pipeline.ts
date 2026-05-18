@@ -1,15 +1,12 @@
+import { createHash } from "node:crypto";
 import { loadDshConfig } from "@dsh/repo";
-import type { DeepSeekClient, DeepSeekMessage } from "@dsh/provider";
+import type { DeepSeekClient, DeepSeekMessage, DeepSeekResponse } from "@dsh/provider";
+import type { ModelRoutingConfig } from "@dsh/provider";
 import { classify } from "@dsh/provider";
 import type { ContextLayers } from "./context-builder.js";
 import { assembleContext, buildDynamicContext } from "./context-builder.js";
 import { buildMessages } from "./prompt-builder.js";
 import {
-  extractPlanBlock,
-  extractFilesBlock,
-  extractRisksBlock,
-  extractVerifyBlock,
-  extractVerifyStrategyBlock,
   parsePatchTurn,
   applyCreates,
   applyDeletes,
@@ -35,6 +32,15 @@ import {
   transition,
 } from "./task-state.js";
 import type { TaskState, PatchRoundRecord, PatchRecord } from "./task-state.js";
+import type { PlanContractAttempt } from "./task-state.js";
+import {
+  PLAN_CONTRACT_TEMPLATE,
+  validatePlanContract,
+} from "./plan-contract.js";
+import type {
+  PlanContractFailureReason,
+  PlanContractValidationResult,
+} from "./plan-contract.js";
 import { writeHandoff } from "./handoff-writer.js";
 import {
   loadRuleContents,
@@ -168,33 +174,6 @@ export function resolvePreflightAssertions(
     .map((command) => command.trim())
     .filter((command) => command.length > 0)
     .map((command) => ({ type: "shell" as const, command }));
-}
-
-function buildMissingFilesRetryMessage(): string {
-  return [
-    "Your response included a plan but did not include the mandatory <FILES> block.",
-    "The patch pipeline relies on <FILES> as a structured contract for completeness and repair.",
-    "Please respond again with:",
-    "<PLAN>...</PLAN>",
-    "<FILES>",
-    "- path/to/file.ext",
-    "</FILES>",
-    "<RISKS>...</RISKS>",
-  ].join("\n");
-}
-
-function buildPlanToolLimitMessage(): string {
-  return [
-    "## SYSTEM WARNING",
-    `You have reached the ${MAX_PLAN_TOOL_ROUNDS}-round limit for plan-phase source inspection.`,
-    "Tool access is now paused. Use the information already gathered to output the required XML blocks:",
-    "<PLAN>...</PLAN>",
-    "<FILES>...</FILES>",
-    "<VERIFY_STRATEGY>...</VERIFY_STRATEGY>",
-    "<VERIFY>...</VERIFY>",
-    "<RISKS>...</RISKS>",
-    "Do not call more tools in the plan phase.",
-  ].join("\n");
 }
 
 function buildPatchLoopStallWarning(state: TaskState, changedFiles: string[]): string {
@@ -338,6 +317,295 @@ async function buildLayers(
   return assembleContext({ config, rules, repoContext, taskState: state, taskFiles });
 }
 
+function resolveModelRoutingConfig(cwd: string): ModelRoutingConfig {
+  const deepseek = loadDshConfig(cwd).deepseek ?? {};
+  return {
+    planModel: deepseek.default_model,
+    planExploreModel: deepseek.plan_explore_model ?? deepseek.flash_model,
+    planExploreThinking: deepseek.plan_explore_thinking ?? deepseek.thinking_default,
+    planFinalizeModel: deepseek.plan_finalize_model ?? deepseek.default_model,
+    planFinalizeThinking: deepseek.plan_finalize_thinking ?? deepseek.thinking_default,
+    planProtocolRepairModel: deepseek.plan_protocol_repair_model ?? deepseek.default_model,
+    planProtocolRepairThinking: deepseek.plan_protocol_repair_thinking ?? deepseek.thinking_default,
+    patchSmallModel: deepseek.flash_model,
+    patchLargeModel: deepseek.default_model,
+    verifyModel: deepseek.flash_model,
+    repairModel: deepseek.default_model,
+    handoffModel: deepseek.flash_model,
+    initScanModel: deepseek.flash_model,
+    initRuleDetectModel: deepseek.default_model,
+  };
+}
+
+interface PlanExploreResult {
+  messages: DeepSeekMessage[];
+  toolRounds: number;
+  evidenceSummary: string;
+}
+
+function responseContent(response: DeepSeekResponse): string {
+  return response.choices[0]?.message.content ?? "";
+}
+
+function responseHasToolCalls(response: DeepSeekResponse): boolean {
+  return (response.choices[0]?.message.tool_calls ?? []).length > 0;
+}
+
+function sha256(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
+function excerpt(content: string, limit = 1200): string {
+  const trimmed = content.trim();
+  return trimmed.length <= limit ? trimmed : `${trimmed.slice(0, limit)}...`;
+}
+
+function recordPlanContractAttempt(params: {
+  state: TaskState;
+  stage: PlanContractAttempt["stage"];
+  attempt: number;
+  status: PlanContractAttempt["status"];
+  content: string;
+  toolRounds: number;
+  failureReason?: string;
+  protocolRecovered?: boolean;
+  protocolRecoveryReason?: string;
+}): void {
+  params.state.plan_contract_attempts.push({
+    stage: params.stage,
+    attempt: params.attempt,
+    status: params.status,
+    failure_reason: params.failureReason,
+    response_excerpt: excerpt(params.content),
+    response_sha256: sha256(params.content),
+    tool_rounds_before_finalize: params.toolRounds,
+    protocol_recovered: params.protocolRecovered,
+    protocol_recovery_reason: params.protocolRecoveryReason,
+    created_at: new Date().toISOString(),
+  });
+}
+
+function buildExploreEvidenceSummary(messages: DeepSeekMessage[]): string {
+  const toolMessages = messages
+    .filter((message) => message.role === "tool")
+    .map((message, index) => {
+      const content = message.content.replace(/\s+/g, " ").trim();
+      return `Tool result ${index + 1}: ${content.slice(0, 1000)}`;
+    });
+  const assistantNotes = messages
+    .filter((message) => message.role === "assistant" && message.content.trim().length > 0)
+    .map((message, index) => `Assistant exploration note ${index + 1}: ${message.content.trim().slice(0, 1000)}`);
+
+  const evidence = [...toolMessages, ...assistantNotes].slice(-12);
+  return evidence.length > 0 ? evidence.join("\n") : "No tool evidence was collected.";
+}
+
+function buildPlanFinalizeMessages(params: {
+  taskDescription: string;
+  context: ContextLayers;
+  evidenceSummary: string;
+}): DeepSeekMessage[] {
+  return [
+    {
+      role: "system",
+      content: [
+        "Tool exploration has ended.",
+        "You must output only the final XML contract.",
+        "Do not request tools.",
+        "Do not include prose outside XML.",
+        "<FILES> is the only machine-readable file contract.",
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        "## Task Description",
+        params.taskDescription,
+        "",
+        "## Necessary Context",
+        params.context.base,
+        "",
+        params.context.repo,
+        "",
+        params.context.task,
+        "",
+        "## Compressed Exploration Evidence",
+        params.evidenceSummary,
+        "",
+        "## Strict XML Template",
+        PLAN_CONTRACT_TEMPLATE,
+        "",
+        "Rules:",
+        "- Output only the XML blocks shown in the template.",
+        "- Each non-empty <FILES> line must be exactly one repo-relative file path.",
+        "- Do not include descriptions in <FILES>.",
+        "- Do not list files you only read or reference.",
+        "- <RISKS> must include at least two specific non-empty risks.",
+      ].join("\n"),
+    },
+  ];
+}
+
+function buildProtocolRepairMessages(params: {
+  invalidResponse: string;
+  reason: PlanContractFailureReason;
+}): DeepSeekMessage[] {
+  return [
+    {
+      role: "system",
+      content: [
+        "Repair only the PLAN XML protocol.",
+        "Use only the invalid response, validation error reason, and protocol template supplied here.",
+        "Output only a corrected XML contract. Do not request tools.",
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        "## Validation Error Reason",
+        params.reason,
+        "",
+        "## Invalid Finalize Response",
+        params.invalidResponse,
+        "",
+        "## Protocol Template",
+        PLAN_CONTRACT_TEMPLATE,
+      ].join("\n"),
+    },
+  ];
+}
+
+export async function runPlanExplore(params: {
+  cwd: string;
+  client: DeepSeekClient;
+  state: TaskState;
+  context: ContextLayers;
+  target: ReturnType<typeof classify>;
+  planTools: Record<string, unknown>[];
+}): Promise<PlanExploreResult> {
+  const { cwd, client, state, context, target, planTools } = params;
+  const planToolPolicy = getToolPolicy("plan");
+  const messages = buildMessages({
+    context,
+    taskDescription: state.task.description,
+    phase: "plan",
+  });
+  let toolRounds = 0;
+
+  while (toolRounds < MAX_PLAN_TOOL_ROUNDS) {
+    const startedAt = Date.now();
+    const response = await client.chat({
+      model: target.model,
+      messages,
+      thinking: target.thinking,
+      tools: planTools,
+    });
+    recordDeepSeekUsage(state, {
+      phase: "plan_explore",
+      model: target.model,
+      thinking: target.thinking,
+      durationMs: Date.now() - startedAt,
+      response,
+    });
+
+    const content = responseContent(response);
+    const choice = response.choices[0];
+    const toolCalls = choice?.message.tool_calls ?? [];
+    if (toolCalls.length === 0) {
+      if (content.trim().length > 0) {
+        messages.push({
+          role: "assistant",
+          content,
+          ...(choice?.message.reasoning_content ? { reasoning_content: choice.message.reasoning_content } : {}),
+        });
+      }
+      break;
+    }
+
+    messages.push({
+      role: "assistant",
+      content,
+      tool_calls: toolCalls,
+      ...(choice?.message.reasoning_content ? { reasoning_content: choice.message.reasoning_content } : {}),
+    });
+
+    const toolResult = await executeToolCallsForPolicy({
+      toolCalls,
+      toolPolicy: planToolPolicy,
+      tools: ALL_TOOL_DEFINITIONS,
+      cwd,
+    });
+    messages.push(...toolResult.messages);
+    toolRounds++;
+    state.tool_rounds.push({
+      round: toolRounds,
+      calls: toolResult.records,
+    });
+    writeTaskState(cwd, state);
+  }
+
+  return {
+    messages,
+    toolRounds,
+    evidenceSummary: buildExploreEvidenceSummary(messages),
+  };
+}
+
+export async function runPlanFinalize(params: {
+  client: DeepSeekClient;
+  target: ReturnType<typeof classify>;
+  taskDescription: string;
+  context: ContextLayers;
+  evidenceSummary: string;
+}): Promise<DeepSeekResponse> {
+  return params.client.chat({
+    model: params.target.model,
+    messages: buildPlanFinalizeMessages({
+      taskDescription: params.taskDescription,
+      context: params.context,
+      evidenceSummary: params.evidenceSummary,
+    }),
+    thinking: params.target.thinking,
+  });
+}
+
+export async function repairPlanContractProtocol(params: {
+  client: DeepSeekClient;
+  target: ReturnType<typeof classify>;
+  invalidResponse: string;
+  reason: PlanContractFailureReason;
+}): Promise<DeepSeekResponse> {
+  return params.client.chat({
+    model: params.target.model,
+    messages: buildProtocolRepairMessages({
+      invalidResponse: params.invalidResponse,
+      reason: params.reason,
+    }),
+    thinking: params.target.thinking,
+  });
+}
+
+function applyValidPlanContract(
+  state: TaskState,
+  description: string,
+  validation: PlanContractValidationResult,
+): void {
+  if (!validation.valid || !validation.planRaw || !validation.files || !validation.risks) {
+    throw new Error(`plan_contract_invalid:${validation.reason ?? "unknown"}`);
+  }
+
+  state.plan = {
+    summary: validation.planRaw.split("\n")[0]?.replace(/^#+\s*/, "") ?? description,
+    files: validation.files,
+    risks: validation.risks,
+    raw_xml: validation.planRaw,
+    verify_commands: validation.verifyCommands && validation.verifyCommands.length > 0
+      ? validation.verifyCommands
+      : undefined,
+    verify_strategy: validation.verifyStrategy,
+  };
+}
+
 async function runPostImplementationStaticScan(params: {
   cwd: string;
   client: DeepSeekClient;
@@ -426,126 +694,125 @@ export async function runPlan(params: PlanParams): Promise<TaskState> {
   }
 
   const layers = await buildLayers(cwd, state);
-  const target = classify({ command: "plan" });
+  const routingConfig = resolveModelRoutingConfig(cwd);
+  const exploreTarget = classify({ command: "plan/explore" }, routingConfig);
+  const finalizeTarget = classify({ command: "plan/finalize" }, routingConfig);
+  const protocolRepairTarget = classify({ command: "plan/protocol-repair" }, routingConfig);
   const planToolPolicy = getToolPolicy("plan");
   const planTools = filterToolsForPolicy(ALL_TOOL_DEFINITIONS, planToolPolicy);
 
-  const messages = buildMessages({ context: layers, taskDescription: description, phase: "plan" });
-  let attempts = 0;
-  let toolRounds = 0;
-  while (attempts < 2) {
-    const toolsEnabled = toolRounds < MAX_PLAN_TOOL_ROUNDS;
+  const explore = await runPlanExplore({
+    cwd,
+    client,
+    state,
+    context: layers,
+    target: exploreTarget,
+    planTools: planTools as unknown as Record<string, unknown>[],
+  });
+
+  let finalizeResponse: DeepSeekResponse;
+  try {
     const startedAt = Date.now();
-    const response = await client.chat({
-      model: target.model,
-      messages,
-      thinking: target.thinking,
-      ...(toolsEnabled ? { tools: planTools as unknown as Record<string, unknown>[] } : {}),
+    finalizeResponse = await runPlanFinalize({
+      client,
+      target: finalizeTarget,
+      taskDescription: description,
+      context: layers,
+      evidenceSummary: explore.evidenceSummary,
     });
     recordDeepSeekUsage(state, {
-      phase: "plan",
-      model: target.model,
-      thinking: target.thinking,
+      phase: "plan_finalize",
+      model: finalizeTarget.model,
+      thinking: finalizeTarget.thinking,
       durationMs: Date.now() - startedAt,
-      response,
+      response: finalizeResponse,
     });
+  } catch (err) {
+    recordPlanContractAttempt({
+      state,
+      stage: "finalize",
+      attempt: 1,
+      status: "provider_error",
+      content: err instanceof Error ? err.message : String(err),
+      toolRounds: explore.toolRounds,
+      failureReason: "provider_network",
+    });
+    writeTaskState(cwd, state);
+    throw err;
+  }
 
-    const content = response.choices[0]?.message.content ?? "";
-    const choice = response.choices[0];
-    const toolCalls = choice?.message.tool_calls ?? [];
-    if (toolCalls.length > 0) {
-      const assistantMsg: DeepSeekMessage = {
-        role: "assistant",
-        content,
-        tool_calls: toolCalls,
-      };
-      if (choice?.message.reasoning_content) {
-        assistantMsg.reasoning_content = choice.message.reasoning_content;
-      }
-      messages.push(assistantMsg);
+  const finalizeContent = responseContent(finalizeResponse);
+  let validation = validatePlanContract({
+    content: finalizeContent,
+    hasToolCalls: responseHasToolCalls(finalizeResponse),
+  });
+  recordPlanContractAttempt({
+    state,
+    stage: "finalize",
+    attempt: 1,
+    status: validation.valid ? "valid" : "invalid",
+    content: finalizeContent,
+    toolRounds: explore.toolRounds,
+    failureReason: validation.reason,
+  });
+  writeTaskState(cwd, state);
 
-      const toolResult = await executeToolCallsForPolicy({
-        toolCalls,
-        toolPolicy: planToolPolicy,
-        tools: ALL_TOOL_DEFINITIONS,
-        cwd,
+  if (!validation.valid) {
+    const repairReason = validation.reason ?? "unknown";
+    let repairResponse: DeepSeekResponse;
+    try {
+      const startedAt = Date.now();
+      repairResponse = await repairPlanContractProtocol({
+        client,
+        target: protocolRepairTarget,
+        invalidResponse: finalizeContent,
+        reason: repairReason,
       });
-      messages.push(...toolResult.messages);
-      toolRounds++;
-      state.tool_rounds.push({
-        round: toolRounds,
-        calls: toolResult.records,
+      recordDeepSeekUsage(state, {
+        phase: "plan_protocol_repair",
+        model: protocolRepairTarget.model,
+        thinking: protocolRepairTarget.thinking,
+        durationMs: Date.now() - startedAt,
+        response: repairResponse,
+      });
+    } catch (err) {
+      recordPlanContractAttempt({
+        state,
+        stage: "protocol_repair",
+        attempt: 1,
+        status: "provider_error",
+        content: err instanceof Error ? err.message : String(err),
+        toolRounds: explore.toolRounds,
+        failureReason: "provider_network",
       });
       writeTaskState(cwd, state);
-      if (toolRounds >= MAX_PLAN_TOOL_ROUNDS) {
-        messages.push({ role: "user", content: buildPlanToolLimitMessage() });
-      }
-      continue;
+      throw err;
     }
 
-    attempts++;
-    const planRaw = extractPlanBlock(content);
-    const files = extractFilesBlock(content);
-    const risks = extractRisksBlock(content);
-    const verifyCommands = extractVerifyBlock(content);
-    const verifyStrategy = extractVerifyStrategyBlock(content);
-    const filesMissing = files.length === 0;
+    const repairContent = responseContent(repairResponse);
+    validation = validatePlanContract({
+      content: repairContent,
+      hasToolCalls: responseHasToolCalls(repairResponse),
+    });
+    recordPlanContractAttempt({
+      state,
+      stage: "protocol_repair",
+      attempt: 1,
+      status: validation.valid ? "valid" : "invalid",
+      content: repairContent,
+      toolRounds: explore.toolRounds,
+      failureReason: validation.reason ?? repairReason,
+      protocolRecovered: validation.valid,
+      protocolRecoveryReason: validation.valid ? repairReason : undefined,
+    });
+    writeTaskState(cwd, state);
 
-    if (!planRaw) {
-      // Fallback: use entire response as plan if no <PLAN> block found
-      const trimmed = content.trim();
-      if (trimmed.length > 50) {
-        if (filesMissing) {
-          if (attempts < 2) {
-            messages.push({ role: "assistant", content });
-            messages.push({ role: "user", content: buildMissingFilesRetryMessage() });
-            continue;
-          }
-          throw new Error("DeepSeek 未返回有效的 FILES 块");
-        }
-        state.plan = {
-          summary: trimmed.split("\n")[0]?.replace(/^#+\s*/, "") ?? description,
-          files,
-          risks,
-          raw_xml: trimmed,
-          verify_commands: verifyCommands.length > 0 ? verifyCommands : undefined,
-          verify_strategy: verifyStrategy,
-        };
-        state = transition(state, "planned");
-        writeTaskState(cwd, state);
-        return state;
-      }
-
-      if (attempts < 2) {
-        messages.push({ role: "assistant", content });
-        messages.push({
-          role: "user",
-          content: "Your response is missing the mandatory <PLAN> block. Please provide your technical plan wrapped in <PLAN>...</PLAN> XML tags as per the instructions.",
-        });
-        continue;
-      }
-      throw new Error("DeepSeek 未返回有效的 PLAN 块");
+    if (!validation.valid) {
+      throw new Error(`plan_contract_invalid:${validation.reason ?? repairReason}`);
     }
-
-    if (filesMissing) {
-      if (attempts < 2) {
-        messages.push({ role: "assistant", content });
-        messages.push({ role: "user", content: buildMissingFilesRetryMessage() });
-        continue;
-      }
-      throw new Error("DeepSeek 未返回有效的 FILES 块");
-    }
-
-    state.plan = {
-      summary: planRaw.split("\n")[0]?.replace(/^#+\s*/, "") ?? description,
-      files,
-      risks,
-      raw_xml: planRaw,
-      verify_commands: verifyCommands.length > 0 ? verifyCommands : undefined,
-      verify_strategy: verifyStrategy,
-    };
-    break;
   }
+
+  applyValidPlanContract(state, description, validation);
 
   state = transition(state, "planned");
   

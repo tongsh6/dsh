@@ -14,6 +14,7 @@ export type {
   PatchRoundRecord,
   ToolCallRecord,
   ToolRoundRecord,
+  PlanContractAttempt,
   StaticScanFinding,
   StaticScanRun,
   StaticRepairResult,
@@ -66,6 +67,15 @@ export {
   detectProtocolOpsFromText,
   PatchParseError,
 } from "./patch-parser.js";
+
+export {
+  PLAN_CONTRACT_TEMPLATE,
+  validatePlanContract,
+} from "./plan-contract.js";
+export type {
+  PlanContractFailureReason,
+  PlanContractValidationResult,
+} from "./plan-contract.js";
 export type {
   ProtocolOp,
   ParsedPatch,
@@ -148,6 +158,9 @@ export { recordDeepSeekUsage } from "./deepseek-usage.js";
 
 export {
   runPlan,
+  runPlanExplore,
+  runPlanFinalize,
+  repairPlanContractProtocol,
   runPatch,
   runVerify,
   runRepair,

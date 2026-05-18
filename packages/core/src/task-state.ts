@@ -25,6 +25,19 @@ const toolRoundRecordSchema = z.object({
   calls: z.array(toolCallRecordSchema),
 });
 
+const planContractAttemptSchema = z.object({
+  stage: z.enum(["finalize", "protocol_repair"]),
+  attempt: z.number(),
+  status: z.enum(["valid", "invalid", "provider_error"]),
+  failure_reason: z.string().optional(),
+  response_excerpt: z.string(),
+  response_sha256: z.string(),
+  tool_rounds_before_finalize: z.number(),
+  protocol_recovered: z.boolean().optional(),
+  protocol_recovery_reason: z.string().optional(),
+  created_at: z.string(),
+});
+
 const patchRecordSchema = z.object({
   round: z.number(),
   patch: z.string(),
@@ -161,6 +174,7 @@ export const taskStateSchema = z.object({
   patches: z.array(patchRecordSchema).default([]),
   patch_rounds: z.array(patchRoundSchema).default([]),
   tool_rounds: z.array(toolRoundRecordSchema).default([]),
+  plan_contract_attempts: z.array(planContractAttemptSchema).default([]),
   preflight_results: z.array(verifyRoundSchema).default([]),
   verify_results: z.array(verifyRoundSchema).default([]),
   static_scan_runs: z.array(staticScanRunSchema).default([]),
@@ -177,6 +191,7 @@ export type PatchRecord = z.infer<typeof patchRecordSchema>;
 export type PatchRoundRecord = z.infer<typeof patchRoundSchema>;
 export type ToolCallRecord = z.infer<typeof toolCallRecordSchema>;
 export type ToolRoundRecord = z.infer<typeof toolRoundRecordSchema>;
+export type PlanContractAttempt = z.infer<typeof planContractAttemptSchema>;
 export type StaticScanFinding = z.infer<typeof staticScanFindingSchema>;
 export type StaticScanRun = z.infer<typeof staticScanRunSchema>;
 export type StaticRepairResult = z.infer<typeof staticRepairResultSchema>;
@@ -260,6 +275,7 @@ export function createTaskState(
     patches: [],
     patch_rounds: [],
     tool_rounds: [],
+    plan_contract_attempts: [],
     preflight_results: [],
     verify_results: [],
     static_scan_runs: [],
@@ -276,9 +292,20 @@ function writeEvidenceFiles(dshRoot: string, state: TaskState): void {
   fs.writeFileSync(path.join(dshRoot, "changed-files.json"), JSON.stringify(collectChangedFiles(state), null, 2), "utf-8");
   fs.writeFileSync(path.join(dshRoot, "tool-calls.jsonl"), collectToolCalls(state).map((r) => JSON.stringify(r)).join("\n"), "utf-8");
   fs.writeFileSync(path.join(dshRoot, "verify-result.json"), JSON.stringify(buildVerifyResult(state), null, 2), "utf-8");
+  fs.writeFileSync(path.join(dshRoot, "plan-contract-diagnostics.json"), JSON.stringify(buildPlanContractDiagnostics(state), null, 2), "utf-8");
   fs.writeFileSync(path.join(dshRoot, "failure-evidence.md"), buildFailureEvidence(state), "utf-8");
   fs.writeFileSync(path.join(dshRoot, "repair-history.jsonl"), buildRepairHistory(state).map((r) => JSON.stringify(r)).join("\n"), "utf-8");
   fs.writeFileSync(path.join(dshRoot, "handoff.md"), buildStateHandoff(state), "utf-8");
+}
+
+function buildPlanContractDiagnostics(state: TaskState): Record<string, unknown> {
+  const attempts = state.plan_contract_attempts ?? [];
+  const lastInvalid = [...attempts].reverse().find((attempt) => attempt.status !== "valid");
+  return {
+    attempts,
+    final_failure_reason: state.status === "planned" ? undefined : lastInvalid?.failure_reason,
+    protocol_recovered: attempts.some((attempt) => attempt.protocol_recovered === true),
+  };
 }
 
 function buildCurrentGoal(state: TaskState): string {
