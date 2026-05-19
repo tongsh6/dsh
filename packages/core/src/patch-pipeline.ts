@@ -106,7 +106,6 @@ export interface PatchLoopState {
   consecutiveToolsOnly: number;
   roundsSinceCoverageProgress: number;
   validChangesWithoutCoverageProgress: number;
-  coverageFinalizationAttempted: boolean;
   modelSaidDoneWithMissing: boolean;
 }
 
@@ -165,7 +164,6 @@ function isExploreStalled(loop: PatchLoopState): boolean {
 // coverage is incomplete, finalization has not been attempted, and the model
 // has either declared DONE or stalled. Used by maybeRunCoverageFinalization.
 export function shouldEnterCoverageFinalization(loop: PatchLoopState): boolean {
-  if (loop.coverageFinalizationAttempted) return false;
   if (loop.missingRequiredFiles.size === 0) return false;
   return loop.modelSaidDoneWithMissing || isExploreStalled(loop);
 }
@@ -277,7 +275,6 @@ async function runPatchExplore(args: {
     consecutiveToolsOnly: 0,
     roundsSinceCoverageProgress: 0,
     validChangesWithoutCoverageProgress: 0,
-    coverageFinalizationAttempted: false,
     modelSaidDoneWithMissing: false,
   };
   const appliedChangedFiles: string[] = [];

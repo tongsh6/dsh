@@ -25,7 +25,6 @@ function loopState(over: Partial<PatchLoopState> = {}): PatchLoopState {
     consecutiveToolsOnly: 0,
     roundsSinceCoverageProgress: 0,
     validChangesWithoutCoverageProgress: 0,
-    coverageFinalizationAttempted: false,
     modelSaidDoneWithMissing: false,
     ...over,
   };
@@ -35,15 +34,6 @@ describe("shouldEnterCoverageFinalization", () => {
   it("is false when there are no missing required files", () => {
     assert.equal(
       shouldEnterCoverageFinalization(loopState({ missingRequiredFiles: new Set() })),
-      false,
-    );
-  });
-
-  it("is false once finalization has already been attempted", () => {
-    assert.equal(
-      shouldEnterCoverageFinalization(
-        loopState({ coverageFinalizationAttempted: true, roundsSinceCoverageProgress: 99 }),
-      ),
       false,
     );
   });
@@ -200,10 +190,15 @@ const EMPTY_LAYERS: ContextLayers = {
   estimatedTokens: 0,
 };
 
-function scriptedClient(responses: string[]): DeepSeekClient {
+// Returns the client plus a `toolsSeen` log: one boolean per chat call,
+// recording whether that call was given a non-empty tools list. Lets a test
+// assert that coverage_finalization runs with tools disabled.
+function scriptedClient(responses: string[]): { client: DeepSeekClient; toolsSeen: boolean[] } {
   let index = 0;
-  return {
-    chat: async () => {
+  const toolsSeen: boolean[] = [];
+  const client = {
+    chat: async (request: { tools?: unknown[] }) => {
+      toolsSeen.push(Array.isArray(request.tools) && request.tools.length > 0);
       const content = responses[Math.min(index, responses.length - 1)] ?? "<DONE/>";
       index++;
       return {
@@ -225,6 +220,7 @@ function scriptedClient(responses: string[]): DeepSeekClient {
       yield undefined as never;
     },
   } as unknown as DeepSeekClient;
+  return { client, toolsSeen };
 }
 
 function plannedState(files: string[]): TaskState {
@@ -249,9 +245,36 @@ function createBlock(file: string, body: string): string {
 }
 
 describe("runPatchPipeline coverage_finalization", () => {
+  it("calls the model with tools disabled during coverage_finalization", async () => {
+    await withTempDir(async (dir) => {
+      const { client, toolsSeen } = scriptedClient([
+        createBlock("a.ts", "export const a = 1;"), // explore round 1
+        "<DONE/>", // explore round 2: b.ts still missing
+        createBlock("b.ts", "export const b = 2;"), // finalization
+      ]);
+      await runPatchPipeline({
+        state: plannedState(["a.ts", "b.ts"]),
+        cwd: dir,
+        client,
+        dryRun: false,
+        messages: [],
+        target: { model: "deepseek-v4-pro", thinking: false },
+        contextLayers: EMPTY_LAYERS,
+      });
+      // 3 model calls: patch_explore ×2 then coverage_finalization ×1.
+      assert.equal(toolsSeen.length, 3);
+      assert.equal(toolsSeen[0], true, "patch_explore turns carry tools");
+      assert.equal(
+        toolsSeen[2],
+        false,
+        "coverage_finalization must run with tools disabled",
+      );
+    });
+  });
+
   it("rescues a missing required file via finalization → patched", async () => {
     await withTempDir(async (dir) => {
-      const client = scriptedClient([
+      const { client } = scriptedClient([
         createBlock("a.ts", "export const a = 1;"), // explore: covers a.ts
         "<DONE/>", // explore: DONE while b.ts still missing
         createBlock("b.ts", "export const b = 2;"), // finalization: covers b.ts
@@ -275,7 +298,7 @@ describe("runPatchPipeline coverage_finalization", () => {
 
   it("keeps the patch partial when finalization declines to change → patch_partial", async () => {
     await withTempDir(async (dir) => {
-      const client = scriptedClient([
+      const { client } = scriptedClient([
         createBlock("a.ts", "export const a = 1;"),
         "<DONE/>", // explore DONE, b.ts missing
         "<DONE/>", // finalization declines
@@ -299,7 +322,7 @@ describe("runPatchPipeline coverage_finalization", () => {
 
   it("does not run finalization when explore already covered every required file", async () => {
     await withTempDir(async (dir) => {
-      const client = scriptedClient([
+      const { client } = scriptedClient([
         createBlock("a.ts", "export const a = 1;"),
         createBlock("b.ts", "export const b = 2;"),
         "<DONE/>",
@@ -331,7 +354,7 @@ describe("runPatchPipeline coverage_finalization", () => {
 describe("runPatchPipeline card_off regression", () => {
   it("off-plan changes do not reset coverage progress; finalization rescues the missing file without exhausting maxRounds", async () => {
     await withTempDir(async (dir) => {
-      const client = scriptedClient([
+      const { client } = scriptedClient([
         createBlock("shared.ts", "export const shared = 1;"), // covers shared.ts
         createBlock("openai-compatible.ts", "export const oc = 1;"), // covers openai-compatible.ts
         createBlock("off-plan-1.ts", "export const x = 1;"), // off-plan: no coverage progress
@@ -360,7 +383,7 @@ describe("runPatchPipeline card_off regression", () => {
 
   it("reports patch_partial (not a maxRounds-exhausted patched) when the required file is never covered", async () => {
     await withTempDir(async (dir) => {
-      const client = scriptedClient([
+      const { client } = scriptedClient([
         createBlock("shared.ts", "export const shared = 1;"),
         createBlock("openai-compatible.ts", "export const oc = 1;"),
         createBlock("off-plan-1.ts", "export const x = 1;"),
