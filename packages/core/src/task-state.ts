@@ -50,6 +50,15 @@ const patchRecordSchema = z.object({
   // fully covered. Carries the structured "missing files" signal forward to
   // repair (see spec docs/specs/2026-05-07-patch-completeness.md §3.4).
   patch_incomplete_reason: z.string().optional(),
+  // Patch coverage state machine v2 (spec docs/specs/2026-05-19-patch-pipeline-
+  // coverage-state-machine.md §4.8). Populated by runPatchPipeline. All optional
+  // so task-state.json files written by earlier versions still parse.
+  coverage: z.enum(["full", "partial"]).optional(),
+  covered_required_files: z.array(z.string()).optional(),
+  missing_required_files: z.array(z.string()).optional(),
+  coverage_finalization_attempted: z.boolean().optional(),
+  plan_file_contract_version: z.enum(["legacy", "v2"]).optional(),
+  patch_partial_reason: z.string().optional(),
 });
 
 const patchRoundSchema = z.object({
@@ -161,6 +170,7 @@ export const taskStateSchema = z.object({
     "repairing",
     "repair_exhausted",
     "patch_failed",
+    "patch_partial",
     "done",
   ]),
   task: z.object({
@@ -203,16 +213,19 @@ export type TaskStatus = TaskState["status"];
 
 const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   "init": ["planned"],
-  "planned": ["preflighting", "patched", "patch_failed"],
-  "preflighting": ["preflighted", "preflight_failed", "patch_failed"],
-  "preflighted": ["patched", "patch_failed"],
-  "preflight_failed": ["repairing", "repair_exhausted", "patched", "patch_failed"],
+  "planned": ["preflighting", "patched", "patch_failed", "patch_partial"],
+  "preflighting": ["preflighted", "preflight_failed", "patch_failed", "patch_partial"],
+  "preflighted": ["patched", "patch_failed", "patch_partial"],
+  "preflight_failed": ["repairing", "repair_exhausted", "patched", "patch_failed", "patch_partial"],
   "patched": ["verified", "verification_failed"],
   "verified": ["done"],
   "verification_failed": ["repairing", "repair_exhausted"],
-  "repairing": ["preflighting", "patched", "repair_exhausted"],
+  "repairing": ["preflighting", "patched", "patch_failed", "patch_partial", "repair_exhausted"],
   "repair_exhausted": ["done"],
   "patch_failed": ["repairing", "repair_exhausted", "verification_failed"],
+  // patch_partial: patch produced ≥1 change but required target coverage is
+  // incomplete (spec §4.8). Routes straight to repair; never to "patched".
+  "patch_partial": ["repairing", "repair_exhausted", "verification_failed"],
   "done": [],
 };
 

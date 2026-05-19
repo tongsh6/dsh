@@ -64,6 +64,7 @@ import {
   getToolPolicy,
 } from "./agent-turn-loop.js";
 import { recordDeepSeekUsage } from "./deepseek-usage.js";
+import { runPatchPipeline, isPatchStateMachineV2Enabled } from "./patch-pipeline.js";
 
 // ---- Helpers ----
 
@@ -213,7 +214,7 @@ function _totalCharCount(messages: DeepSeekMessage[]): number {
   return chars;
 }
 
-function applySingleChange(
+export function applySingleChange(
   cwd: string,
   change: ChangeBlock,
   dryRun: boolean,
@@ -855,6 +856,25 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
     phase: "patch",
   });
 
+  // ---- Patch coverage state machine v2 (spec 2026-05-19) ----
+  // When enabled, the v2 pipeline owns the patch stage and returns early. The
+  // legacy loop below is preserved unchanged for flag-off / rollback.
+  if (isPatchStateMachineV2Enabled()) {
+    state = await runPatchPipeline({
+      state,
+      cwd,
+      client,
+      dryRun: !!dryRun,
+      messages,
+      target: { model: target.model, thinking: target.thinking },
+    });
+    const v2Patch = state.patches.at(-1);
+    if (!dryRun && v2Patch && v2Patch.files_changed.length > 0 && v2Patch.apply_status !== "failed") {
+      state = await runPostImplementationStaticScan({ cwd, client, state, changedFiles: v2Patch.files_changed });
+    }
+    return state;
+  }
+
   // ---- Patch Loop Main ----
 
   const allChangedFiles: string[] = [];
@@ -1163,12 +1183,19 @@ export async function runVerify(params: VerifyParams): Promise<TaskState> {
 
   let state = readTaskState(cwd);
   if (!state) throw new Error("尚未初始化。请先运行 dsh init");
-  if (state.status !== "patched" && state.status !== "repairing" && state.status !== "patch_failed") {
-    throw new Error(`当前状态为 ${state.status}，需要 patched、repairing 或 patch_failed`);
+  if (
+    state.status !== "patched" &&
+    state.status !== "repairing" &&
+    state.status !== "patch_failed" &&
+    state.status !== "patch_partial"
+  ) {
+    throw new Error(`当前状态为 ${state.status}，需要 patched、repairing、patch_failed 或 patch_partial`);
   }
 
-  // patch_failed: no changes to verify, route directly to repair
-  if (state.status === "patch_failed") {
+  // patch_failed / patch_partial: route directly to repair without running the
+  // verify assertions. patch_partial already carries a structured missing-file
+  // signal on the patch record (spec 2026-05-19 §4.8 D2).
+  if (state.status === "patch_failed" || state.status === "patch_partial") {
     state = transition(state, "verification_failed");
     writeTaskState(cwd, state);
     return state;
@@ -1219,8 +1246,12 @@ export async function runRepair(params: RepairParams): Promise<TaskState> {
 
   const state = readTaskState(cwd);
   if (!state) throw new Error("尚未初始化。请先运行 dsh init");
-  if (state.status !== "verification_failed" && state.status !== "patch_failed") {
-    throw new Error(`当前状态为 ${state.status}，需要 verification_failed 或 patch_failed`);
+  if (
+    state.status !== "verification_failed" &&
+    state.status !== "patch_failed" &&
+    state.status !== "patch_partial"
+  ) {
+    throw new Error(`当前状态为 ${state.status}，需要 verification_failed、patch_failed 或 patch_partial`);
   }
 
   const layers = await buildLayers(cwd, state);

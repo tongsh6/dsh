@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -642,6 +642,16 @@ Fix bug
 // ---- runPatch Tests ----
 
 describe("runPatch", () => {
+  // This suite verifies the LEGACY patch loop. The v2 coverage state machine
+  // (PATCH_STATE_MACHINE_V2, default on) is covered by patch-pipeline.test.ts;
+  // pin the flag off here so these legacy-semantics tests exercise legacy code.
+  before(() => {
+    process.env["PATCH_STATE_MACHINE_V2"] = "false";
+  });
+  after(() => {
+    delete process.env["PATCH_STATE_MACHINE_V2"];
+  });
+
   it("applies patch and transitions to patched", async () => {
     const tmp = await setupTempDir("planned");
     try {
