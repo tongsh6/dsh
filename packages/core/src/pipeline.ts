@@ -859,7 +859,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   // ---- Patch coverage state machine v2 (spec 2026-05-19) ----
   // When enabled, the v2 pipeline owns the patch stage and returns early. The
   // legacy loop below is preserved unchanged for flag-off / rollback.
-  if (isPatchStateMachineV2Enabled()) {
+  if (isPatchStateMachineV2Enabled(cwd)) {
     state = await runPatchPipeline({
       state,
       cwd,

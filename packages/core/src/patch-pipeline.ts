@@ -16,6 +16,7 @@ import {
   applyRollback,
   createFileCheckpoint,
   applyFileRollback,
+  loadDshConfig,
 } from "@dsh/repo";
 import type { TaskState, PatchRoundRecord, PatchRecord } from "./task-state.js";
 import { transition, writeTaskState } from "./task-state.js";
@@ -33,6 +34,7 @@ import { recordDeepSeekUsage } from "./deepseek-usage.js";
 import { buildPlanFileContract, normalizePath } from "./plan-file-contract.js";
 import type { PlanFileContract } from "./plan-file-contract.js";
 import { validatePatchCoverage, computeCoverageDelta } from "./patch-coverage.js";
+import type { PatchCoverageValidation } from "./patch-coverage.js";
 
 // ---- Tunable thresholds (spec §4.5) ----
 
@@ -47,20 +49,49 @@ const TRIGGER_WHEN_ROUNDS_LEFT_LTE = 3;
 // coverage_finalization injects each missing file's content; cap per-file size.
 const MAX_FINALIZE_FILE_BYTES = 20_000;
 
-// ---- Feature flags (Commit 3 reads env; Commit 5 wires .dsh/config.yml) ----
+// ---- Feature flags ----
+// Resolved from the `.dsh/config.yml` `patch:` section, overridable per
+// same-named environment variable (env wins). Defaults per spec §4.9:
+// v2 / contract / finalization on, strict required coverage off.
 
-function envFlag(name: string, defaultValue: boolean): boolean {
-  const raw = process.env[name];
-  if (raw === undefined || raw === "") return defaultValue;
-  return raw !== "false" && raw !== "0";
+export interface PatchFlags {
+  stateMachineV2: boolean;
+  planFileContractV2: boolean;
+  coverageFinalization: boolean;
+  strictRequiredCoverage: boolean;
 }
 
-export function isPatchStateMachineV2Enabled(): boolean {
-  return envFlag("PATCH_STATE_MACHINE_V2", true);
+function resolveFlag(
+  patchConfig: Record<string, unknown>,
+  configKey: string,
+  envKey: string,
+  fallback: boolean,
+): boolean {
+  const env = process.env[envKey];
+  if (env !== undefined && env !== "") return env !== "false" && env !== "0";
+  const fromConfig = patchConfig[configKey];
+  if (typeof fromConfig === "boolean") return fromConfig;
+  return fallback;
 }
 
-export function isStrictRequiredCoverageEnabled(): boolean {
-  return envFlag("STRICT_REQUIRED_TARGET_COVERAGE", false);
+export function resolvePatchFlags(cwd: string): PatchFlags {
+  let patchConfig: Record<string, unknown> = {};
+  try {
+    const raw = loadDshConfig(cwd)["patch"];
+    if (raw && typeof raw === "object") patchConfig = raw as Record<string, unknown>;
+  } catch {
+    // No / unreadable config — fall back to env and defaults.
+  }
+  return {
+    stateMachineV2: resolveFlag(patchConfig, "state_machine_v2", "PATCH_STATE_MACHINE_V2", true),
+    planFileContractV2: resolveFlag(patchConfig, "plan_file_contract_v2", "PLAN_FILE_CONTRACT_V2", true),
+    coverageFinalization: resolveFlag(patchConfig, "coverage_finalization", "PATCH_COVERAGE_FINALIZATION", true),
+    strictRequiredCoverage: resolveFlag(patchConfig, "strict_required_target_coverage", "STRICT_REQUIRED_TARGET_COVERAGE", false),
+  };
+}
+
+export function isPatchStateMachineV2Enabled(cwd: string): boolean {
+  return resolvePatchFlags(cwd).stateMachineV2;
 }
 
 // ---- State ----
@@ -568,7 +599,8 @@ function decidePatchResult(args: {
   cwd: string;
   contract: PlanFileContract;
   finalization: FinalizationResult;
-}): TaskState {
+  strictGateEnabled: boolean;
+}): { state: TaskState; validation: PatchCoverageValidation; decision: PatchDecision } {
   let state = args.state;
   const { contract, finalization } = args;
 
@@ -591,7 +623,7 @@ function decidePatchResult(args: {
     fullRequiredCoverage: validation.fullRequiredCoverage,
     missingRequiredFiles: validation.missingRequiredFiles,
     strictFailureEligible: validation.strictFailureEligible,
-    strictGateEnabled: isStrictRequiredCoverageEnabled(),
+    strictGateEnabled: args.strictGateEnabled,
     coverageFinalizationAttempted: finalization.attempted,
   });
 
@@ -628,7 +660,73 @@ function decidePatchResult(args: {
 
   state = transition(state, decision.status);
   writeTaskState(args.cwd, state);
-  return state;
+  return { state, validation, decision };
+}
+
+// ---- Telemetry ----
+
+export interface PatchCoverageTelemetry {
+  planFileContractVersion: "legacy" | "v2";
+  requiredTargetCount: number;
+  optionalTargetCount: number;
+  contextFileCount: number;
+  coveredRequiredCount: number;
+  missingRequiredCount: number;
+  missingRequiredFiles: string[];
+  coverageFinalizationTriggered: boolean;
+  coverageFinalizationSucceeded: boolean;
+  doneWithMissingRequiredFiles: boolean;
+  patchResultStatus: PatchDecision["status"];
+  repairTriggered: boolean;
+  totalPatchRounds: number;
+  totalToolCalls: number;
+  strictFailureEligible: boolean;
+  strictFailureApplied: boolean;
+}
+
+function buildPatchCoverageTelemetry(input: {
+  contract: PlanFileContract;
+  explore: ExploreResult;
+  finalization: FinalizationResult;
+  validation: PatchCoverageValidation;
+  decision: PatchDecision;
+  totalPatchRounds: number;
+  totalToolCalls: number;
+}): PatchCoverageTelemetry {
+  const { contract, explore, finalization, validation, decision } = input;
+  return {
+    planFileContractVersion: contract.version,
+    requiredTargetCount: contract.requiredTargetFiles.length,
+    optionalTargetCount: contract.optionalTargetFiles.length,
+    contextFileCount: contract.contextFiles.length,
+    coveredRequiredCount: validation.coveredRequiredFiles.length,
+    missingRequiredCount: validation.missingRequiredFiles.length,
+    missingRequiredFiles: validation.missingRequiredFiles,
+    coverageFinalizationTriggered: finalization.attempted,
+    coverageFinalizationSucceeded: finalization.succeeded,
+    doneWithMissingRequiredFiles: explore.loop.modelSaidDoneWithMissing,
+    patchResultStatus: decision.status,
+    repairTriggered: decision.status !== "patched",
+    totalPatchRounds: input.totalPatchRounds,
+    totalToolCalls: input.totalToolCalls,
+    strictFailureEligible: validation.strictFailureEligible,
+    strictFailureApplied:
+      decision.status === "patch_failed" &&
+      decision.reason.startsWith("strict_required_coverage_gate"),
+  };
+}
+
+// Best-effort: telemetry must never fail the patch stage. Only paths, counts,
+// statuses and reasons are recorded — never file contents or diffs (spec §4.10).
+function writePatchCoverageTelemetry(cwd: string, telemetry: PatchCoverageTelemetry): void {
+  try {
+    fs.writeFileSync(
+      path.join(cwd, ".dsh", "patch-coverage-telemetry.json"),
+      JSON.stringify(telemetry, null, 2),
+    );
+  } catch {
+    // ignore — observability only
+  }
 }
 
 // ---- Orchestrator ----
@@ -642,6 +740,7 @@ export async function runPatchPipeline(args: {
   target: ModelTarget;
   contextLayers: ContextLayers;
 }): Promise<TaskState> {
+  const flags = resolvePatchFlags(args.cwd);
   const contract = buildPlanFileContract(args.state.plan);
 
   const explore = await runPatchExplore({
@@ -654,21 +753,43 @@ export async function runPatchPipeline(args: {
     contract,
   });
 
-  const finalization = await maybeRunCoverageFinalization({
-    state: args.state,
-    cwd: args.cwd,
-    client: args.client,
-    dryRun: args.dryRun,
-    contract,
-    explore,
-    contextLayers: args.contextLayers,
-    target: args.target,
-  });
+  const finalization: FinalizationResult = flags.coverageFinalization
+    ? await maybeRunCoverageFinalization({
+        state: args.state,
+        cwd: args.cwd,
+        client: args.client,
+        dryRun: args.dryRun,
+        contract,
+        explore,
+        contextLayers: args.contextLayers,
+        target: args.target,
+      })
+    : { appliedChangedFiles: explore.appliedChangedFiles, attempted: false, succeeded: false };
 
-  return decidePatchResult({
+  const { state, validation, decision } = decidePatchResult({
     state: args.state,
     cwd: args.cwd,
     contract,
     finalization,
+    strictGateEnabled: flags.strictRequiredCoverage,
   });
+
+  const totalToolCalls = state.patch_rounds.reduce(
+    (sum, round) => sum + (round.tool_calls?.length ?? 0),
+    0,
+  );
+  writePatchCoverageTelemetry(
+    args.cwd,
+    buildPatchCoverageTelemetry({
+      contract,
+      explore,
+      finalization,
+      validation,
+      decision,
+      totalPatchRounds: state.patch_rounds.length,
+      totalToolCalls,
+    }),
+  );
+
+  return state;
 }

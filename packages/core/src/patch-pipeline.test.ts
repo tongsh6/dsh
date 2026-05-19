@@ -320,3 +320,65 @@ describe("runPatchPipeline coverage_finalization", () => {
     });
   });
 });
+
+// ---- card_off regression (spec §6.1 #13 / §14) ----
+// The card_off blocker: the model covers two required files, then drips
+// off-plan changes (the "挤牙膏" pattern), never covers the third required
+// file, and never says <DONE/>. The legacy loop ran all 30 rounds and still
+// reported "patched". The v2 state machine must catch the coverage-aware
+// stall early and either finalize the missing file or report patch_partial.
+
+describe("runPatchPipeline card_off regression", () => {
+  it("off-plan changes do not reset coverage progress; finalization rescues the missing file without exhausting maxRounds", async () => {
+    await withTempDir(async (dir) => {
+      const client = scriptedClient([
+        createBlock("shared.ts", "export const shared = 1;"), // covers shared.ts
+        createBlock("openai-compatible.ts", "export const oc = 1;"), // covers openai-compatible.ts
+        createBlock("off-plan-1.ts", "export const x = 1;"), // off-plan: no coverage progress
+        createBlock("off-plan-2.ts", "export const y = 1;"), // off-plan: 2nd → coverage stall
+        createBlock("anthropic.ts", "export const anthropic = 1;"), // finalization rescues
+      ]);
+      const state = await runPatchPipeline({
+        state: plannedState(["shared.ts", "openai-compatible.ts", "anthropic.ts"]),
+        cwd: dir,
+        client,
+        dryRun: false,
+        messages: [],
+        target: { model: "deepseek-v4-pro", thinking: false },
+        contextLayers: EMPTY_LAYERS,
+      });
+      assert.equal(state.status, "patched");
+      assert.equal(state.patches.at(-1)?.coverage, "full");
+      // Far below MAX_PATCH_ROUNDS (30): the coverage-aware stall stopped
+      // explore early instead of running the budget out.
+      assert.ok(
+        state.patch_rounds.length < 10,
+        `expected an early stall, got ${state.patch_rounds.length} rounds`,
+      );
+    });
+  });
+
+  it("reports patch_partial (not a maxRounds-exhausted patched) when the required file is never covered", async () => {
+    await withTempDir(async (dir) => {
+      const client = scriptedClient([
+        createBlock("shared.ts", "export const shared = 1;"),
+        createBlock("openai-compatible.ts", "export const oc = 1;"),
+        createBlock("off-plan-1.ts", "export const x = 1;"),
+        createBlock("off-plan-2.ts", "export const y = 1;"),
+        "<DONE/>", // finalization declines
+      ]);
+      const state = await runPatchPipeline({
+        state: plannedState(["shared.ts", "openai-compatible.ts", "anthropic.ts"]),
+        cwd: dir,
+        client,
+        dryRun: false,
+        messages: [],
+        target: { model: "deepseek-v4-pro", thinking: false },
+        contextLayers: EMPTY_LAYERS,
+      });
+      assert.equal(state.status, "patch_partial");
+      assert.deepEqual(state.patches.at(-1)?.missing_required_files, ["anthropic.ts"]);
+      assert.ok(state.patch_rounds.length < 10);
+    });
+  });
+});
