@@ -2,11 +2,13 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { DeepSeekClient, DeepSeekMessage } from "@dsh/provider";
-import type { TaskState } from "./task-state.js";
+import type { TaskState, PatchRecord } from "./task-state.js";
 import { transition, writeTaskState } from "./task-state.js";
 import { buildDynamicContext } from "./context-builder.js";
 import { buildMessages } from "./prompt-builder.js";
 import { parseChanges, applyChanges } from "./patch-parser.js";
+import { buildPlanFileContract } from "./plan-file-contract.js";
+import { validatePatchCoverage } from "./patch-coverage.js";
 import { runVerify, runVerifyAssertions, parseAssertion, isAllPassed, formatResults } from "./verifier.js";
 import type { VerifyAssertion } from "./verifier.js";
 import type { ContextLayers } from "./context-builder.js";
@@ -580,15 +582,34 @@ export async function runRepairLoop(
       applyError = e instanceof Error ? e.message : String(e);
     }
 
-    // Record the patch attempt
+    // Record the patch attempt. Re-stamp required-file coverage onto this
+    // repair round's record so the missing-file signal survives into the next
+    // repair round — which reads patches.at(-1). Without this, repair round 2+
+    // reads its own prior record (which would lack it) and loses the structured
+    // completion signal (spec docs/specs/2026-05-19 §4.8).
     current.repair_rounds = round;
-    current.patches.push({
+    const repairContract = buildPlanFileContract(current.plan);
+    const cumulativeChanged = [
+      ...current.patches.flatMap((p) => p.files_changed),
+      ...filesChanged,
+    ];
+    const repairCoverage = validatePatchCoverage({
+      contract: repairContract,
+      appliedChangedFiles: cumulativeChanged,
+    });
+    const repairPatchRecord: PatchRecord = {
       round,
       patch: patchText ?? "",
       apply_status: patched ? "ok" : "failed",
       files_changed: filesChanged,
       tool_rounds: repairToolRounds.length > 0 ? repairToolRounds : undefined,
-    });
+    };
+    if (repairContract.requiredTargetFiles.length > 0) {
+      repairPatchRecord.coverage = repairCoverage.fullRequiredCoverage ? "full" : "partial";
+      repairPatchRecord.covered_required_files = repairCoverage.coveredRequiredFiles;
+      repairPatchRecord.missing_required_files = repairCoverage.missingRequiredFiles;
+    }
+    current.patches.push(repairPatchRecord);
 
     // Run verification
     let verified = false;
