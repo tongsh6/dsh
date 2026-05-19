@@ -426,11 +426,18 @@ export async function runRepairLoop(
     // (plan.files not fully covered), surface the missing file list at the
     // top of repair task so the model treats "补全缺失文件" as the primary task.
     // (spec docs/specs/2026-05-07-patch-completeness.md §3.4)
-    const incompleteHint = prevPatch?.patch_incomplete_reason
+    // The patch coverage state machine v2 carries an authoritative
+    // missing_required_files list (spec docs/specs/2026-05-19 §4.8); prefer it
+    // and fall back to the legacy patch_incomplete_reason string.
+    const missingRequired = prevPatch?.missing_required_files ?? [];
+    const incompleteDetail = missingRequired.length > 0
+      ? `required target files still uncovered: ${missingRequired.join(", ")}`
+      : prevPatch?.patch_incomplete_reason ?? null;
+    const incompleteHint = incompleteDetail
       ? [
           "## PATCH INCOMPLETE",
-          `Previous patch round did not cover all plan.files. Detail: ${prevPatch.patch_incomplete_reason}`,
-          `Files already modified (do NOT re-modify): ${prevPatch.files_changed.join(", ") || "(none)"}`,
+          `Previous patch round did not cover all required target files. Detail: ${incompleteDetail}`,
+          `Files already modified (do NOT re-modify): ${(prevPatch?.files_changed ?? []).join(", ") || "(none)"}`,
           "PRIMARY REPAIR TASK: emit change blocks for the uncovered files. Do not duplicate edits to already-modified files.",
         ].join("\n")
       : null;

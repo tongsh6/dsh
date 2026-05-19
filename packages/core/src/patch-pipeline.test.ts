@@ -1,11 +1,18 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {
   shouldEnterCoverageFinalization,
   decidePatchStatus,
+  runPatchPipeline,
   type PatchLoopState,
 } from "./patch-pipeline.js";
-import { canTransition } from "./task-state.js";
+import { canTransition, createTaskState } from "./task-state.js";
+import type { TaskState } from "./task-state.js";
+import type { ContextLayers } from "./context-builder.js";
+import type { DeepSeekClient } from "@dsh/provider";
 
 function loopState(over: Partial<PatchLoopState> = {}): PatchLoopState {
   return {
@@ -180,5 +187,136 @@ describe("patch_partial state transitions", () => {
 
   it("never transitions straight to patched", () => {
     assert.equal(canTransition("patch_partial", "patched"), false);
+  });
+});
+
+// ---- Integration: runPatchPipeline with a scripted client ----
+
+const EMPTY_LAYERS: ContextLayers = {
+  base: "",
+  repo: "",
+  task: "",
+  dynamic: null,
+  estimatedTokens: 0,
+};
+
+function scriptedClient(responses: string[]): DeepSeekClient {
+  let index = 0;
+  return {
+    chat: async () => {
+      const content = responses[Math.min(index, responses.length - 1)] ?? "<DONE/>";
+      index++;
+      return {
+        id: "test",
+        object: "chat.completion",
+        created: 0,
+        model: "deepseek-v4-pro",
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant" as const, content },
+            finish_reason: "stop",
+          },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      };
+    },
+    chatStream: async function* () {
+      yield undefined as never;
+    },
+  } as unknown as DeepSeekClient;
+}
+
+function plannedState(files: string[]): TaskState {
+  const state = createTaskState("create the modules", "feature");
+  state.status = "planned";
+  state.plan = { summary: "", files, risks: [], raw_xml: "" };
+  return state;
+}
+
+async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-patch-pipeline-"));
+  fs.mkdirSync(path.join(dir, ".dsh"), { recursive: true });
+  try {
+    await fn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function createBlock(file: string, body: string): string {
+  return `<CREATE path="${file}">\n${body}\n</CREATE>`;
+}
+
+describe("runPatchPipeline coverage_finalization", () => {
+  it("rescues a missing required file via finalization → patched", async () => {
+    await withTempDir(async (dir) => {
+      const client = scriptedClient([
+        createBlock("a.ts", "export const a = 1;"), // explore: covers a.ts
+        "<DONE/>", // explore: DONE while b.ts still missing
+        createBlock("b.ts", "export const b = 2;"), // finalization: covers b.ts
+      ]);
+      const state = await runPatchPipeline({
+        state: plannedState(["a.ts", "b.ts"]),
+        cwd: dir,
+        client,
+        dryRun: false,
+        messages: [],
+        target: { model: "deepseek-v4-pro", thinking: false },
+        contextLayers: EMPTY_LAYERS,
+      });
+      assert.equal(state.status, "patched");
+      const patch = state.patches.at(-1);
+      assert.equal(patch?.coverage, "full");
+      assert.equal(patch?.coverage_finalization_attempted, true);
+      assert.ok(fs.existsSync(path.join(dir, "b.ts")));
+    });
+  });
+
+  it("keeps the patch partial when finalization declines to change → patch_partial", async () => {
+    await withTempDir(async (dir) => {
+      const client = scriptedClient([
+        createBlock("a.ts", "export const a = 1;"),
+        "<DONE/>", // explore DONE, b.ts missing
+        "<DONE/>", // finalization declines
+      ]);
+      const state = await runPatchPipeline({
+        state: plannedState(["a.ts", "b.ts"]),
+        cwd: dir,
+        client,
+        dryRun: false,
+        messages: [],
+        target: { model: "deepseek-v4-pro", thinking: false },
+        contextLayers: EMPTY_LAYERS,
+      });
+      assert.equal(state.status, "patch_partial");
+      const patch = state.patches.at(-1);
+      assert.equal(patch?.coverage, "partial");
+      assert.equal(patch?.coverage_finalization_attempted, true);
+      assert.deepEqual(patch?.missing_required_files, ["b.ts"]);
+    });
+  });
+
+  it("does not run finalization when explore already covered every required file", async () => {
+    await withTempDir(async (dir) => {
+      const client = scriptedClient([
+        createBlock("a.ts", "export const a = 1;"),
+        createBlock("b.ts", "export const b = 2;"),
+        "<DONE/>",
+      ]);
+      const state = await runPatchPipeline({
+        state: plannedState(["a.ts", "b.ts"]),
+        cwd: dir,
+        client,
+        dryRun: false,
+        messages: [],
+        target: { model: "deepseek-v4-pro", thinking: false },
+        contextLayers: EMPTY_LAYERS,
+      });
+      assert.equal(state.status, "patched");
+      const patch = state.patches.at(-1);
+      assert.equal(patch?.coverage, "full");
+      assert.equal(patch?.coverage_finalization_attempted, false);
+    });
   });
 });

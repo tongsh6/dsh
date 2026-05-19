@@ -7,6 +7,8 @@
 // Phases: patch_explore -> coverage_finalization -> patch_validate -> decide.
 // See spec docs/specs/2026-05-19-patch-pipeline-coverage-state-machine.md.
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { DeepSeekClient, DeepSeekMessage } from "@dsh/provider";
 import {
   isGitRepo,
@@ -17,7 +19,9 @@ import {
 } from "@dsh/repo";
 import type { TaskState, PatchRoundRecord, PatchRecord } from "./task-state.js";
 import { transition, writeTaskState } from "./task-state.js";
-import { parsePatchTurn } from "./patch-parser.js";
+import { parsePatchTurn, parseChanges, applyChanges } from "./patch-parser.js";
+import { buildMessages } from "./prompt-builder.js";
+import type { ContextLayers } from "./context-builder.js";
 import { applySingleChange } from "./pipeline.js";
 import { ALL_TOOL_DEFINITIONS } from "./tool-definitions.js";
 import {
@@ -40,6 +44,8 @@ const MAX_ROUNDS_WITHOUT_COVERAGE_PROGRESS = 5;
 const MAX_VALID_CHANGES_WITHOUT_PROGRESS = 2;
 const MAX_TOOLS_ONLY_AFTER_PATCH = 8;
 const TRIGGER_WHEN_ROUNDS_LEFT_LTE = 3;
+// coverage_finalization injects each missing file's content; cap per-file size.
+const MAX_FINALIZE_FILE_BYTES = 20_000;
 
 // ---- Feature flags (Commit 3 reads env; Commit 5 wires .dsh/config.yml) ----
 
@@ -425,23 +431,134 @@ async function runPatchExplore(args: {
 
 // ---- coverage_finalization ----
 
-// Commit 4 fills this stage in: a no-tools finalization call that injects the
-// missing required files' content and asks the model to cover them. Until then
-// it is a pass-through that reports finalization as not attempted, so a patch
-// with missing required files decides to patch_partial.
-function maybeRunCoverageFinalization(args: {
+// A dedicated, no-tools turn that asks the model to cover the still-missing
+// required files. The orchestrator injects each missing file's current content
+// (truncated) so the model never needs a tool to see it (spec §4.6). The
+// finalizer output is always re-checked by the coverage validator — <DONE/>
+// here never bypasses it.
+async function maybeRunCoverageFinalization(args: {
   state: TaskState;
   cwd: string;
   client: DeepSeekClient;
   dryRun: boolean;
   contract: PlanFileContract;
   explore: ExploreResult;
+  contextLayers: ContextLayers;
+  target: ModelTarget;
 }): Promise<FinalizationResult> {
-  return Promise.resolve({
-    appliedChangedFiles: args.explore.appliedChangedFiles,
-    attempted: false,
-    succeeded: false,
+  const { state, cwd, client, dryRun, contract, explore, contextLayers, target } = args;
+  const exploreApplied = explore.appliedChangedFiles;
+
+  if (!shouldEnterCoverageFinalization(explore.loop)) {
+    return { appliedChangedFiles: exploreApplied, attempted: false, succeeded: false };
+  }
+
+  const missing = [...explore.loop.missingRequiredFiles];
+  const covered = [...explore.loop.coveredRequiredFiles];
+
+  const fileBlocks = missing.map((rel) => {
+    let body: string;
+    try {
+      const raw = fs.readFileSync(path.join(cwd, rel), "utf-8");
+      body =
+        Buffer.byteLength(raw, "utf-8") > MAX_FINALIZE_FILE_BYTES
+          ? raw.slice(0, MAX_FINALIZE_FILE_BYTES) + "\n... [truncated]"
+          : raw;
+    } catch {
+      body = "[file does not exist yet — create it with a <CREATE> block]";
+    }
+    return `<file path="${rel}">\n${body}\n</file>`;
   });
+
+  const finalizeInstructions = [
+    "You are in COVERAGE FINALIZATION mode. Tools are disabled — do not request",
+    "files, do not call tools, do not explain. Emit only change blocks.",
+    "",
+    `Original task:\n${state.task.description}`,
+    "",
+    `Required target files: ${contract.requiredTargetFiles.map((e) => e.path).join(", ") || "(none)"}`,
+    `Already covered: ${covered.join(", ") || "(none)"}`,
+    `Still MISSING — you must produce a change for each of these: ${missing.join(", ")}`,
+    "",
+    "Current content of the missing required files:",
+    ...fileBlocks,
+    "",
+    'Emit one change block (CREATE / PATCH / PATCH type="search" / INSERT / DELETE',
+    "/ RENAME) for each missing required file. If a missing file genuinely needs",
+    "no modification to satisfy the task, output <DONE/> instead. Do not call tools.",
+  ].join("\n");
+
+  const startedAt = Date.now();
+  const response = await client.chat({
+    model: target.model,
+    messages: buildMessages({
+      context: contextLayers,
+      taskDescription: finalizeInstructions,
+      phase: "patch",
+    }),
+    thinking: target.thinking,
+    // No tools: finalization is a closed turn — no further exploration.
+  });
+  recordDeepSeekUsage(state, {
+    phase: "patch",
+    model: target.model,
+    thinking: target.thinking,
+    durationMs: Date.now() - startedAt,
+    response,
+  });
+
+  const content = response.choices[0]?.message.content ?? "";
+  const checkpointId = "dsh-checkpoint-coverage-finalization";
+  if (!dryRun) performCheckpoint(cwd, checkpointId, state.managed_files);
+
+  const appliedFinalize: string[] = [];
+  let finalizeAction: PatchRoundRecord["action"] = "invalid";
+  let invalidReason: string | undefined;
+  try {
+    const changes = parseChanges(content);
+    const applyResult = applyChanges(cwd, changes, dryRun);
+    appliedFinalize.push(
+      ...applyResult.createdFiles,
+      ...applyResult.renamedFiles,
+      ...applyResult.patchedFiles,
+      ...applyResult.deletedFiles,
+    );
+    if (appliedFinalize.length > 0) {
+      finalizeAction = "change";
+    } else {
+      invalidReason = "coverage_finalization_apply_failed";
+    }
+  } catch {
+    // parseChanges throws when no change blocks are present — either a <DONE/>
+    // (the model declined) or unusable output.
+    if (/<DONE\s*\/?>/i.test(content)) {
+      finalizeAction = "done";
+    } else {
+      invalidReason = "coverage_finalization_unparseable_output";
+    }
+  }
+
+  if (appliedFinalize.length > 0) {
+    const managed = new Set(state.managed_files);
+    for (const f of appliedFinalize) managed.add(f);
+    state.managed_files = [...managed];
+  }
+
+  state.patch_rounds.push({
+    round: explore.loop.round + 1,
+    action: finalizeAction,
+    duration_ms: Date.now() - startedAt,
+    ...(invalidReason ? { invalid_reason: invalidReason } : {}),
+  });
+  writeTaskState(cwd, state);
+
+  const appliedChangedFiles = [...exploreApplied, ...appliedFinalize];
+  const validation = validatePatchCoverage({ contract, appliedChangedFiles });
+  return {
+    appliedChangedFiles,
+    attempted: true,
+    succeeded: validation.fullRequiredCoverage,
+  };
 }
 
 // ---- patch_validate + decide ----
@@ -460,13 +577,14 @@ function decidePatchResult(args: {
     appliedChangedFiles: finalization.appliedChangedFiles,
   });
 
-  const okChangeRounds = state.patch_rounds.filter(
-    (r) => r.action === "change" && r.change?.apply_status === "ok",
-  );
+  const dedupedFiles = [...new Set(finalization.appliedChangedFiles.map(normalizePath))];
   const failedChangeRounds = state.patch_rounds.filter(
     (r) => r.action === "change" && r.change?.apply_status === "failed",
   );
-  const hasOkChanges = okChangeRounds.length > 0;
+  // A patch "has ok changes" when at least one file was actually applied —
+  // across explore AND finalization. Finalization rounds are multi-file and do
+  // not carry a per-round `change` record, so this is derived from the files.
+  const hasOkChanges = dedupedFiles.length > 0;
 
   const decision = decidePatchStatus({
     hasOkChanges,
@@ -477,7 +595,6 @@ function decidePatchResult(args: {
     coverageFinalizationAttempted: finalization.attempted,
   });
 
-  const dedupedFiles = [...new Set(finalization.appliedChangedFiles.map(normalizePath))];
   const patchText =
     state.patch_rounds
       .filter((r) => r.action === "change" && r.change)
@@ -523,6 +640,7 @@ export async function runPatchPipeline(args: {
   dryRun: boolean;
   messages: DeepSeekMessage[];
   target: ModelTarget;
+  contextLayers: ContextLayers;
 }): Promise<TaskState> {
   const contract = buildPlanFileContract(args.state.plan);
 
@@ -543,6 +661,8 @@ export async function runPatchPipeline(args: {
     dryRun: args.dryRun,
     contract,
     explore,
+    contextLayers: args.contextLayers,
+    target: args.target,
   });
 
   return decidePatchResult({

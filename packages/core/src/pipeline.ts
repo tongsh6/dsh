@@ -867,6 +867,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
       dryRun: !!dryRun,
       messages,
       target: { model: target.model, thinking: target.thinking },
+      contextLayers: fullLayers,
     });
     const v2Patch = state.patches.at(-1);
     if (!dryRun && v2Patch && v2Patch.files_changed.length > 0 && v2Patch.apply_status !== "failed") {
