@@ -71,7 +71,20 @@ export function isShellAllowed(command: string): string | null {
         }
       }
 
-      // Allow `cd <dir> && <cmd>` — model's common chdir + run pattern
+      // Allow redirects whose only targets are /dev/null|stdout|stderr — these
+      // discard output, they are not real file writes (matches this block
+      // pattern's documented intent). Strip the safe ones and re-test.
+      if (pattern.source === ">{1,2}\\s*[^\\s&]") {
+        const stripped = trimmed.replace(
+          /&?[0-9]*\s*>>?\s*\/dev\/(null|stdout|stderr)\b/g,
+          "",
+        );
+        if (!pattern.test(stripped)) continue;
+      }
+
+      // Allow `cd <dir> && <cmd>` — running a command in a subdirectory is a
+      // legitimate need (Maven modules, a Vue frontend dir, …). The cd target
+      // itself is validated against cwd in execShellImpl (validateCdTarget).
       if (pattern.source === "&&" && trimmed.startsWith("cd ")) {
         const parts = trimmed.split("&&");
         if (parts.length === 2) {
@@ -215,10 +228,41 @@ function grepFilesImpl(
   }
 }
 
+// When a command leads with `cd <dir>`, validate the target: it must exist and
+// stay within the repo root. A model that does not know its cwd guesses
+// absolute paths; otherwise `cd` to a nonexistent dir fails with a cryptic
+// exit 1 the model cannot diagnose (benchmark 260519032359).
+export function validateCdTarget(command: string, cwd: string): string | null {
+  const match = command.trim().match(/^cd\s+("[^"]+"|'[^']+'|[^\s&|;]+)/);
+  if (!match) return null;
+  const raw = match[1]!.replace(/^['"]|['"]$/g, "");
+  const root = path.resolve(cwd);
+  const resolved = path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(root, raw);
+  const rel = path.relative(root, resolved);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    return `cd 目标超出项目根目录: ${raw}。exec_shell 工作目录是 ${cwd}，cd 只能进入项目内的子目录。`;
+  }
+  let isDir = false;
+  try {
+    isDir = fs.statSync(resolved).isDirectory();
+  } catch {
+    // statSync throws when the path does not exist — isDir stays false.
+  }
+  if (!isDir) {
+    return `cd 目标目录不存在: ${raw}。exec_shell 工作目录是 ${cwd}；访问子目录请用相对路径，例如 \`cd backend && mvn test\`。`;
+  }
+  return null;
+}
+
 function execShellImpl(command: string, cwd: string): ToolResult {
   const allowedError = isShellAllowed(command);
   if (allowedError) {
     return { callId: "", status: "error", content: "", error: allowedError };
+  }
+
+  const cdError = validateCdTarget(command, cwd);
+  if (cdError) {
+    return { callId: "", status: "error", content: "", error: cdError };
   }
 
   const start = Date.now();
@@ -261,6 +305,7 @@ function execShellImpl(command: string, cwd: string): ToolResult {
       content: [
         `Exit code: ${err.status ?? 1}`,
         `Duration: ${duration}ms`,
+        `工作目录: ${cwd}`,
         "",
         "```",
         out.slice(0, EXEC_SHELL_MAX_OUTPUT),

@@ -64,7 +64,6 @@ describe("isShellAllowed", () => {
     assert.ok(isShellAllowed("pnpm test > /tmp/output"));
     assert.ok(isShellAllowed("pnpm test >> /tmp/output"));
     assert.ok(isShellAllowed("pnpm test 2>err.log"));
-    assert.ok(isShellAllowed("pnpm test &>/dev/null"));
     assert.ok(isShellAllowed("echo test | grep test"));
   });
 
@@ -82,10 +81,9 @@ describe("isShellAllowed", () => {
     assert.equal(isShellAllowed("pnpm test 2>&1"), null);
   });
 
-  it("allows expanded command prefixes (node --import tsx, cd, sed, python3)", () => {
+  it("allows expanded command prefixes (node --import tsx, sed, python3)", () => {
     assert.equal(isShellAllowed("node --import tsx --test packages/cli/test.ts"), null);
     assert.equal(isShellAllowed("node --import tsx packages/cli/test.ts"), null);
-    assert.equal(isShellAllowed("cd packages/cli && pnpm test"), null);
     assert.equal(isShellAllowed("sed -n '10,20p' file.ts"), null);
     assert.equal(isShellAllowed("python3 tools/check.py --root ."), null);
     assert.equal(isShellAllowed("npm exec tsx run-benchmark.ts"), null);
@@ -112,6 +110,27 @@ describe("isShellAllowed", () => {
   it("rejects empty command", () => {
     assert.ok(isShellAllowed(""));
     assert.ok(isShellAllowed("   "));
+  });
+
+  it("allows pwd so a disoriented model can re-orient", () => {
+    assert.equal(isShellAllowed("pwd"), null);
+  });
+
+  it("allows discarding output to /dev/null (not a real file write)", () => {
+    assert.equal(isShellAllowed("pnpm run typecheck 2>/dev/null"), null);
+    assert.equal(isShellAllowed("pnpm test >/dev/null"), null);
+    assert.equal(isShellAllowed("pnpm test &>/dev/null"), null);
+    assert.equal(isShellAllowed("pnpm test 2>/dev/null | tail -20"), null);
+    // a redirect to a real file is still rejected
+    assert.ok(isShellAllowed("pnpm test 2>err.log"));
+    assert.ok(isShellAllowed("pnpm test > out.txt"));
+  });
+
+  it("allows cd <subdir> && <cmd> — running a command in a subdirectory is legitimate", () => {
+    assert.equal(isShellAllowed("cd packages/cli && pnpm test"), null);
+    assert.equal(isShellAllowed("cd backend && mvn test"), null);
+    // the command chained after cd must still itself be allowlisted
+    assert.ok(isShellAllowed("cd .. && rm -rf /"));
   });
 });
 
@@ -361,6 +380,33 @@ describe("executeTool with exec_shell", () => {
 
     assert.equal(result.status, "error");
     assert.ok(result.error?.includes("缺少必填参数"));
+  });
+
+  it("rejects cd to a nonexistent directory, naming the real working directory", () => {
+    const result = executeTool(
+      "exec_shell",
+      { command: "cd nonexistent-subdir && pnpm test" },
+      tmpDir,
+    );
+    assert.equal(result.status, "error");
+    assert.ok(result.error?.includes("cd 目标目录不存在"));
+    assert.ok(result.error?.includes(tmpDir));
+  });
+
+  it("rejects cd that escapes the project root", () => {
+    const result = executeTool(
+      "exec_shell",
+      { command: "cd /etc && cat passwd" },
+      tmpDir,
+    );
+    assert.equal(result.status, "error");
+    assert.ok(result.error?.includes("超出项目根目录"));
+  });
+
+  it("allows cd into a real subdirectory", () => {
+    fs.mkdirSync(path.join(tmpDir, "sub"));
+    const result = executeTool("exec_shell", { command: "cd sub && ls -la" }, tmpDir);
+    assert.equal(result.status, "success");
   });
 });
 

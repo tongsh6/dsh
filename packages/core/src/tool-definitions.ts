@@ -83,7 +83,7 @@ export const EXEC_SHELL_DEF: ToolDefinition = {
   function: {
     name: "exec_shell",
     description:
-      "执行只读的 shell 命令。用于运行 test/lint/typecheck 等验证命令，或查看 git 状态。命令在项目根目录执行。注意：只能执行安全命令，写入操作会被拒绝。",
+      "执行只读的 shell 命令（运行 test/lint/typecheck 等验证命令、查看 git 状态）。命令默认在仓库根目录执行；在子目录运行用 cd <子目录> && <命令>（子目录须在项目内，不要猜测绝对路径）。只能执行安全命令，写入操作会被拒绝。",
     parameters: {
       type: "object",
       properties: {
@@ -146,6 +146,7 @@ export const EXEC_SHELL_ALLOW_LIST = [
   "git log",
   "git status",
   "git branch",
+  "pwd",
   "ls ",
   "find ",
   "grep ",
