@@ -68,6 +68,9 @@ export {
   PatchParseError,
 } from "./patch-parser.js";
 
+export { recoverDsmlWrappedChange } from "./dsml-recovery.js";
+export type { DsmlRecoveryResult } from "./dsml-recovery.js";
+
 export {
   PLAN_CONTRACT_TEMPLATE,
   validatePlanContract,

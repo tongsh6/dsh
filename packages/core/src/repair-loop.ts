@@ -7,6 +7,7 @@ import { transition, writeTaskState } from "./task-state.js";
 import { buildDynamicContext } from "./context-builder.js";
 import { buildMessages } from "./prompt-builder.js";
 import { parseChanges, applyChanges } from "./patch-parser.js";
+import { recoverDsmlWrappedChange } from "./dsml-recovery.js";
 import { buildPlanFileContract } from "./plan-file-contract.js";
 import { validatePatchCoverage } from "./patch-coverage.js";
 import { runVerify, runVerifyAssertions, parseAssertion, isAllPassed, formatResults } from "./verifier.js";
@@ -500,6 +501,9 @@ export async function runRepairLoop(
     // Tool call loop for repair (max 5 rounds — diagnosis then fix)
     const MAX_REPAIR_TOOL_ROUNDS = 5;
     let content = "";
+    // route Y / Bug A telemetry: true if any inner-loop response went through
+    // DSML salvage. Surfaced on PatchRecord.dsml_salvage_applied.
+    let dsmlSalvageApplied = false;
     const repairToolRounds: import("./task-state.js").ToolRoundRecord[] = [];
     const repairToolPolicy = getToolPolicy("repair");
     const repairTools = filterToolsForPolicy(ALL_TOOL_DEFINITIONS, repairToolPolicy);
@@ -522,7 +526,11 @@ export async function runRepairLoop(
 
       const choice = response.choices[0];
       if (!choice) break;
-      content = choice.message.content;
+      // route Y / Bug A: salvage DSML-wrapped change before downstream parsing
+      // / message echoing. See docs/plans/2026-05-20-dsml-recovery.md.
+      const _salvage = recoverDsmlWrappedChange(choice.message.content);
+      content = _salvage.content;
+      if (_salvage.recovered) dsmlSalvageApplied = true;
       const toolCalls = choice.message.tool_calls;
 
       if (toolCalls && toolCalls.length > 0 && tr < MAX_REPAIR_TOOL_ROUNDS) {
@@ -603,6 +611,7 @@ export async function runRepairLoop(
       apply_status: patched ? "ok" : "failed",
       files_changed: filesChanged,
       tool_rounds: repairToolRounds.length > 0 ? repairToolRounds : undefined,
+      ...(dsmlSalvageApplied ? { dsml_salvage_applied: true } : {}),
     };
     if (repairContract.requiredTargetFiles.length > 0) {
       repairPatchRecord.coverage = repairCoverage.fullRequiredCoverage ? "full" : "partial";

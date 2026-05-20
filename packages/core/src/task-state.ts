@@ -59,6 +59,11 @@ const patchRecordSchema = z.object({
   coverage_finalization_attempted: z.boolean().optional(),
   plan_file_contract_version: z.enum(["legacy", "v2"]).optional(),
   patch_partial_reason: z.string().optional(),
+  // True when any of this repair round's inner tool/final responses went
+  // through DSML envelope salvage. Telemetry for Bug A
+  // (ledger §8 patchloop-dsml-content-leak) — explore stage uses the
+  // patchRoundSchema's homonymous field; repair uses this one on PatchRecord.
+  dsml_salvage_applied: z.boolean().optional(),
 });
 
 const patchRoundSchema = z.object({
@@ -77,6 +82,10 @@ const patchRoundSchema = z.object({
   // When DONE is accepted with uncovered plan.files, carries the uncovered
   // file list for downstream consumers (benchmark reporter, repair diagnostics).
   incomplete_note: z.string().optional(),
+  // True when this round's content went through DSML envelope salvage
+  // (recovered=true from recoverDsmlWrappedChange). Telemetry for Bug A
+  // (ledger §8 patchloop-dsml-content-leak) frequency observation.
+  dsml_salvage_applied: z.boolean().optional(),
   duration_ms: z.number(),
 });
 

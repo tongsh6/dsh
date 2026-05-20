@@ -16,6 +16,7 @@ import {
   applyPatch,
 } from "./patch-parser.js";
 import type { ChangeBlock } from "./patch-parser.js";
+import { recoverDsmlWrappedChange } from "./dsml-recovery.js";
 import { runVerifyAssertions, isAllPassed, parseAssertion } from "./verifier.js";
 import type { VerifyAssertion } from "./verifier.js";
 import { runRepairLoop } from "./repair-loop.js";
@@ -908,7 +909,10 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
     const choice = response.choices[0];
     if (!choice) throw new Error("DeepSeek API 返回空响应");
 
-    const content = choice.message.content ?? "";
+    // route Y / Bug A: salvage DSML-wrapped change before parsing.
+    // See docs/plans/2026-05-20-dsml-recovery.md.
+    const salvage = recoverDsmlWrappedChange(choice.message.content ?? "");
+    const content = salvage.content;
     const toolCalls = choice.message.tool_calls;
     const hasToolCalls = (toolCalls?.length ?? 0) > 0;
 
@@ -928,6 +932,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
       round,
       action: action.kind,
       duration_ms: 0,
+      ...(salvage.recovered ? { dsml_salvage_applied: true } : {}),
     };
 
     switch (action.kind) {

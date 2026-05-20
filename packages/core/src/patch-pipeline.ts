@@ -21,6 +21,7 @@ import {
 import type { TaskState, PatchRoundRecord, PatchRecord } from "./task-state.js";
 import { transition, writeTaskState } from "./task-state.js";
 import { parsePatchTurn, parseChanges, applyChanges } from "./patch-parser.js";
+import { recoverDsmlWrappedChange } from "./dsml-recovery.js";
 import { buildMessages } from "./prompt-builder.js";
 import type { ContextLayers } from "./context-builder.js";
 import { applySingleChange } from "./pipeline.js";
@@ -329,7 +330,10 @@ async function runPatchExplore(args: {
 
     const choice = response.choices[0];
     if (!choice) throw new Error("DeepSeek API 返回空响应");
-    const content = choice.message.content ?? "";
+    // route Y / Bug A: salvage DSML-wrapped change before parsing.
+    // See docs/plans/2026-05-20-dsml-recovery.md.
+    const salvage = recoverDsmlWrappedChange(choice.message.content ?? "");
+    const content = salvage.content;
     const toolCalls = choice.message.tool_calls;
     const hasToolCalls = (toolCalls?.length ?? 0) > 0;
 
@@ -344,6 +348,7 @@ async function runPatchExplore(args: {
       round: loop.round,
       action: action.kind,
       duration_ms: Date.now() - startedAt,
+      ...(salvage.recovered ? { dsml_salvage_applied: true } : {}),
     };
 
     if (action.kind === "tools") {
@@ -561,7 +566,11 @@ async function maybeRunCoverageFinalization(args: {
     response,
   });
 
-  const content = response.choices[0]?.message.content ?? "";
+  // route Y / Bug A: salvage DSML-wrapped change in finalization output too.
+  const finalizationSalvage = recoverDsmlWrappedChange(
+    response.choices[0]?.message.content ?? "",
+  );
+  const content = finalizationSalvage.content;
   const checkpointId = "dsh-checkpoint-coverage-finalization";
   if (!dryRun) performCheckpoint(cwd, checkpointId, state.managed_files);
 
@@ -603,6 +612,7 @@ async function maybeRunCoverageFinalization(args: {
     action: finalizeAction,
     duration_ms: Date.now() - startedAt,
     ...(invalidReason ? { invalid_reason: invalidReason } : {}),
+    ...(finalizationSalvage.recovered ? { dsml_salvage_applied: true } : {}),
   });
   writeTaskState(cwd, state);
 
