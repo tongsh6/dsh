@@ -252,6 +252,27 @@ function buildCoverageProgressMessage(
   );
 }
 
+// Spoken to the model when the analysis-paralysis guard pauses tools. The
+// legacy runPatch loop had an equivalent warning; the v2 explore loop dropped
+// it (regression — benchmark 260519132104 / rename-distill-state: tools were
+// paused silently, the model then emitted prose and the turn parsed as
+// "no action" three times in a row). Tell the model explicitly what happened
+// and what it must do.
+function buildToolsPausedWarning(contract: PlanFileContract, loop: PatchLoopState): string {
+  const target =
+    [...loop.missingRequiredFiles][0] ??
+    contract.requiredTargetFiles[0]?.path ??
+    "the first target file";
+  return [
+    "## SYSTEM: TOOL ACCESS PAUSED",
+    `You have used ${MAX_INITIAL_TOOLS_ONLY} consecutive tool calls without producing any change.`,
+    "Tools are now disabled. Your next response MUST be exactly ONE change block — not tool calls, not prose, not explanation.",
+    `Start with: ${target}`,
+    'Use <CREATE path="..."> for a new file, <RENAME from="old" to="new"/> to rename a file, ' +
+      '<DELETE path="..."/> to remove one, or <PATCH>/<PATCH type="search"> to edit an existing file.',
+  ].join("\n");
+}
+
 async function runPatchExplore(args: {
   state: TaskState;
   cwd: string;
@@ -280,12 +301,17 @@ async function runPatchExplore(args: {
   const appliedChangedFiles: string[] = [];
   let modelSaidDone = false;
   let exitReason: ExploreExitReason = "max_rounds";
+  let toolsPauseAnnounced = false;
 
   while (loop.round < loop.maxRounds) {
     loop.round++;
 
     const toolsPaused =
       !loop.hasStartedPatching && loop.consecutiveToolsOnly >= MAX_INITIAL_TOOLS_ONLY;
+    if (toolsPaused && !toolsPauseAnnounced) {
+      messages.push({ role: "user", content: buildToolsPausedWarning(contract, loop) });
+      toolsPauseAnnounced = true;
+    }
     const startedAt = Date.now();
     const response = await client.chat({
       model: target.model,
