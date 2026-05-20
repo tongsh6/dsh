@@ -107,6 +107,7 @@ content-XML 协议在 Phase 1/2 是合理的:那时没有工具(Phase 1)或只�
 4. **回退成本。** content-XML 路径必须长期保留(通过 flag),原则 5 canonical wiring 验收规则约束:legacy 退役前生产调用点迁移率必须 100%、退出条件登记 ledger §8。本 spec 第一版只双轨,不退役。
 5. **prompt 重写工作量。** patch 阶段的 system prompt / 用户消息模板需要重写为「告诉模型用 `apply_patch` 工具,不要在 content 里写 `<PATCH>`」,且需测 DeepSeek 是否真的会遵守这个指令(可能仍偶尔降级到 content)。
 6. **Bug B 不在本 spec 范围。** 工具通道下,模型仍会发出行号有误的 unified diff;`applyPatchLenient` 当前的「拼不准也 splice」行为仍会拼坏文件。Bug B 必须独立修。
+7. **route X 不消除 DSML 漏触发的上游 bug。** 漏到 content 是**多源上游 bug**:vLLM #40800(流式 chunk 切断)、pi-mono #3712(NVIDIA 路由)、sglang #14695(模型偶发缺 marker)、vLLM #41240(V4 parser 边界)、DeepSeek-V3.2 #29(双格式)。即使 DSH 把编辑迁到原生工具通道,**DSML 翻译失败的同一批上游 bug 仍会让 tool_call 半途崩坏**——只是 leak 落点从"假 tool 漏到 content"变成"真 tool 漏到 content"。route X 减少**触发条件**(模型不再 hallucinate edit tool name),但不消除**触发概率**。**route Y(salvage)是无论如何要保留的底座**,与 route X 并行不互替——这一点在 §2.2 非目标 #1 已明示,§7 此处补充上游公开 bug 链接作为证据。
 
 ## 8. 实施策略
 
