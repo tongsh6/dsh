@@ -1224,8 +1224,12 @@ export function applyPatch(
 
 // Lenient patch applyer that ignores hunk line count mismatches.
 // Works by finding hunk positions in source and splicing in additions.
-function applyPatchLenient(source: string, patchText: string): string | null {
+// Exported so unit tests can exercise the safety properties of Bug B
+// hardening (see docs/plans/2026-05-20-applylenient-hardening.md). Not part of
+// the stable public API; index.ts does not re-export it.
+export function applyPatchLenient(source: string, patchText: string): string | null {
   const sourceLines = source.split("\n");
+  const originalLineCount = sourceLines.length; // Phase 3 delta invariant
   const patchLines = patchText.split("\n");
 
   // Parse hunks: find @@ headers and collect line groups
@@ -1270,41 +1274,70 @@ function applyPatchLenient(source: string, patchText: string): string | null {
     const hunk = hunks[h]!;
     const oldStartIdx = hunk.oldStart - 1; // convert to 0-based
 
-    // Find matching context in source
-    // Search around the expected position
-    let bestMatch = oldStartIdx;
-    let bestScore = 0;
+    // ctxLineCount = lines that must exist in source: context (' ') + deletions ('-').
+    // For acceptance, every such line must match exactly (full-match) — anything
+    // less risks splicing unrelated source lines (the Bug B / Frankenstein
+    // failure mode; see docs/plans/2026-05-20-applylenient-hardening.md).
+    const ctxLineCount = hunk.lines.filter(
+      (l) => l.startsWith(" ") || l.startsWith("-"),
+    ).length;
+    void oldStartIdx; // kept for parity; not used as a search hint in Phase 2 full scan
 
-    for (let searchOff = -5; searchOff <= 5; searchOff++) {
-      const candidate = oldStartIdx + searchOff;
-      if (candidate < 0 || candidate >= sourceLines.length) continue;
+    // Phase 2: full-file scan. Score every candidate; accept only positions
+    // where ALL non-`+` lines match. If more than one position matches the
+    // hunk's context exactly → ambiguous → refuse rather than guess.
+    //
+    // srcOffset advances only on non-`+` lines so source alignment is correct
+    // even when the hunk interleaves additions. The pre-fix code used `li`
+    // directly, causing a 1-line drift after every `+` line and letting
+    // false 1/9 partial matches survive into the splice.
+    const matches: number[] = [];
+    for (let candidate = 0; candidate < sourceLines.length; candidate++) {
       let score = 0;
+      let srcOffset = 0;
       for (let li = 0; li < hunk.lines.length; li++) {
         const hl = hunk.lines[li]!;
-        if (hl.startsWith("+")) continue; // additions don't need to match
-        const expectedLine = hl.startsWith("-") ? hl.slice(1) : hl.slice(1);
-        const actual = sourceLines[candidate + li];
+        if (hl.startsWith("+")) continue;
+        // Skip stray lines (e.g., empty trailing line from patchText.split("\n"))
+        // so they don't inflate score against empty source lines.
+        if (!hl.startsWith(" ") && !hl.startsWith("-")) continue;
+        const expectedLine = hl.slice(1);
+        const actual = sourceLines[candidate + srcOffset];
         if (actual === undefined) break;
-        if (actual === expectedLine || (hl.startsWith(" ") && actual === expectedLine)) {
-          score++;
-        }
+        if (actual === expectedLine) score++;
+        srcOffset++;
       }
-      if (score > bestScore) {
-        bestScore = score;
-        bestMatch = candidate;
+      if (score === ctxLineCount && ctxLineCount > 0) {
+        matches.push(candidate);
+        if (matches.length > 1) break; // ambiguity confirmed, no need to keep scanning
       }
     }
 
-    if (bestScore === 0) return null;
+    // 0 matches: no candidate fully matched the hunk's context.
+    // ≥2 matches: ambiguous — declared line number is unreliable, refuse.
+    if (matches.length !== 1) return null;
+    const bestMatch = matches[0]!;
 
-    // Remove old lines, insert new lines
-    const toRemove = hunk.lines.filter((l) => l.startsWith("-") || l.startsWith(" ")).length;
+    // Remove old lines, insert new lines. By construction, source[bestMatch ..
+    // bestMatch + ctxLineCount - 1] equals the hunk's non-`+` lines in order,
+    // so the splice is verifiably aligned.
     const newLines = hunk.lines
       .filter((l) => l.startsWith("+") || l.startsWith(" "))
       .map((l) => l.slice(1)); // Strip the +/space prefix
 
-    sourceLines.splice(bestMatch, toRemove, ...newLines);
+    sourceLines.splice(bestMatch, ctxLineCount, ...newLines);
   }
+
+  // Phase 3: post-apply line-count delta invariant. If the cumulative +/-
+  // across all hunks does not match the actual change in line count, some
+  // splice misaligned — refuse rather than write a Frankenstein to disk.
+  const expectedDelta = hunks.reduce((acc, h) => {
+    const plus = h.lines.filter((l) => l.startsWith("+")).length;
+    const minus = h.lines.filter((l) => l.startsWith("-")).length;
+    return acc + (plus - minus);
+  }, 0);
+  const actualDelta = sourceLines.length - originalLineCount;
+  if (actualDelta !== expectedDelta) return null;
 
   return sourceLines.join("\n");
 }

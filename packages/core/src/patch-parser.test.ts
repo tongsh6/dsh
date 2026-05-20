@@ -23,6 +23,7 @@ import {
   applyRenames,
   applySearchReplace,
   applyPatch,
+  applyPatchLenient,
   applyChanges,
   PatchParseError,
 } from "./patch-parser.js";
@@ -1625,5 +1626,217 @@ console.log("debug");
         assert.ok(result.reason.includes("unified diff parse failed"));
       }
     });
+  });
+});
+
+// ---- applyPatchLenient hardening (Bug B / route Y separate from route Y DSML salvage) ----
+// See docs/plans/2026-05-20-applylenient-hardening.md.
+// The pre-fix implementation accepted any bestScore > 0 and used `li` as the
+// source offset, so a 1/9 partial match would splice 9 unrelated source lines
+// at the wrong position — the Frankenstein corruption mode reproduced
+// byte-for-byte against r8's openai-compatible.ts patch. The hardened version
+// requires bestScore === ctxLineCount (all non-`+` lines match in order, with
+// srcOffset that doesn't drift across `+` lines).
+
+describe("applyPatchLenient — Bug B hardening", () => {
+  it("refuses to splice when context only partially matches (the r8 Frankenstein mechanism)", () => {
+    // Hunk declares line 6 (oldStartIdx=5). Window candidates 0-10.
+    // Hunk body has 3 non-`+` lines (2 blank context + 1 minus). In source,
+    // many positions have blank lines — bestScore reaches 2 at some
+    // candidate but never 3. Pre-fix: bestScore=2 > 0 → splice and corrupt.
+    // Post-fix: bestScore=2 < ctxLineCount=3 → return null.
+    const source = ["foo", "", "", "", "", "", "", "", "", "bar"].join("\n");
+    const patch = [
+      "--- a/x.ts",
+      "+++ b/x.ts",
+      "@@ -6,3 +6,3 @@",
+      " ",
+      "-line_to_delete",
+      " ",
+      "+line_to_add",
+      "",
+    ].join("\n");
+    const result = applyPatchLenient(source, patch);
+    assert.equal(result, null, "must refuse partial-context splice");
+  });
+
+  it("applies hunks with leading +lines without source-offset drift (off-by-one fix)", () => {
+    // Mirrors r8 hunk 1 (the import block): one `+` line interleaved with
+    // five context lines, correct hunk start. Pre-fix, `li` advanced past
+    // the `+` while source offset did not, depressing the true match score
+    // to 4/5 — within ±5 window the wrong candidate could win. Post-fix,
+    // srcOffset only advances on non-`+` lines, so score is a true 5/5.
+    const source = [
+      "import { A } from '@x';",
+      "import { B } from '@y';",
+      "import {",
+      "  buildNetworkError,",
+      "  createSignal,",
+      "} from './shared.js';",
+      "",
+    ].join("\n");
+    const patch = [
+      "--- a/x.ts",
+      "+++ b/x.ts",
+      "@@ -1,6 +1,7 @@",
+      " import { A } from '@x';",
+      " import { B } from '@y';",
+      " import {",
+      "+  buildAuthHeaders,",
+      "   buildNetworkError,",
+      "   createSignal,",
+      " } from './shared.js';",
+      "",
+    ].join("\n");
+    const result = applyPatchLenient(source, patch);
+    assert.ok(result, "should apply at line 1 without drift");
+    assert.match(result!, /import \{\n {2}buildAuthHeaders,\n {2}buildNetworkError,/);
+  });
+
+  it("applies cleanly with correct line numbers and full context match", () => {
+    const source = ["a", "b", "c", "d", "e"].join("\n");
+    const patch = [
+      "--- a/x.ts",
+      "+++ b/x.ts",
+      "@@ -2,3 +2,3 @@",
+      " a",
+      "-b",
+      "+B",
+      " c",
+      "",
+    ].join("\n");
+    const result = applyPatchLenient(source, patch);
+    assert.equal(result, ["a", "B", "c", "d", "e"].join("\n"));
+  });
+
+  it("applies via lenient window when line number is wrong by ≤5 but context still matches", () => {
+    // Hunk declares line 1; real position is line 4. Window candidates 0-5,
+    // candidate=3 (0-based) gives full match.
+    const source = ["pad1", "pad2", "pad3", "target", "context", "tail"].join("\n");
+    const patch = [
+      "--- a/x.ts",
+      "+++ b/x.ts",
+      "@@ -1,2 +1,2 @@",
+      " target",
+      "-context",
+      "+replaced",
+      "",
+    ].join("\n");
+    const result = applyPatchLenient(source, patch);
+    assert.ok(result, "lenient window ±5 should reach line 4");
+    assert.equal(result, ["pad1", "pad2", "pad3", "target", "replaced", "tail"].join("\n"));
+  });
+
+  it("locates a far-off-but-unique hunk via full-file scan (Phase 2 widened window)", () => {
+    // Hunk declares line 2; real position is index 17 (line 18, off by 16).
+    // Phase 1's ±5 window could not reach; Phase 2's full-file scan finds
+    // the unique matching position regardless of the declared line number.
+    const source = [
+      "pad", "pad", "pad", "pad", "pad", "pad", "pad", "pad",
+      "pad", "pad", "pad", "pad", "pad", "pad", "pad", "pad",
+      "pad", "target_unique_string",
+      "context_unique_string", "tail",
+    ].join("\n");
+    const patch = [
+      "--- a/x.ts",
+      "+++ b/x.ts",
+      "@@ -2,2 +2,2 @@",
+      " target_unique_string",
+      "-context_unique_string",
+      "+replaced",
+      "",
+    ].join("\n");
+    const result = applyPatchLenient(source, patch);
+    assert.ok(result, "Phase 2 full-file scan should locate the unique match");
+    assert.equal(
+      result,
+      [
+        "pad", "pad", "pad", "pad", "pad", "pad", "pad", "pad",
+        "pad", "pad", "pad", "pad", "pad", "pad", "pad", "pad",
+        "pad", "target_unique_string",
+        "replaced", "tail",
+      ].join("\n"),
+    );
+  });
+
+  it("refuses to apply when the hunk's context matches at multiple positions (Phase 2 ambiguity reject)", () => {
+    // The same 2-line context block appears at two different positions.
+    // Phase 2 full-file scan finds both → refuse rather than guess (the
+    // declared line number is empirically unreliable; safer to fail and
+    // route through repair than to splice in the wrong instance).
+    const source = [
+      "// first instance",
+      "context A",
+      "context B",
+      "tail 1",
+      "",
+      "// second instance",
+      "context A",
+      "context B",
+      "tail 2",
+    ].join("\n");
+    const patch = [
+      "--- a/x.ts",
+      "+++ b/x.ts",
+      "@@ -1,2 +1,2 @@",
+      " context A",
+      "-context B",
+      "+context Z",
+      "",
+    ].join("\n");
+    const result = applyPatchLenient(source, patch);
+    assert.equal(result, null, "ambiguous match must refuse rather than guess");
+  });
+
+  it("enforces post-apply +/- delta invariant across all hunks (Phase 3 defense in depth)", () => {
+    // Two hunks: hunk1 net +1, hunk2 net 0 → expected delta +1. Source must
+    // end up exactly 1 line longer. If any splice misaligned, the actual
+    // delta would diverge and Phase 3 would return null. Here both apply
+    // correctly so the invariant passes.
+    const source = [
+      "alpha", "beta", "gamma",
+      "delta", "epsilon", "zeta",
+    ].join("\n");
+    const patch = [
+      "--- a/x.ts",
+      "+++ b/x.ts",
+      "@@ -1,2 +1,3 @@",
+      " alpha",
+      "+inserted",
+      " beta",
+      "@@ -4,2 +5,2 @@",
+      " delta",
+      "-epsilon",
+      "+EPSILON",
+      "",
+    ].join("\n");
+    const result = applyPatchLenient(source, patch);
+    assert.ok(result, "valid two-hunk patch must pass the Phase 3 delta check");
+    assert.equal(
+      result.split("\n").length - source.split("\n").length,
+      1,
+      "delta must equal sum of (+) - (-) across all hunks",
+    );
+    assert.match(result, /alpha\ninserted\nbeta/);
+    assert.match(result, /delta\nEPSILON\nzeta/);
+  });
+
+  it("returns null when one context line in the hunk does not exist in source (threshold reject)", () => {
+    // Hunk's third context line ('does_not_exist') has no counterpart in
+    // source. bestScore = 2 < ctxLineCount = 3 → reject.
+    const source = ["a", "b", "c", "d", "e"].join("\n");
+    const patch = [
+      "--- a/x.ts",
+      "+++ b/x.ts",
+      "@@ -1,4 +1,4 @@",
+      " a",
+      " b",
+      " does_not_exist",
+      "-d",
+      "+D",
+      "",
+    ].join("\n");
+    const result = applyPatchLenient(source, patch);
+    assert.equal(result, null, "partial-context match must refuse rather than splice");
   });
 });
