@@ -1765,7 +1765,7 @@ describe("runRepair", () => {
     }
   });
 
-  it("runs TypeScript named-import repair after an applied repair still fails file_contains", async () => {
+  it("does not synthesize TypeScript named-import repairs after verification failures", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
     try {
       fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
@@ -1852,9 +1852,9 @@ export function missingHelper() { return {}; }
 
       const state = await runRepair({ cwd: tmp, client, maxRounds: 1 });
 
-      assert.equal(state.status, "verified");
-      assert.ok(state.patches.some((patch) => patch.deterministic_assertion_repair));
-      assert.match(
+      assert.equal(state.status, "repair_exhausted");
+      assert.equal(state.patches.some((patch) => patch.deterministic_assertion_repair), false);
+      assert.doesNotMatch(
         fs.readFileSync(path.join(tmp, "src/consumer.ts"), "utf-8"),
         /missingHelper,\n} from "\.\/helpers\.js";/,
       );

@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { parseChanges, applyChanges } from "./patch-parser.js";
+import { buildDeterministicAssertionRepair } from "./repair-rules/index.js";
 import { buildTypescriptNamedImportRepair } from "./repair-rules/typescript-named-import.js";
 import type { VerifyRunResult } from "./verifier.js";
 
@@ -27,6 +28,30 @@ function failed(command: string): VerifyRunResult {
 }
 
 describe("buildTypescriptNamedImportRepair", () => {
+  it("is not registered in the default deterministic assertion repair loop", () => {
+    withTmp((tmp) => {
+      fs.mkdirSync(path.join(tmp, "src"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, "src/helpers.ts"),
+        "export function existingHelper() {}\nexport function missingHelper() {}\n",
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, "src/consumer.ts"),
+        "import { existingHelper } from \"./helpers.js\";\n",
+        "utf-8",
+      );
+
+      const repair = buildDeterministicAssertionRepair({
+        cwd: tmp,
+        assertions: [{ type: "file_contains", file: "src/consumer.ts", pattern: "missingHelper" }],
+        results: [failed("file_contains src/consumer.ts")],
+      });
+
+      assert.equal(repair, null);
+    });
+  });
+
   it("adds a missing exported identifier to an existing local named import", () => {
     withTmp((tmp) => {
       fs.mkdirSync(path.join(tmp, "src"), { recursive: true });
