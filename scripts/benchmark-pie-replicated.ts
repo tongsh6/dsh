@@ -148,6 +148,10 @@ interface PatchObservabilitySummary {
   partialCoverageRecords: number;
   repairEmptyPatchStalls: number;
   repairNoCoverageProgressStalls: number;
+  repairSemanticHintRecords: number;
+  blockedWriteShellGuidanceRecords: number;
+  renameIntentDetectedRecords: number;
+  deterministicReferenceRepairRecords: number;
 }
 
 interface ReplicatedBenchmarkMetadata {
@@ -227,6 +231,10 @@ function summarizePatchObservabilityForConfig(
     partialCoverageRecords: 0,
     repairEmptyPatchStalls: 0,
     repairNoCoverageProgressStalls: 0,
+    repairSemanticHintRecords: 0,
+    blockedWriteShellGuidanceRecords: 0,
+    renameIntentDetectedRecords: 0,
+    deterministicReferenceRepairRecords: 0,
   };
 
   for (const result of results.filter((r) => r.config === config)) {
@@ -244,6 +252,10 @@ function summarizePatchObservabilityForConfig(
       summary.partialCoverageRecords += existing.partialCoverageRecords ?? 0;
       summary.repairEmptyPatchStalls += existing.repairEmptyPatchStalls ?? 0;
       summary.repairNoCoverageProgressStalls += existing.repairNoCoverageProgressStalls ?? 0;
+      summary.repairSemanticHintRecords += existing.repairSemanticHintRecords ?? 0;
+      summary.blockedWriteShellGuidanceRecords += existing.blockedWriteShellGuidanceRecords ?? 0;
+      summary.renameIntentDetectedRecords += existing.renameIntentDetectedRecords ?? 0;
+      summary.deterministicReferenceRepairRecords += existing.deterministicReferenceRepairRecords ?? 0;
       continue;
     }
 
@@ -262,6 +274,10 @@ function summarizePatchObservabilityForConfig(
       if (patch.coverage === "partial") summary.partialCoverageRecords++;
       if (patch.repair_stall_reason === "empty_patch") summary.repairEmptyPatchStalls++;
       if (patch.repair_stall_reason === "no_required_coverage_progress") summary.repairNoCoverageProgressStalls++;
+      if (Array.isArray(patch.repair_semantic_hints) && patch.repair_semantic_hints.length > 0) summary.repairSemanticHintRecords++;
+      if (patch.blocked_write_shell_guidance === true) summary.blockedWriteShellGuidanceRecords++;
+      if (patch.rename_intent_detected === true) summary.renameIntentDetectedRecords++;
+      if (patch.deterministic_reference_repair === true) summary.deterministicReferenceRepairRecords++;
     }
   }
 
@@ -409,6 +425,10 @@ export function formatReplicatedBenchmarkReport(
     "partialCoverageRecords",
     "repairEmptyPatchStalls",
     "repairNoCoverageProgressStalls",
+    "repairSemanticHintRecords",
+    "blockedWriteShellGuidanceRecords",
+    "renameIntentDetectedRecords",
+    "deterministicReferenceRepairRecords",
   ] as const) {
     lines.push(`| ${metric} | ${patchObservability.card_on?.[metric] ?? 0} | ${patchObservability.card_off?.[metric] ?? 0} |`);
   }
