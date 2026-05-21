@@ -9,6 +9,7 @@ import {
   parseAssertion,
   buildFailedAssertionDiagnostics,
   buildSemanticRepairHints,
+  failedAssertionTargetFiles,
   formatSemanticRepairHints,
   type VerifyAssertion,
 } from "./verifier.js";
@@ -430,6 +431,23 @@ describe("buildSemanticRepairHints", () => {
     assert.match(hints[0]!, /\.\/distill-state\.js/);
   });
 
+  it("classifies non-reference contains failures as concrete target-file edits", () => {
+    const hints = buildSemanticRepairHints(
+      [{ type: "file_contains", file: "src/provider.ts", pattern: "withRetry" }],
+      [{
+        command: "file_contains src/provider.ts ~ withRetry",
+        status: "failed",
+        exit_code: 1,
+        output: "pattern missing",
+        duration_ms: 0,
+      }],
+    );
+
+    assert.equal(hints.length, 1);
+    assert.match(hints[0]!, /next repair change must touch this file/);
+    assert.match(hints[0]!, /withRetry/);
+  });
+
   it("classifies content equality shell failures without injecting fixture paths", () => {
     const hints = buildSemanticRepairHints(
       [{
@@ -457,5 +475,48 @@ describe("buildSemanticRepairHints", () => {
 
     assert.match(block ?? "", /SEMANTIC REPAIR HINTS/);
     assert.match(block ?? "", /file_exists_failed/);
+  });
+});
+
+describe("failedAssertionTargetFiles", () => {
+  it("extracts unique file targets from failed structured file assertions", () => {
+    const assertions: VerifyAssertion[] = [
+      { type: "file_contains", file: "src/anthropic.ts", pattern: "withRetry" },
+      { type: "shell", command: "pnpm test", name: "tests" },
+      { type: "file_contains", file: "src/openai.ts", pattern: "buildAuthHeaders" },
+      { type: "file_contains", file: "src/anthropic.ts", pattern: "withRetry" },
+    ];
+    const results = [
+      {
+        command: "file_contains src/anthropic.ts",
+        status: "failed" as const,
+        exit_code: 1,
+        output: "missing",
+        duration_ms: 0,
+      },
+      {
+        command: "tests",
+        status: "failed" as const,
+        exit_code: 1,
+        output: "test failed",
+        duration_ms: 0,
+      },
+      {
+        command: "file_contains src/openai.ts",
+        status: "passed" as const,
+        exit_code: 0,
+        output: "ok",
+        duration_ms: 0,
+      },
+      {
+        command: "file_contains src/anthropic.ts",
+        status: "failed" as const,
+        exit_code: 1,
+        output: "missing",
+        duration_ms: 0,
+      },
+    ];
+
+    assert.deepEqual(failedAssertionTargetFiles(assertions, results), ["src/anthropic.ts"]);
   });
 });

@@ -58,4 +58,25 @@ describe("repair-loop prompt helpers", () => {
     assert.match(prompt ?? "", /<RENAME from=/);
     assert.match(prompt ?? "", /exec_shell is read-only/);
   });
+
+  it("uses failed assertion target files when coverage is already complete", () => {
+    const prevPatch: PatchRecord = {
+      round: 1,
+      phase: "repair",
+      patch: "<empty>",
+      apply_status: "failed",
+      files_changed: [],
+      repair_target_files: ["src/providers/anthropic.ts"],
+      repair_progress: "empty_patch",
+      repair_stall_reason: "empty_patch",
+    };
+
+    const stallPrompt = buildRepairStallHint(prevPatch, "Refactor provider shared helpers");
+    const finalPrompt = buildFinalRepairRequest(prevPatch, "Refactor provider shared helpers");
+
+    assert.match(stallPrompt ?? "", /Files that still require repair attention/);
+    assert.match(stallPrompt ?? "", /src\/providers\/anthropic\.ts/);
+    assert.match(finalPrompt, /Files that still require repair attention/);
+    assert.match(finalPrompt, /src\/providers\/anthropic\.ts/);
+  });
 });

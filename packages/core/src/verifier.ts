@@ -229,7 +229,7 @@ function semanticHintForFailedAssertion(
     case "file_contains": {
       const protocol = looksLikeReferencePattern(assertion.pattern)
         ? " This looks like an import/export/reference expectation; update the existing reference with a precise <SEARCH_REPLACE> block."
-        : " Add the missing required text with the smallest task-correct edit.";
+        : " The next repair change must touch this file and add the missing required text with the smallest task-correct edit.";
       return `file_contains_failed: ${assertion.file} must contain ${assertion.regex ? "regex" : "text"} ${quoteForRepair(assertion.pattern)}.${protocol}`;
     }
     case "file_not_contains":
@@ -259,6 +259,33 @@ export function buildSemanticRepairHints(
   });
 
   return hints;
+}
+
+export function failedAssertionTargetFiles(
+  assertions: VerifyAssertion[],
+  results: VerifyRunResult[],
+): string[] {
+  const files: string[] = [];
+  const seen = new Set<string>();
+
+  results.forEach((result, index) => {
+    if (result.status !== "failed") return;
+    const assertion = assertions[index];
+    if (!assertion) return;
+    if (
+      assertion.type !== "file_exists"
+      && assertion.type !== "file_not_exists"
+      && assertion.type !== "file_contains"
+      && assertion.type !== "file_not_contains"
+    ) {
+      return;
+    }
+    if (seen.has(assertion.file)) return;
+    seen.add(assertion.file);
+    files.push(assertion.file);
+  });
+
+  return files;
 }
 
 export function formatSemanticRepairHints(hints: string[]): string | null {

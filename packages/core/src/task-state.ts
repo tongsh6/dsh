@@ -77,10 +77,15 @@ const patchRecordSchema = z.object({
     "missing_required_files",
     "no_required_coverage_progress",
   ]).optional(),
+  // Failed verification assertions can target files even after plan coverage
+  // is complete. Repair prompts use this to keep correctness targets visible
+  // across empty repair rounds.
+  repair_target_files: z.array(z.string()).optional(),
   repair_semantic_hints: z.array(z.string()).optional(),
   blocked_write_shell_guidance: z.boolean().optional(),
   rename_intent_detected: z.boolean().optional(),
   deterministic_reference_repair: z.boolean().optional(),
+  deterministic_assertion_repair: z.boolean().optional(),
 });
 
 const patchRoundSchema = z.object({

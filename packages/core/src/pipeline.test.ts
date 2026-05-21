@@ -1765,6 +1765,104 @@ describe("runRepair", () => {
     }
   });
 
+  it("runs deterministic assertion import repair after an applied repair still fails file_contains", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
+    try {
+      fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
+      fs.mkdirSync(path.join(tmp, "src/providers"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "typescript" },
+          verify: {
+            assertions: [
+              { type: "file_contains", file: "src/providers/anthropic.ts", pattern: "withRetry" },
+            ],
+          },
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, "src/providers/shared.ts"),
+        "export function buildAuthHeaders() { return {}; }\n",
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, "src/providers/anthropic.ts"),
+        [
+          "import {",
+          "  buildAuthHeaders,",
+          "} from \"./shared.js\";",
+          "",
+          "export function createProvider() {",
+          "  return buildAuthHeaders;",
+          "}",
+          "",
+        ].join("\n"),
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "task-state.json"),
+        JSON.stringify({
+          version: "0.1",
+          status: "verification_failed",
+          task: { description: "share provider retry helper", type: "refactor", created_at: new Date().toISOString() },
+          plan: {
+            summary: "share retry helper",
+            files: ["src/providers/shared.ts", "src/providers/anthropic.ts"],
+            risks: [],
+            raw_xml: "<PLAN>share retry helper</PLAN>",
+            verify_assertions: [
+              { type: "file_contains", file: "src/providers/anthropic.ts", pattern: "withRetry" },
+            ],
+          },
+          patches: [{
+            round: 1,
+            phase: "patch",
+            patch: "",
+            apply_status: "ok",
+            files_changed: ["src/providers/shared.ts"],
+          }],
+          verify_results: [{
+            round: 1,
+            results: [{
+              command: "file_contains src/providers/anthropic.ts",
+              status: "failed",
+              exit_code: 1,
+              output: "missing required text",
+              duration_ms: 1,
+            }],
+          }],
+          repair_rounds: 0,
+        }, null, 2),
+        "utf-8",
+      );
+
+      const client = mockClient(`<PATCH type="search" file="src/providers/shared.ts">
+<SEARCH>
+export function buildAuthHeaders() { return {}; }
+</SEARCH>
+<REPLACE>
+export function buildAuthHeaders() { return {}; }
+export async function withRetry<T>(fn: () => Promise<T>): Promise<T> { return fn(); }
+</REPLACE>
+</PATCH>`);
+
+      const state = await runRepair({ cwd: tmp, client, maxRounds: 1 });
+
+      assert.equal(state.status, "verified");
+      assert.ok(state.patches.some((patch) => patch.deterministic_assertion_repair));
+      assert.match(
+        fs.readFileSync(path.join(tmp, "src/providers/anthropic.ts"), "utf-8"),
+        /withRetry,\n} from "\.\/shared\.js";/,
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("uses configured repair model routing", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
     try {

@@ -18,6 +18,7 @@ import {
   formatResults,
   buildFailedAssertionDiagnostics,
   buildSemanticRepairHints,
+  failedAssertionTargetFiles,
   formatSemanticRepairHints,
 } from "./verifier.js";
 import type { VerifyAssertion } from "./verifier.js";
@@ -36,7 +37,7 @@ import {
   getToolPolicy,
 } from "./agent-turn-loop.js";
 import { detectRenameIntent, formatRenameIntentGuidance } from "./rename-intent.js";
-import { buildRenameReferenceRepair } from "./reference-repair.js";
+import { buildFailedContainsImportRepair, buildRenameReferenceRepair } from "./reference-repair.js";
 import { recordDeepSeekUsage } from "./deepseek-usage.js";
 import { isGitRepo, createCheckpoint, applyRollback, assembleIntelligence, moduleRoots } from "@dsh/repo";
 
@@ -177,8 +178,33 @@ function isEmptyPatchText(patch: string | null | undefined): boolean {
   return trimmed === "" || trimmed === "<empty>";
 }
 
+function formatParsedChangesAsPatchText(changes: ReturnType<typeof parseChanges>): string | null {
+  return [
+    ...changes.creates.map((c) => `<CREATE path="${c.path}">\n${c.content}\n</CREATE>`),
+    ...changes.renames.map((r) => `<RENAME from="${r.from}" to="${r.to}" />`),
+    ...changes.deletePaths.map((p) => `<DELETE path="${p}" />`),
+    ...changes.searchReplaceBlocks.map((s) => `<PATCH type="search" file="${s.filePath}">\n<<<<<<< SEARCH\n${s.search}\n=======\n${s.replace}\n>>>>>>> REPLACE\n</PATCH>`),
+    changes.patchText ? `<PATCH>\n${changes.patchText}\n</PATCH>` : "",
+  ].filter(Boolean).join("\n\n") || null;
+}
+
 function buildRenameRepairGuidance(taskDescription: string | null | undefined): string | null {
   return formatRenameIntentGuidance(taskDescription);
+}
+
+function formatRepairTargetFiles(files: string[]): string | null {
+  if (files.length === 0) return null;
+  return [
+    "## FAILED ASSERTION TARGET FILES",
+    `The failed structured assertions still target: ${files.join(", ")}`,
+    "Primary repair target: emit a concrete change block that touches these files unless a later verification result already proves the assertion passes.",
+  ].join("\n");
+}
+
+function repairTargetFilesForPrompt(prevPatch: PatchRecord | undefined): string[] {
+  return prevPatch?.missing_required_files?.length
+    ? prevPatch.missing_required_files
+    : (prevPatch?.repair_target_files ?? []);
 }
 
 export function buildRepairStallHint(
@@ -187,9 +213,9 @@ export function buildRepairStallHint(
 ): string | null {
   if (!prevPatch?.repair_stall_reason) return null;
 
-  const missing = prevPatch.missing_required_files ?? [];
+  const missing = repairTargetFilesForPrompt(prevPatch);
   const missingLine = missing.length > 0
-    ? `Missing required files still not covered: ${missing.join(", ")}`
+    ? `Files that still require repair attention: ${missing.join(", ")}`
     : "No explicit missing required file list is available; use the failed verification and previous patch record.";
 
   const reason =
@@ -214,12 +240,12 @@ export function buildFinalRepairRequest(
   prevPatch: PatchRecord | undefined,
   taskDescription?: string,
 ): string {
-  const missing = prevPatch?.missing_required_files ?? [];
+  const missing = repairTargetFilesForPrompt(prevPatch);
   return [
     "## SYSTEM: REPAIR TOOL ACCESS PAUSED",
     "You have used the available repair tool budget for this round.",
     missing.length > 0
-      ? `Required files still missing coverage: ${missing.join(", ")}`
+      ? `Files that still require repair attention: ${missing.join(", ")}`
       : "Use the verification failure and previous patch evidence already in context.",
     buildRenameRepairGuidance(taskDescription) ?? "",
     "Now emit the final repair change block. Do not call tools. Do not answer with prose only. Do not output <DONE/>.",
@@ -592,7 +618,12 @@ export async function runRepairLoop(
       prevVerify && parsedRepairAssertions.length > 0
         ? buildSemanticRepairHints(parsedRepairAssertions, prevVerify.results)
         : [];
+    const repairTargetFiles =
+      prevVerify && parsedRepairAssertions.length > 0
+        ? failedAssertionTargetFiles(parsedRepairAssertions, prevVerify.results)
+        : [];
     const semanticRepairHintBlock = formatSemanticRepairHints(semanticRepairHints);
+    const repairTargetFileBlock = formatRepairTargetFiles(repairTargetFiles);
 
     const taskDescription = [
       isCompletionMode ? completionConstraints : repairConstraints,
@@ -600,6 +631,8 @@ export async function runRepairLoop(
       failedAssertionDiagnostics ?? "",
       "",
       semanticRepairHintBlock ?? "",
+      "",
+      repairTargetFileBlock ?? "",
       "",
       incompleteHint ?? "",
       "",
@@ -706,6 +739,7 @@ export async function runRepairLoop(
     let filesChanged: string[] = [];
     let rolledBack = false;
     let deterministicReferenceRepairApplied = false;
+    let deterministicAssertionRepairApplied = false;
     let deterministicReferenceRepairHints: string[] = [];
 
     // ---- Checkpoint (PHASE-3-D) ----
@@ -715,13 +749,7 @@ export async function runRepairLoop(
 
     const applyRepairContent = (rawContent: string): void => {
       const changes = parseChanges(rawContent);
-      patchText = [
-        ...changes.creates.map((c) => `<CREATE path="${c.path}">\n${c.content}\n</CREATE>`),
-        ...changes.renames.map((r) => `<RENAME from="${r.from}" to="${r.to}" />`),
-        ...changes.deletePaths.map((p) => `<DELETE path="${p}" />`),
-        ...changes.searchReplaceBlocks.map((s) => `<PATCH type="search" file="${s.filePath}">\n<<<<<<< SEARCH\n${s.search}\n=======\n${s.replace}\n>>>>>>> REPLACE\n</PATCH>`),
-        changes.patchText ? `<PATCH>\n${changes.patchText}\n</PATCH>` : "",
-      ].filter(Boolean).join("\n\n") || null;
+      patchText = formatParsedChangesAsPatchText(changes);
       const applyResult = applyChanges(config.cwd, changes, false);
       patched = applyResult.success;
       filesChanged = [...applyResult.createdFiles, ...applyResult.renamedFiles, ...applyResult.patchedFiles, ...applyResult.deletedFiles];
@@ -742,7 +770,7 @@ export async function runRepairLoop(
       applyRepairContent(content);
     } catch (e) {
       const firstApplyError = e instanceof Error ? e.message : String(e);
-      const deterministicRepair =
+      const deterministicRenameRepair =
         prevVerify && parsedRepairAssertions.length > 0
           ? buildRenameReferenceRepair({
               cwd: config.cwd,
@@ -751,11 +779,21 @@ export async function runRepairLoop(
               results: prevVerify.results,
             })
           : null;
+      const deterministicAssertionRepair =
+        !deterministicRenameRepair && prevVerify && parsedRepairAssertions.length > 0
+          ? buildFailedContainsImportRepair({
+              cwd: config.cwd,
+              assertions: parsedRepairAssertions,
+              results: prevVerify.results,
+            })
+          : null;
+      const deterministicRepair = deterministicRenameRepair ?? deterministicAssertionRepair;
 
       if (deterministicRepair) {
         try {
           content = deterministicRepair.content;
-          deterministicReferenceRepairApplied = true;
+          deterministicReferenceRepairApplied = deterministicRenameRepair !== null;
+          deterministicAssertionRepairApplied = deterministicAssertionRepair !== null;
           deterministicReferenceRepairHints = deterministicRepair.hints;
           applyRepairContent(content);
         } catch (deterministicError) {
@@ -807,6 +845,8 @@ export async function runRepairLoop(
       ...(blockedWriteShellGuidance ? { blocked_write_shell_guidance: true } : {}),
       ...(renameIntentDetected ? { rename_intent_detected: true } : {}),
       ...(deterministicReferenceRepairApplied ? { deterministic_reference_repair: true } : {}),
+      ...(deterministicAssertionRepairApplied ? { deterministic_assertion_repair: true } : {}),
+      ...(repairTargetFiles.length > 0 ? { repair_target_files: repairTargetFiles } : {}),
       ...(repairSemanticHints.length > 0 ? { repair_semantic_hints: repairSemanticHints } : {}),
     };
     if (repairContract.requiredTargetFiles.length > 0) {
@@ -857,6 +897,89 @@ export async function runRepairLoop(
         verified = isAllPassed(results);
         verifyOutput = formatResults(results);
         current.verify_results.push({ round, results });
+
+        if (!verified && parsedAssertions.length > 0) {
+          const deterministicPostVerifyRepair = buildFailedContainsImportRepair({
+            cwd: config.cwd,
+            assertions: parsedAssertions,
+            results,
+          });
+
+          if (deterministicPostVerifyRepair) {
+            const deterministicTargetFiles = failedAssertionTargetFiles(parsedAssertions, results);
+            const deterministicChanges = parseChanges(deterministicPostVerifyRepair.content);
+            const deterministicPatchText = formatParsedChangesAsPatchText(deterministicChanges);
+            const deterministicApplyResult = applyChanges(config.cwd, deterministicChanges, false);
+            const deterministicFilesChanged = [
+              ...deterministicApplyResult.createdFiles,
+              ...deterministicApplyResult.renamedFiles,
+              ...deterministicApplyResult.patchedFiles,
+              ...deterministicApplyResult.deletedFiles,
+            ];
+
+            if (deterministicApplyResult.success && deterministicFilesChanged.length > 0) {
+              const currentManaged = new Set(current.managed_files);
+              for (const f of deterministicFilesChanged) currentManaged.add(f);
+              current.managed_files = [...currentManaged];
+            }
+
+            const deterministicCumulativeChanged = [
+              ...current.patches.flatMap((p) => p.files_changed),
+              ...deterministicFilesChanged,
+            ];
+            const deterministicCoverage = validatePatchCoverage({
+              contract: repairContract,
+              appliedChangedFiles: deterministicCumulativeChanged,
+            });
+            const deterministicPatchRecord: PatchRecord = {
+              round,
+              phase: "repair",
+              patch: deterministicPatchText ?? "",
+              apply_status: deterministicApplyResult.success ? "ok" : "failed",
+              files_changed: deterministicFilesChanged,
+              deterministic_assertion_repair: true,
+              ...(deterministicTargetFiles.length > 0 ? { repair_target_files: deterministicTargetFiles } : {}),
+              repair_semantic_hints: deterministicApplyResult.success
+                ? deterministicPostVerifyRepair.hints
+                : [
+                    ...deterministicPostVerifyRepair.hints,
+                    `deterministic_assertion_repair_failed: ${deterministicApplyResult.error ?? "unknown apply error"}`,
+                  ],
+            };
+            if (repairContract.requiredTargetFiles.length > 0) {
+              deterministicPatchRecord.coverage = deterministicCoverage.fullRequiredCoverage ? "full" : "partial";
+              deterministicPatchRecord.covered_required_files = deterministicCoverage.coveredRequiredFiles;
+              deterministicPatchRecord.missing_required_files = deterministicCoverage.missingRequiredFiles;
+            }
+            const deterministicProgress = classifyRepairProgress({
+              patchText: deterministicPatchText,
+              patched: deterministicApplyResult.success,
+              filesChanged: deterministicFilesChanged,
+              previousCoveredRequiredFiles: current.patches.at(-1)?.covered_required_files ?? [],
+              coveredRequiredFiles: deterministicCoverage.coveredRequiredFiles,
+              missingRequiredFiles: deterministicCoverage.missingRequiredFiles,
+            });
+            deterministicPatchRecord.repair_progress = deterministicProgress.repairProgress;
+            if (deterministicProgress.repairStallReason) {
+              deterministicPatchRecord.repair_stall_reason = deterministicProgress.repairStallReason;
+            }
+            current.patches.push(deterministicPatchRecord);
+
+            if (deterministicApplyResult.success) {
+              patchText = [patchText, deterministicPatchText].filter(Boolean).join("\n\n") || null;
+              filesChanged = [...new Set([...filesChanged, ...deterministicFilesChanged])];
+              const postVerifyResults = runVerifyAssertions(parsedAssertions, config.cwd);
+              verified = isAllPassed(postVerifyResults);
+              verifyOutput = formatResults(postVerifyResults);
+              current.verify_results.push({ round, results: postVerifyResults });
+            } else {
+              applyError = [
+                applyError,
+                `deterministic assertion repair failed: ${deterministicApplyResult.error ?? "unknown apply error"}`,
+              ].filter(Boolean).join("; ");
+            }
+          }
+        }
 
         // ---- Regression Detection & Rollback (PHASE-3-D) ----
         if (!verified && isGitRepo(config.cwd)) {
