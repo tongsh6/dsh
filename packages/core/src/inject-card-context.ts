@@ -15,7 +15,12 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * invocation gets its own context, regardless of which other workers
  * are concurrently mutating their own.
  *
+ * A string value injects that exact Project Card text. This is used only by
+ * targeted ablation scripts that need to isolate individual card sections.
+ *
  * When unset (undefined), `buildRepoContext` falls back to the legacy
  * `DSH_INJECT_PROJECT_CARD` env var path (CLI user-facing escape hatch).
  */
-export const injectCardContext = new AsyncLocalStorage<boolean>();
+export type ProjectCardInjection = boolean | string;
+
+export const injectCardContext = new AsyncLocalStorage<ProjectCardInjection>();

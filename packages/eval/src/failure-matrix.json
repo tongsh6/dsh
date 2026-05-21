@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-17",
+  "updatedAt": "2026-05-21",
   "entries": [
     {
       "fixture": "pi-bugfix-count-defs",
@@ -106,7 +106,7 @@
       "status": "pending_replication",
       "requiresReplicatedConfirmation": true,
       "lastEvidence": "docs/reports/runlogs/260517133604-pie-replicated/results.json",
-      "notes": "Reclassified 2026-05-18 from wrong_verification_command/regressed to high_variance after a fixture-validity audit. The verification-command root cause was already resolved; the fixture itself is valid: the two target test files are absent at benchmark ref commit 180de500, the runner cleanup (reset --hard + clean -fd on every run path) removes untracked leftovers so there is no state leak, and single smoke 260517-222513 produced a clean passing solution. Remaining N=3 instability (260517133604 card_on 0/3 / card_off 0/3) is genuine model output variance on a hard JUnit5+Mockito CREATE task: List<Port> constructor injection defeats @InjectMocks, strict-stub and invented-enum-constant compile errors, and partial 1-of-2 file creation. Fixture-reactive harness patches that lifted run 260517154138 to card_on 2/3 were reverted as patch-style / comparability risk.",
+      "notes": "Reclassified 2026-05-18 from wrong_verification_command/regressed to high_variance after a fixture-validity audit. The verification-command root cause was already resolved and fixture-reactive harness patches were reverted. Current evidence should be treated as low-pass intermittent rather than a solved high-variance item: 260517133604 was card_on 0/3 / card_off 0/3; latest full run 260517183641 was card_on 1/3 / card_off 0/3. Typical failures are PLAN protocol invalid or repair_exhausted on a hard JUnit5+Mockito CREATE task.",
       "governance": {
         "comparabilityRisk": true,
         "evidencePolicy": "label_required",
@@ -116,11 +116,11 @@
     {
       "fixture": "loam-refactor-rename-distill-state",
       "repo": "loamlog",
-      "failureType": "high_variance",
+      "failureType": "patch_apply_failure",
       "status": "pending_replication",
       "requiresReplicatedConfirmation": true,
-      "lastEvidence": "docs/reports/runlogs/260518162427-pie-replicated/results.json",
-      "notes": "Batch 3 loam-refactor smoke on 2026-05-19: card_on 0/1 and card_off 0/1, both repair_exhausted after valid PLAN finalize. Fixture contract was amended because the task explicitly requires updating index.test.ts and dag-runner.test.ts imports and deleting state.ts, but expectedFiles previously omitted those paths. Remaining blocker after fixture repair is patch protocol / large rename-refactor control: runs ended with consecutive invalid patch turns and/or scope creep."
+      "lastEvidence": "docs/reports/runlogs/260520192205-project-card-ablation/results.json",
+      "notes": "Current blocker, not a solved high-variance item. Latest full Phase 3 exit run 260517183641 had card_on 1/3 vs card_off 3/3, creating the largest Project Card negative delta. 2026-05-21 fixture/design review found the fixture reasonable and Phase-3-relevant; code fixes made patch_partial run structured assertions before repair and made rename coverage count both source and destination paths. After rebuilding dist, targeted evidence 260520180500 was card_off 1/1 PASS and card_on 0/1 FAIL. Section ablation 260520184643 (N=1 directional) showed off/capabilities/forbidden_assumptions PASS, while known_facts/unknowns/full FAIL. Follow-up combination ablation 260520192205 strengthened Unknowns as the main negative section: full FAIL, unknowns FAIL, full_minus_known FAIL, known_plus_unknowns FAIL, but full_minus_unknowns PASS. The mechanism is not only final pass/fail: Unknowns-preserving variants repeatedly produce empty initial patches or CREATE/DELETE without reference propagation, while removing Unknowns allows completion despite still imperfect CREATE/SEARCH_REPLACE/DELETE protocol. Off also failed in 260520192205, so use the run as mechanism evidence, not standalone card_on/off statistics."
     },
     {
       "fixture": "loam-bugfix-cli-error-handling",
@@ -135,19 +135,19 @@
       "fixture": "rh-bugfix-csv-export",
       "repo": "release-hub",
       "failureType": "context_missing",
-      "status": "confirmed_stable",
-      "requiresReplicatedConfirmation": false,
-      "lastEvidence": "docs/reports/runlogs/260514020257-pie-replicated/results.json",
-      "notes": "Project Card on 3/3 and off 0/3; kept as evidence that Project Card default injection matters."
+      "status": "pending_replication",
+      "requiresReplicatedConfirmation": true,
+      "lastEvidence": "docs/reports/runlogs/260517183641-pie-replicated/results.json",
+      "notes": "Historical 260514020257 result was Project Card on 3/3 and off 0/3, but latest full Phase 3 exit run weakened this to card_on 1/3 and card_off 0/3. Do not use the historical run alone as decisive current evidence for Project Card lift."
     },
     {
       "fixture": "loam-refactor-provider-dedup",
       "repo": "loamlog",
-      "failureType": "fixture_false_positive",
+      "failureType": "repair_loop_drift",
       "status": "pending_replication",
       "requiresReplicatedConfirmation": true,
-      "lastEvidence": "docs/reports/runlogs/260518162427-pie-replicated/results.json",
-      "notes": "Batch 3 loam-refactor smoke on 2026-05-19: card_on 0/1 and card_off 0/1, both repair_exhausted after valid PLAN finalize. Root cause was stale fixture contract: benchmark commit already has openai.ts and deepseek.ts as thin wrappers over openai-compatible.ts, but expectedFiles/verifications required buildAuthHeaders directly in openai.ts and deepseek.ts. Fixture now targets shared.ts + openai-compatible.ts + anthropic.ts and requires replication before using it as Phase 3 exit evidence."
+      "lastEvidence": "docs/reports/runlogs/260520153908-pie-replicated/results.json",
+      "notes": "The stale fixture contract was fixed, so current failures are no longer explained as a pure fixture false positive. Targeted N=3 260520111608 was card_on 1/3 and card_off 0/3; 260520153908 after repair-stall telemetry/routing cleanup was card_on 0/1 and card_off 0/1. The dominant current pattern is partial patch progress that updates shared.ts/openai-compatible.ts but misses or semantically mishandles anthropic.ts. 2026-05-21 fixture-contract review found the anthropic.ts buildAuthHeaders assertion over-bound the implementation because Anthropic auth is not Bearer Authorization; verification now requires anthropic.ts to reuse the shared retry helper instead. Remaining blocker is repair-loop convergence, not a fixture-specific hardcoded target."
     },
     {
       "fixture": "loam-refactor-reorganize-tests",

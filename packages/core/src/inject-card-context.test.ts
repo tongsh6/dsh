@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { injectCardContext } from "./inject-card-context.js";
+import { injectCardContext, type ProjectCardInjection } from "./inject-card-context.js";
 
 /**
  * Verifies AsyncLocalStorage-based isolation for the Project Card injection
@@ -23,6 +23,13 @@ describe("injectCardContext (AsyncLocalStorage isolation)", () => {
   it("getStore() inside run(false, fn) returns false", () => {
     injectCardContext.run(false, () => {
       assert.equal(injectCardContext.getStore(), false);
+    });
+  });
+
+  it("getStore() inside run(customCard, fn) returns the custom card text", () => {
+    const customCard = "## Project Card\n\n**Unknowns**\n- Build system";
+    injectCardContext.run(customCard, () => {
+      assert.equal(injectCardContext.getStore(), customCard);
     });
   });
 
@@ -105,11 +112,11 @@ describe("injectCardContext (AsyncLocalStorage isolation)", () => {
   });
 
   it("context is preserved across helper function calls (not just inline arrow)", async () => {
-    async function deep1(): Promise<boolean | undefined> {
+    async function deep1(): Promise<ProjectCardInjection | undefined> {
       await new Promise((r) => setTimeout(r, 1));
       return deep2();
     }
-    async function deep2(): Promise<boolean | undefined> {
+    async function deep2(): Promise<ProjectCardInjection | undefined> {
       await new Promise((r) => setImmediate(r));
       return injectCardContext.getStore();
     }

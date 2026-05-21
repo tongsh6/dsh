@@ -5,6 +5,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { buildRepoContext } from "./context-builder.js";
 import { assembleIntelligence, generateRepoContext } from "@dsh/repo";
+import { injectCardContext } from "./inject-card-context.js";
 
 function withTmp<T>(fn: (tmp: string) => T): T {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-ctx-builder-"));
@@ -64,6 +65,25 @@ describe("buildRepoContext — Project Card injection", () => {
       assert.ok(!out.includes("## Project Card"), "Project Card should not appear when disabled");
       // Existing Tech Stack section still intact
       assert.ok(out.includes("## Tech Stack: java"));
+    });
+  });
+
+  it("injects custom Project Card text from AsyncLocalStorage", () => {
+    withTmp((tmp) => {
+      setupMavenSpringBoot(tmp);
+      const pi = assembleIntelligence(tmp);
+      const ctx = generateRepoContext(tmp, pi);
+      const customCard = [
+        "## Project Card",
+        "",
+        "**Known Facts**",
+        "Primary language: java",
+      ].join("\n");
+
+      const out = injectCardContext.run(customCard, () => buildRepoContext(ctx));
+
+      assert.ok(out.includes(customCard));
+      assert.ok(!out.includes("Capabilities"), "custom section-only card should replace the default card");
     });
   });
 

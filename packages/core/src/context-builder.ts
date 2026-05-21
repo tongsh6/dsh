@@ -13,7 +13,7 @@ import { injectCardContext } from "./inject-card-context.js";
  *      (single-process, no concurrent contexts, race-free in practice).
  *   3. Default: true.
  */
-function shouldInjectProjectCard(): boolean {
+function projectCardInjection(): boolean | string {
   const fromAls = injectCardContext.getStore();
   if (fromAls !== undefined) return fromAls;
   return process.env["DSH_INJECT_PROJECT_CARD"] !== "false";
@@ -86,9 +86,10 @@ export function buildRepoContext(ctx: RepoContext): string {
     }
   }
 
-  if (shouldInjectProjectCard()) {
+  const cardInjection = projectCardInjection();
+  if (cardInjection) {
     parts.push("");
-    parts.push(toProjectCard(ctx.intelligence));
+    parts.push(typeof cardInjection === "string" ? cardInjection : toProjectCard(ctx.intelligence));
   }
 
   parts.push("");

@@ -8,7 +8,7 @@ DSH provides a DeepSeek-oriented provider with official Chat Completion support,
 **当前阶段:** Phase 3 收口验证期
 **Phase 3 起点基线:** testsPassed 11/24 = 45%（`260508-003359` / `260509-165142`）
 **Phase 3 目标:** testsPassed > 60%
-**最新实证:** 2026-05-14 N=3 replicated benchmark：Project Card on `60/72 = 83.3%`，约等价 `20/24`；部分 hard-fail smoke 修复仍需要新的 N=3 / full benchmark 复审，详见 `docs/reports/knowledge/20260514-pie-phase2-3-baseline.md`
+**最新完整实证:** 2026-05-18 N=3 replicated benchmark：Project Card on `59/84 = 70.2%`，off `61/84 = 72.6%`；on 达到 Phase 3 绝对目标但未保持相对 off 正向收益，因此 Phase 3 仍不可退出，详见 `docs/reports/knowledge/20260518-phase3-exit-benchmark.md`
 
 ## 快速开始
 
@@ -102,4 +102,4 @@ pnpm run scan         # 全量质量门禁（lint + typecheck + test）
 - **当前基线:** testsPassed 11/24 = 45%
 - **目标:** testsPassed >60%
 - **最新特性:** 结构化 Verify、Repair Loop、ProjectIntelligence 主路径、Project Card 默认注入、`dsh run` / `dsh doctor` 可用、Benchmark replicated evidence 已落地
-- **收口重点:** replicated benchmark 正向，但 hard-fail smoke 修复、failure matrix 机器可读化与 legacy scanner 防回流仍需验证闭环
+- **收口重点:** 最新完整 replicated benchmark 绝对达标但 Project Card lift 为负；当前优先处理 benchmark blocker 的可审计诊断、repair 空补丁/缺失文件收敛，以及 loam-refactor / Java CREATE 高方差失败簇
