@@ -673,6 +673,7 @@ function decidePatchResult(args: {
 
   const newPatch: PatchRecord = {
     round: (state.repair_rounds ?? 0) + 1,
+    phase: "patch",
     patch: patchText,
     apply_status: applyStatus,
     files_changed: dedupedFiles,

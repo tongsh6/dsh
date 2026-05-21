@@ -52,6 +52,10 @@ export interface DshConfig extends Record<string, unknown> {
     plan_finalize_thinking?: boolean;
     plan_protocol_repair_model?: string;
     plan_protocol_repair_thinking?: boolean;
+    preflight_model?: string;
+    preflight_thinking?: boolean;
+    static_repair_model?: string;
+    static_repair_thinking?: boolean;
     max_repair_rounds?: number;
     thinking_default?: boolean;
     api_key?: string;

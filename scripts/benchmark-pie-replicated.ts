@@ -137,6 +137,19 @@ interface TrialResult extends Record<string, unknown> {
   failureClass?: string;
 }
 
+interface PatchObservabilitySummary {
+  totalPatchRecords: number;
+  emptyPatchRecords: number;
+  literalEmptyPatchRecords: number;
+  failedEmptyPatchRecords: number;
+  failedNonEmptyPatchRecords: number;
+  dsmlSalvageAppliedRecords: number;
+  dsmlSalvageAppliedRounds: number;
+  partialCoverageRecords: number;
+  repairEmptyPatchStalls: number;
+  repairNoCoverageProgressStalls: number;
+}
+
 interface ReplicatedBenchmarkMetadata {
   runId: string;
   seed: number;
@@ -151,6 +164,7 @@ interface ReplicatedBenchmarkMetadata {
     card_off_pass: number;
     card_off_total: number;
     failureClasses?: Record<Config, Record<string, number>>;
+    patchObservability?: Record<Config, PatchObservabilitySummary>;
   };
 }
 
@@ -177,12 +191,90 @@ function classifyTrialFailure(result: TrialResult): string | undefined {
   const diagnostics = result.diagnostics && typeof result.diagnostics === "object"
     ? result.diagnostics as Parameters<typeof classifyTaskFailure>[0]["diagnostics"]
     : undefined;
+  const planDiagnostics = result.planDiagnostics && typeof result.planDiagnostics === "object"
+    ? result.planDiagnostics as Parameters<typeof classifyTaskFailure>[0]["planDiagnostics"]
+    : undefined;
   return classifyTaskFailure({
     testsPassed: result.testsPassed === true,
     completed: result.completed === true,
     error: typeof result.error === "string" ? result.error : undefined,
     diagnostics,
+    planDiagnostics,
   });
+}
+
+function summarizePatchObservability(
+  results: readonly TrialResult[],
+): Record<Config, PatchObservabilitySummary> {
+  return {
+    card_on: summarizePatchObservabilityForConfig(results, "card_on"),
+    card_off: summarizePatchObservabilityForConfig(results, "card_off"),
+  };
+}
+
+function summarizePatchObservabilityForConfig(
+  results: readonly TrialResult[],
+  config: Config,
+): PatchObservabilitySummary {
+  const summary: PatchObservabilitySummary = {
+    totalPatchRecords: 0,
+    emptyPatchRecords: 0,
+    literalEmptyPatchRecords: 0,
+    failedEmptyPatchRecords: 0,
+    failedNonEmptyPatchRecords: 0,
+    dsmlSalvageAppliedRecords: 0,
+    dsmlSalvageAppliedRounds: 0,
+    partialCoverageRecords: 0,
+    repairEmptyPatchStalls: 0,
+    repairNoCoverageProgressStalls: 0,
+  };
+
+  for (const result of results.filter((r) => r.config === config)) {
+    const existing = result.patchDiagnostics && typeof result.patchDiagnostics === "object"
+      ? result.patchDiagnostics as Partial<PatchObservabilitySummary>
+      : null;
+    if (existing) {
+      summary.totalPatchRecords += existing.totalPatchRecords ?? 0;
+      summary.emptyPatchRecords += existing.emptyPatchRecords ?? 0;
+      summary.literalEmptyPatchRecords += existing.literalEmptyPatchRecords ?? 0;
+      summary.failedEmptyPatchRecords += existing.failedEmptyPatchRecords ?? 0;
+      summary.failedNonEmptyPatchRecords += existing.failedNonEmptyPatchRecords ?? 0;
+      summary.dsmlSalvageAppliedRecords += existing.dsmlSalvageAppliedRecords ?? 0;
+      summary.dsmlSalvageAppliedRounds += existing.dsmlSalvageAppliedRounds ?? 0;
+      summary.partialCoverageRecords += existing.partialCoverageRecords ?? 0;
+      summary.repairEmptyPatchStalls += existing.repairEmptyPatchStalls ?? 0;
+      summary.repairNoCoverageProgressStalls += existing.repairNoCoverageProgressStalls ?? 0;
+      continue;
+    }
+
+    const diagnostics = result.diagnostics && typeof result.diagnostics === "object"
+      ? result.diagnostics as { patches?: Array<Record<string, unknown>> }
+      : null;
+    for (const patch of diagnostics?.patches ?? []) {
+      const text = typeof patch.patch === "string" ? patch.patch : "";
+      const empty = isEmptyPatchText(text);
+      summary.totalPatchRecords++;
+      if (empty) summary.emptyPatchRecords++;
+      if (isLiteralEmptyPatchText(text)) summary.literalEmptyPatchRecords++;
+      if (patch.apply_status === "failed" && empty) summary.failedEmptyPatchRecords++;
+      if (patch.apply_status === "failed" && !empty) summary.failedNonEmptyPatchRecords++;
+      if (patch.dsml_salvage_applied === true) summary.dsmlSalvageAppliedRecords++;
+      if (patch.coverage === "partial") summary.partialCoverageRecords++;
+      if (patch.repair_stall_reason === "empty_patch") summary.repairEmptyPatchStalls++;
+      if (patch.repair_stall_reason === "no_required_coverage_progress") summary.repairNoCoverageProgressStalls++;
+    }
+  }
+
+  return summary;
+}
+
+function isEmptyPatchText(patch: string): boolean {
+  const trimmed = patch.trim();
+  return trimmed === "" || trimmed === "<empty>";
+}
+
+function isLiteralEmptyPatchText(patch: string): boolean {
+  return patch.trim() === "<empty>";
 }
 
 export function loadDurationEstimates(resultsPath: string): Map<string, number> {
@@ -297,6 +389,28 @@ export function formatReplicatedBenchmarkReport(
     for (const failureClass of classes) {
       lines.push(`| ${failureClass} | ${failureClasses.card_on?.[failureClass] ?? 0} | ${failureClasses.card_off?.[failureClass] ?? 0} |`);
     }
+  }
+  lines.push("");
+  lines.push("## Patch Observability");
+  lines.push("");
+  lines.push("These counters are derived from per-trial patch diagnostics and make empty repair/patch attempts and DSML salvage auditable.");
+  lines.push("");
+  const patchObservability = metadata.summary?.patchObservability ?? summarizePatchObservability(results);
+  lines.push("| Metric | Card ON | Card OFF |");
+  lines.push("|--------|---------|----------|");
+  for (const metric of [
+    "totalPatchRecords",
+    "emptyPatchRecords",
+    "literalEmptyPatchRecords",
+    "failedEmptyPatchRecords",
+    "failedNonEmptyPatchRecords",
+    "dsmlSalvageAppliedRecords",
+    "dsmlSalvageAppliedRounds",
+    "partialCoverageRecords",
+    "repairEmptyPatchStalls",
+    "repairNoCoverageProgressStalls",
+  ] as const) {
+    lines.push(`| ${metric} | ${patchObservability.card_on?.[metric] ?? 0} | ${patchObservability.card_off?.[metric] ?? 0} |`);
   }
   lines.push("");
   lines.push("## Evidence Governance");
@@ -586,6 +700,7 @@ async function main(): Promise<void> {
       card_off_pass: passOff,
       card_off_total: totalOff,
       failureClasses: summarizeFailureClasses(results),
+      patchObservability: summarizePatchObservability(results),
     },
   };
   fs.writeFileSync(path.join(runDir, "metadata.json"), JSON.stringify(finalMetadata, null, 2));

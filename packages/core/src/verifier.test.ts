@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { runAssertion, runVerifyAssertions, parseAssertion, type VerifyAssertion } from "./verifier.js";
+import {
+  runAssertion,
+  runVerifyAssertions,
+  parseAssertion,
+  buildFailedAssertionDiagnostics,
+  type VerifyAssertion,
+} from "./verifier.js";
 
 function withTmp<T>(fn: (tmp: string) => T): T {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-verifier-"));
@@ -321,5 +327,53 @@ describe("runVerifyAssertions", () => {
       assert.equal(results[1]!.status, "failed");
       assert.match(results[1]!.output, /file_contains' failed/);
     });
+  });
+});
+
+describe("buildFailedAssertionDiagnostics", () => {
+  it("formats failed structured assertions without hardcoding fixture paths", () => {
+    const assertions: VerifyAssertion[] = [
+      { type: "file_exists", file: "src/new.ts" },
+      { type: "file_contains", file: "src/use.ts", pattern: "./new.js" },
+    ];
+    const results = [
+      {
+        command: "file_exists src/new.ts",
+        status: "failed" as const,
+        exit_code: 1,
+        output: "assertion 'file_exists' failed: file does not exist: src/new.ts",
+        duration_ms: 0,
+      },
+      {
+        command: "file_contains src/use.ts ~ ./new.js",
+        status: "passed" as const,
+        exit_code: 0,
+        output: "(pattern found)",
+        duration_ms: 0,
+      },
+    ];
+
+    const diagnostics = buildFailedAssertionDiagnostics(assertions, results);
+
+    assert.ok(diagnostics);
+    assert.match(diagnostics, /FAILED VERIFICATION CONTRACTS/);
+    assert.match(diagnostics, /src\/new\.ts/);
+    assert.match(diagnostics, /must exist/);
+    assert.doesNotMatch(diagnostics, /src\/use\.ts/);
+  });
+
+  it("returns null when all assertions passed", () => {
+    const diagnostics = buildFailedAssertionDiagnostics(
+      [{ type: "file_exists", file: "src/new.ts" }],
+      [{
+        command: "file_exists src/new.ts",
+        status: "passed",
+        exit_code: 0,
+        output: "(file exists)",
+        duration_ms: 0,
+      }],
+    );
+
+    assert.equal(diagnostics, null);
   });
 });

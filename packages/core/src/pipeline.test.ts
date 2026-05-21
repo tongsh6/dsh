@@ -693,7 +693,7 @@ describe("runPatch", () => {
           verify: { test: "echo ok" },
           static_scan: { enabled: true, command: "node scan.mjs", top_n: 1 },
           rules: { files: [] },
-          deepseek: {},
+          deepseek: { static_repair_model: "custom-static-repair", static_repair_thinking: false },
         }),
         "utf-8",
       );
@@ -713,7 +713,31 @@ describe("runPatch", () => {
       );
 
       // Sequence: main patch → DONE → static repair patch
-      const client = mockClientSequence([V4_PATCH_DUMMY, V4_DONE, V4_PATCH_DUMMY_LINT]);
+      const responses = [V4_PATCH_DUMMY, V4_DONE, V4_PATCH_DUMMY_LINT];
+      const requestedModels: string[] = [];
+      const requestedThinking: Array<boolean | undefined> = [];
+      let responseIndex = 0;
+      const client = {
+        chat: async (req: any) => {
+          requestedModels.push(req.model);
+          requestedThinking.push(req.thinking);
+          const content = responses[Math.min(responseIndex, responses.length - 1)] ?? "";
+          responseIndex++;
+          return {
+            id: "test-id",
+            object: "chat.completion",
+            created: Date.now(),
+            model: req.model,
+            choices: [{
+              index: 0,
+              message: { role: "assistant" as const, content },
+              finish_reason: "stop",
+            }],
+            usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
       const state = await runPatch({ cwd: tmp, client, auto: true });
 
       assert.equal(state.status, "patched");
@@ -726,6 +750,9 @@ describe("runPatch", () => {
       assert.equal(state.static_repair_results[0]!.remaining_findings, 0);
       assert.ok(fs.existsSync(path.join(tmp, state.static_scan_runs[0]!.output_path)));
       assert.ok(fs.readFileSync(path.join(tmp, "dummy.py"), "utf-8").includes("# lint fixed"));
+      assert.equal(requestedModels.at(-1), "custom-static-repair");
+      assert.equal(requestedThinking.at(-1), false);
+      assert.equal(state.deepseek_usage.at(-1)?.model, "custom-static-repair");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -1216,6 +1243,49 @@ describe("runPreflight", () => {
     }
   });
 
+  it("uses configured preflight model routing", async () => {
+    const tmp = await setupTempDir("planned");
+    try {
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "python" },
+          verify: { test: "echo ok" },
+          rules: { files: [] },
+          deepseek: { preflight_model: "custom-preflight", preflight_thinking: false },
+        }),
+        "utf-8",
+      );
+      const requested: Array<{ model: string; thinking?: boolean }> = [];
+      const client = {
+        chat: async (req: any) => {
+          requested.push({ model: req.model, thinking: req.thinking });
+          return {
+            id: "preflight-done",
+            object: "chat.completion",
+            created: Date.now(),
+            model: req.model,
+            choices: [{
+              index: 0,
+              message: { role: "assistant" as const, content: "<DONE/>" },
+              finish_reason: "stop",
+            }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      const state = await runPreflight({ cwd: tmp, client });
+
+      assert.equal(state.status, "preflighted");
+      assert.deepEqual(requested[0], { model: "custom-preflight", thinking: false });
+      assert.equal(state.deepseek_usage.at(-1)?.model, "custom-preflight");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("runs explicit preflight commands when configured", async () => {
     const tmp = await setupTempDir("planned");
     try {
@@ -1575,6 +1645,69 @@ describe("runVerify", () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it("runs assertions for patch_partial so repair receives concrete failures", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
+    try {
+      fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "typescript" },
+          verify: {
+            assertions: [
+              { type: "file_exists", file: "created.ts", name: "created_file_exists" },
+              { type: "file_contains", file: "src/use.ts", pattern: "./created.js", name: "import_updated" },
+            ],
+          },
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      fs.mkdirSync(path.join(tmp, "src"), { recursive: true });
+      fs.writeFileSync(path.join(tmp, "src", "use.ts"), "import './old.js';\n", "utf-8");
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "task-state.json"),
+        JSON.stringify({
+          version: "0.1",
+          status: "patch_partial",
+          task: { description: "rename file", type: "refactor", created_at: new Date().toISOString() },
+          plan: {
+            summary: "rename",
+            files: ["created.ts", "src/use.ts"],
+            risks: [],
+            raw_xml: "<PLAN>rename</PLAN>",
+          },
+          patches: [{
+            round: 1,
+            phase: "patch",
+            patch: "<CREATE path=\"created.ts\">x</CREATE>",
+            apply_status: "partial_ok",
+            files_changed: [],
+            coverage: "partial",
+            missing_required_files: ["created.ts", "src/use.ts"],
+          }],
+          verify_results: [],
+          repair_rounds: 0,
+        }, null, 2),
+        "utf-8",
+      );
+
+      const state = await runVerify({ cwd: tmp });
+
+      assert.equal(state.status, "verification_failed");
+      assert.equal(state.verify_results.length, 2);
+      const assertionRound = state.verify_results[1]!;
+      assert.equal(assertionRound.results.length, 2);
+      assert.equal(assertionRound.results[0]!.command, "created_file_exists");
+      assert.equal(assertionRound.results[0]!.status, "failed");
+      assert.equal(assertionRound.results[1]!.command, "import_updated");
+      assert.equal(assertionRound.results[1]!.status, "failed");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---- runRepair Tests ----
@@ -1627,6 +1760,65 @@ describe("runRepair", () => {
 
       assert.equal(state.status, "verified");
       assert.ok(state.repair_rounds >= 1);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("uses configured repair model routing", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
+    try {
+      fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "python" },
+          verify: { test: "echo ok" },
+          rules: { files: [] },
+          deepseek: { default_model: "custom-repair-model" },
+        }),
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "task-state.json"),
+        JSON.stringify({
+          version: "0.1",
+          status: "verification_failed",
+          task: { description: "test", type: "bugfix", created_at: new Date().toISOString() },
+          plan: { summary: "test", files: ["dummy.py"], risks: [], raw_xml: "<PLAN>test</PLAN>" },
+          patches: [{ round: 1, patch: "", apply_status: "ok", files_changed: ["dummy.py"] }],
+          verify_results: [{ round: 1, results: [{ command: "exit 1", status: "failed", exit_code: 1, output: "fail", duration_ms: 10 }] }],
+          repair_rounds: 0,
+        }, null, 2),
+        "utf-8",
+      );
+      fs.writeFileSync(path.join(tmp, "dummy.py"), "# test", "utf-8");
+
+      const requested: Array<{ model: string; thinking?: boolean }> = [];
+      const client = {
+        chat: async (req: any) => {
+          requested.push({ model: req.model, thinking: req.thinking });
+          return {
+            id: "r1",
+            object: "chat.completion",
+            created: Date.now(),
+            model: req.model,
+            choices: [{
+              index: 0,
+              message: { role: "assistant" as const, content: VALID_PATCH_RESPONSE },
+              finish_reason: "stop",
+            }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      const state = await runRepair({ cwd: tmp, client, maxRounds: 1 });
+
+      assert.equal(state.status, "verified");
+      assert.deepEqual(requested[0], { model: "custom-repair-model", thinking: true });
+      assert.equal(state.deepseek_usage.at(-1)?.model, "custom-repair-model");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -1702,6 +1894,143 @@ describe("runRepair", () => {
         allUserContent.includes("dummy.py"),
         "repair task description should list the already-modified file so the model does not duplicate edits",
       );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("marks an empty repair patch as a stall and injects the stall hint on the next round", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
+    try {
+      fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "python" },
+          verify: { test: "echo ok" },
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      fs.writeFileSync(path.join(tmp, "dummy.py"), "# test\n", "utf-8");
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "task-state.json"),
+        JSON.stringify({
+          version: "0.1",
+          status: "verification_failed",
+          task: { description: "fix empty repair", type: "bugfix", created_at: new Date().toISOString() },
+          plan: {
+            summary: "fix",
+            files: ["dummy.py"],
+            risks: [],
+            raw_xml: "<PLAN>fix</PLAN>",
+            verify_commands: ["echo ok"],
+          },
+          patches: [{ round: 1, patch: "", apply_status: "ok", files_changed: ["dummy.py"] }],
+          verify_results: [{ round: 1, results: [{ command: "pytest", status: "failed", exit_code: 1, output: "fail", duration_ms: 10 }] }],
+          repair_rounds: 0,
+        }, null, 2),
+        "utf-8",
+      );
+
+      const captured: string[] = [];
+      const responses = ["<DONE/>", V4_PATCH_DUMMY];
+      const captureClient = {
+        chat: async (req: any) => {
+          for (const m of req.messages ?? []) {
+            if (m.role === "user" && typeof m.content === "string") captured.push(m.content);
+          }
+          const content = responses.shift() ?? V4_PATCH_DUMMY;
+          return {
+            id: "r1", object: "chat.completion", created: Date.now(), model: "deepseek-v4-pro",
+            choices: [{ index: 0, message: { role: "assistant" as const, content }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      const state = await runRepair({ cwd: tmp, client: captureClient, maxRounds: 2 });
+
+      assert.equal(state.status, "verified");
+      const emptyRepair = state.patches.find((patch) => patch.phase === "repair" && patch.patch === "");
+      assert.equal(emptyRepair?.repair_progress, "empty_patch");
+      assert.equal(emptyRepair?.repair_stall_reason, "empty_patch");
+      assert.ok(captured.join("\n---\n").includes("REPAIR STALL DETECTED"));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("pauses repair tools after the bounded tool budget and asks for a final patch without tools", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
+    try {
+      fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "python" },
+          verify: { test: "echo ok" },
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      fs.writeFileSync(path.join(tmp, "dummy.py"), "# test\n", "utf-8");
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "task-state.json"),
+        JSON.stringify({
+          version: "0.1",
+          status: "verification_failed",
+          task: { description: "fix with too many repair tools", type: "bugfix", created_at: new Date().toISOString() },
+          plan: {
+            summary: "fix",
+            files: ["dummy.py"],
+            risks: [],
+            raw_xml: "<PLAN>fix</PLAN>",
+            verify_commands: ["echo ok"],
+          },
+          patches: [{ round: 1, patch: "", apply_status: "ok", files_changed: ["dummy.py"] }],
+          verify_results: [{ round: 1, results: [{ command: "pytest", status: "failed", exit_code: 1, output: "fail", duration_ms: 10 }] }],
+          repair_rounds: 0,
+        }, null, 2),
+        "utf-8",
+      );
+
+      const toolRequests = Array.from({ length: 6 }, (_, index) => ({
+        id: `tool-${index}`,
+        type: "function" as const,
+        function: { name: "read_file", arguments: JSON.stringify({ path: "dummy.py" }) },
+      }));
+      const capturedUser: string[] = [];
+      const toolsPresence: boolean[] = [];
+      let calls = 0;
+      const captureClient = {
+        chat: async (req: any) => {
+          toolsPresence.push(Array.isArray(req.tools) && req.tools.length > 0);
+          for (const m of req.messages ?? []) {
+            if (m.role === "user" && typeof m.content === "string") capturedUser.push(m.content);
+          }
+          const message = calls < toolRequests.length
+            ? { role: "assistant" as const, content: "", tool_calls: [toolRequests[calls]!] }
+            : { role: "assistant" as const, content: V4_PATCH_DUMMY };
+          calls++;
+          return {
+            id: "r1", object: "chat.completion", created: Date.now(), model: "deepseek-v4-pro",
+            choices: [{ index: 0, message, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      const state = await runRepair({ cwd: tmp, client: captureClient, maxRounds: 1 });
+
+      assert.equal(state.status, "verified");
+      assert.ok(capturedUser.join("\n---\n").includes("REPAIR TOOL ACCESS PAUSED"));
+      assert.equal(toolsPresence.at(-1), false);
+      assert.ok(state.patches.some((patch) => patch.phase === "repair" && patch.apply_status === "ok"));
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -2187,6 +2516,46 @@ Fix dummy file
       assert.ok(fs.existsSync(state.handoff_path!));
       const saved = readTaskState(tmp);
       assert.equal(saved?.handoff_path, state.handoff_path);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("runs verify for patch_partial before deciding whether to repair", async () => {
+    const tmp = await setupTempDir();
+    try {
+      const planResponse = `
+<PLAN>
+## Goal
+Partially update planned files
+</PLAN>
+<FILES>
+- dummy.py
+- missing.py
+</FILES>
+<RISKS>
+- Missing file might remain uncovered
+- Verification may still pass for the applied subset
+</RISKS>
+`;
+      const client = mockClientSequence(["explore done", planResponse, "<DONE/>", V4_PATCH_DUMMY, V4_DONE]);
+      const state = await runFullPipeline({
+        cwd: tmp,
+        client,
+        description: "Patch only one planned file",
+        taskType: "bugfix",
+        maxRepairRounds: 0,
+      });
+
+      assert.equal(state.status, "repair_exhausted");
+      assert.ok(
+        state.verify_results.some((vr) => vr.results.some((r) => r.command === "scope-completeness")),
+        "patch_partial should run through verify and record scope completeness",
+      );
+      assert.ok(
+        state.verify_results.some((vr) => vr.results.some((r) => r.command === "echo ok")),
+        "configured verification command should run before any repair decision",
+      );
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

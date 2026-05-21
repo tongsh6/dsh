@@ -61,6 +61,19 @@ describe("validatePatchCoverage", () => {
     assert.equal(result.fullRequiredCoverage, true);
   });
 
+  it("treats rename source and destination as applied changed files", () => {
+    const contract = buildPlanFileContract({
+      files: ["src/state.ts", "src/distill-state.ts"],
+    });
+    const result = validatePatchCoverage({
+      contract,
+      appliedChangedFiles: ["src/state.ts -> src/distill-state.ts"],
+    });
+    assert.equal(result.fullRequiredCoverage, true);
+    assert.deepEqual(result.coveredRequiredFiles, ["src/state.ts", "src/distill-state.ts"]);
+    assert.deepEqual(result.missingRequiredFiles, []);
+  });
+
   it("never marks a legacy contract strict-failure eligible", () => {
     const contract = buildPlanFileContract({ files: ["a.ts", "b.ts"] });
     const result = validatePatchCoverage({ contract, appliedChangedFiles: [] });
@@ -119,5 +132,13 @@ describe("computeCoverageDelta", () => {
   it("normalizes applied paths before matching missing required files", () => {
     const delta = computeCoverageDelta(["./c.ts"], new Set(["c.ts"]));
     assert.deepEqual([...delta], ["c.ts"]);
+  });
+
+  it("counts a rename destination as newly covered required file", () => {
+    const delta = computeCoverageDelta(
+      ["src/state.ts -> src/distill-state.ts"],
+      new Set(["src/distill-state.ts"]),
+    );
+    assert.deepEqual([...delta], ["src/distill-state.ts"]);
   });
 });

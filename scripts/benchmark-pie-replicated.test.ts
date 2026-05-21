@@ -125,6 +125,32 @@ describe("formatReplicatedBenchmarkReport", () => {
             card_on: { model_protocol_plan_invalid: 1 },
             card_off: {},
           },
+          patchObservability: {
+            card_on: {
+              totalPatchRecords: 2,
+              emptyPatchRecords: 1,
+              literalEmptyPatchRecords: 1,
+              failedEmptyPatchRecords: 1,
+              failedNonEmptyPatchRecords: 0,
+              dsmlSalvageAppliedRecords: 0,
+              dsmlSalvageAppliedRounds: 1,
+              partialCoverageRecords: 1,
+              repairEmptyPatchStalls: 1,
+              repairNoCoverageProgressStalls: 0,
+            },
+            card_off: {
+              totalPatchRecords: 0,
+              emptyPatchRecords: 0,
+              literalEmptyPatchRecords: 0,
+              failedEmptyPatchRecords: 0,
+              failedNonEmptyPatchRecords: 0,
+              dsmlSalvageAppliedRecords: 0,
+              dsmlSalvageAppliedRounds: 0,
+              partialCoverageRecords: 0,
+              repairEmptyPatchStalls: 0,
+              repairNoCoverageProgressStalls: 0,
+            },
+          },
         },
       },
       [
@@ -149,5 +175,9 @@ describe("formatReplicatedBenchmarkReport", () => {
     assert.match(md, /Card OFF: 1\/1/);
     assert.match(md, /Failure Classification/);
     assert.match(md, /\| model_protocol_plan_invalid \| 1 \| 0 \|/);
+    assert.match(md, /Patch Observability/);
+    assert.match(md, /\| failedEmptyPatchRecords \| 1 \| 0 \|/);
+    assert.match(md, /\| dsmlSalvageAppliedRounds \| 1 \| 0 \|/);
+    assert.match(md, /\| repairEmptyPatchStalls \| 1 \| 0 \|/);
   });
 });

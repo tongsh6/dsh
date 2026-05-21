@@ -15,6 +15,10 @@ export interface ModelRoutingConfig {
   patchLargeModel?: string;
   verifyModel?: string;
   repairModel?: string;
+  preflightModel?: string;
+  preflightThinking?: boolean;
+  staticRepairModel?: string;
+  staticRepairThinking?: boolean;
   handoffModel?: string;
   initScanModel?: string;
   initRuleDetectModel?: string;
@@ -28,6 +32,8 @@ export type CommandName =
   | "patch"
   | "verify"
   | "repair"
+  | "preflight"
+  | "static-repair"
   | "handoff"
   | "init/scan"
   | "init/rule-detect";
@@ -59,6 +65,14 @@ function routes(config: ModelRoutingConfig = {}): Record<CommandName, RouteTarge
     "patch": { model: config.patchSmallModel ?? DEFAULT_FLASH, thinking: true },
     "verify": { model: config.verifyModel ?? DEFAULT_FLASH, thinking: false },
     "repair": { model: config.repairModel ?? DEFAULT_PRO, thinking: true },
+    "preflight": {
+      model: config.preflightModel ?? config.repairModel ?? DEFAULT_PRO,
+      thinking: config.preflightThinking ?? true,
+    },
+    "static-repair": {
+      model: config.staticRepairModel ?? config.repairModel ?? DEFAULT_PRO,
+      thinking: config.staticRepairThinking ?? true,
+    },
     "handoff": { model: config.handoffModel ?? DEFAULT_FLASH, thinking: false },
     "init/scan": { model: config.initScanModel ?? DEFAULT_FLASH, thinking: false },
     "init/rule-detect": { model: config.initRuleDetectModel ?? DEFAULT_PRO, thinking: true },

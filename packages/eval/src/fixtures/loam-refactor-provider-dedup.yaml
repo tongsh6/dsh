@@ -45,8 +45,8 @@ verifications:
     name: openai_compatible_uses_shared_auth_header_helper
   - type: file_contains
     file: packages/distill/src/providers/anthropic.ts
-    pattern: "buildAuthHeaders"
-    name: anthropic_uses_shared_auth_header_helper
+    pattern: "withRetry"
+    name: anthropic_uses_shared_retry_helper
   - type: shell
     command: "pnpm run typecheck"
     name: workspace_typecheck_passes

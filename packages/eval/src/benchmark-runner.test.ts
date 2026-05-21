@@ -16,6 +16,7 @@ import {
   formatComparisonReport,
   formatEvaluationReport,
   summarizePatchRecords,
+  summarizePatchDiagnostics,
   collectTaskDiagnostics,
   collectPlanDiagnostics,
   classifyTaskFailure,
@@ -291,6 +292,119 @@ describe("collectTaskDiagnostics", () => {
     assert.equal(diagnostics.finalStatus, "repair_exhausted");
     assert.equal(diagnostics.verifyResults[0]!.results[0]!.output, longOutput);
     assert.ok(diagnostics.verifyResults[0]!.results[0]!.output.length > 1000);
+  });
+
+  it("preserves patch observability fields for post-run diagnosis", () => {
+    const diagnostics = collectTaskDiagnostics({
+      version: "0.1",
+      status: "repair_exhausted",
+      task: { description: "fix", type: "bugfix", created_at: "2026-05-20T00:00:00.000Z" },
+      patches: [
+        {
+          round: 1,
+          phase: "patch",
+          patch: "<PATCH>...</PATCH>",
+          apply_status: "partial_ok",
+          files_changed: ["src/a.ts"],
+          coverage: "partial",
+          covered_required_files: ["src/a.ts"],
+          missing_required_files: ["src/b.ts"],
+          coverage_finalization_attempted: true,
+          plan_file_contract_version: "v2",
+          patch_partial_reason: "missing_required_files: [src/b.ts]",
+        },
+        {
+          round: 1,
+          phase: "repair",
+          patch: "<empty>",
+          apply_status: "failed",
+          files_changed: [],
+          dsml_salvage_applied: true,
+        },
+      ],
+      patch_rounds: [{
+        round: 1,
+        action: "invalid",
+        invalid_reason: "no action",
+        dsml_salvage_applied: true,
+        duration_ms: 10,
+      }],
+      tool_rounds: [],
+      plan_contract_attempts: [],
+      preflight_results: [],
+      verify_results: [],
+      static_scan_runs: [],
+      static_repair_results: [],
+      deepseek_usage: [],
+      repair_rounds: 1,
+      managed_files: [],
+    });
+
+    assert.equal(diagnostics.patches[0]!.phase, "patch");
+    assert.equal(diagnostics.patches[0]!.coverage, "partial");
+    assert.deepEqual(diagnostics.patches[0]!.missing_required_files, ["src/b.ts"]);
+    assert.equal(diagnostics.patches[1]!.phase, "repair");
+    assert.equal(diagnostics.patches[1]!.empty_patch, true);
+    assert.equal(diagnostics.patches[1]!.literal_empty_patch, true);
+    assert.equal(diagnostics.patches[1]!.dsml_salvage_applied, true);
+  });
+});
+
+describe("summarizePatchDiagnostics", () => {
+  it("counts empty patches, DSML salvage, and missing required files", () => {
+    const summary = summarizePatchDiagnostics({
+      version: "0.1",
+      status: "repair_exhausted",
+      task: { description: "fix", type: "bugfix", created_at: "2026-05-20T00:00:00.000Z" },
+      patches: [
+        {
+          round: 1,
+          phase: "patch",
+          patch: "<PATCH>...</PATCH>",
+          apply_status: "partial_ok",
+          files_changed: ["src/a.ts"],
+          coverage: "partial",
+          missing_required_files: ["src/b.ts"],
+        },
+        {
+          round: 1,
+          phase: "repair",
+          patch: "",
+          apply_status: "failed",
+          files_changed: [],
+        },
+        {
+          round: 2,
+          phase: "repair",
+          patch: "<PATCH>broken</PATCH>",
+          apply_status: "failed",
+          files_changed: [],
+          dsml_salvage_applied: true,
+        },
+      ],
+      patch_rounds: [
+        { round: 1, action: "invalid", dsml_salvage_applied: true, duration_ms: 1 },
+      ],
+      tool_rounds: [],
+      plan_contract_attempts: [],
+      preflight_results: [],
+      verify_results: [],
+      static_scan_runs: [],
+      static_repair_results: [],
+      deepseek_usage: [],
+      repair_rounds: 2,
+      managed_files: [],
+    });
+
+    assert.equal(summary.totalPatchRecords, 3);
+    assert.deepEqual(summary.byPhase, { patch: 1, repair: 2 });
+    assert.equal(summary.emptyPatchRecords, 1);
+    assert.equal(summary.failedEmptyPatchRecords, 1);
+    assert.equal(summary.failedNonEmptyPatchRecords, 1);
+    assert.equal(summary.dsmlSalvageAppliedRecords, 1);
+    assert.equal(summary.dsmlSalvageAppliedRounds, 2);
+    assert.equal(summary.partialCoverageRecords, 1);
+    assert.deepEqual(summary.missingRequiredFiles, ["src/b.ts"]);
   });
 });
 

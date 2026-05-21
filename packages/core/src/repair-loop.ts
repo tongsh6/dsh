@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { DeepSeekClient, DeepSeekMessage } from "@dsh/provider";
+import type { DeepSeekClient, DeepSeekMessage, RouteTarget } from "@dsh/provider";
 import type { TaskState, PatchRecord } from "./task-state.js";
 import { transition, writeTaskState } from "./task-state.js";
 import { buildDynamicContext } from "./context-builder.js";
@@ -10,7 +10,7 @@ import { parseChanges, applyChanges } from "./patch-parser.js";
 import { recoverDsmlWrappedChange } from "./dsml-recovery.js";
 import { buildPlanFileContract } from "./plan-file-contract.js";
 import { validatePatchCoverage } from "./patch-coverage.js";
-import { runVerify, runVerifyAssertions, parseAssertion, isAllPassed, formatResults } from "./verifier.js";
+import { runVerify, runVerifyAssertions, parseAssertion, isAllPassed, formatResults, buildFailedAssertionDiagnostics } from "./verifier.js";
 import type { VerifyAssertion } from "./verifier.js";
 import type { ContextLayers } from "./context-builder.js";
 import {
@@ -34,6 +34,7 @@ export interface RepairConfig {
   cwd: string;
   maxRounds: number;
   contextLayers: ContextLayers;
+  target: RouteTarget;
   onRound?: (round: number, result: RepairRoundResult) => void;
 }
 
@@ -158,6 +159,85 @@ interface FailureSourceLocation {
   line: number;
   col?: number;
   message: string;
+}
+
+function isEmptyPatchText(patch: string | null | undefined): boolean {
+  const trimmed = (patch ?? "").trim();
+  return trimmed === "" || trimmed === "<empty>";
+}
+
+function buildRepairStallHint(prevPatch: PatchRecord | undefined): string | null {
+  if (!prevPatch?.repair_stall_reason) return null;
+
+  const missing = prevPatch.missing_required_files ?? [];
+  const missingLine = missing.length > 0
+    ? `Missing required files still not covered: ${missing.join(", ")}`
+    : "No explicit missing required file list is available; use the failed verification and previous patch record.";
+
+  const reason =
+    prevPatch.repair_stall_reason === "empty_patch"
+      ? "The previous repair round emitted no usable change block."
+      : prevPatch.repair_stall_reason === "no_required_coverage_progress"
+        ? "The previous repair round changed code but did not cover any new required target file."
+        : "The previous repair round left required files uncovered.";
+
+  return [
+    "## REPAIR STALL DETECTED",
+    reason,
+    missingLine,
+    "Do not spend another round only exploring. Use the evidence already available and emit a concrete change block that covers the missing target.",
+    "If you need one file, output one change block for that file. If several files remain, output one change block per missing file.",
+    "An empty patch, prose-only answer, or <DONE/> will be treated as no progress.",
+  ].join("\n");
+}
+
+function buildFinalRepairRequest(prevPatch: PatchRecord | undefined): string {
+  const missing = prevPatch?.missing_required_files ?? [];
+  return [
+    "## SYSTEM: REPAIR TOOL ACCESS PAUSED",
+    "You have used the available repair tool budget for this round.",
+    missing.length > 0
+      ? `Required files still missing coverage: ${missing.join(", ")}`
+      : "Use the verification failure and previous patch evidence already in context.",
+    "Now emit the final repair change block. Do not call tools. Do not answer with prose only. Do not output <DONE/>.",
+  ].join("\n");
+}
+
+function classifyRepairProgress(args: {
+  patchText: string | null;
+  patched: boolean;
+  filesChanged: string[];
+  previousCoveredRequiredFiles: string[];
+  coveredRequiredFiles: string[];
+  missingRequiredFiles: string[];
+}): {
+  repairProgress: NonNullable<PatchRecord["repair_progress"]>;
+  repairStallReason?: NonNullable<PatchRecord["repair_stall_reason"]>;
+} {
+  if (isEmptyPatchText(args.patchText)) {
+    return { repairProgress: "empty_patch", repairStallReason: "empty_patch" };
+  }
+  if (!args.patched) {
+    return { repairProgress: "apply_failed" };
+  }
+
+  const previousCovered = new Set(args.previousCoveredRequiredFiles);
+  const addedRequiredCoverage = args.coveredRequiredFiles.some((file) => !previousCovered.has(file));
+  if (addedRequiredCoverage) {
+    return { repairProgress: "advanced_required_coverage" };
+  }
+
+  if (args.missingRequiredFiles.length > 0) {
+    return {
+      repairProgress: "no_required_coverage_progress",
+      repairStallReason: "no_required_coverage_progress",
+    };
+  }
+
+  return {
+    repairProgress: args.filesChanged.length > 0 ? "changed_non_required_files" : "empty_patch",
+    ...(args.filesChanged.length > 0 ? {} : { repairStallReason: "empty_patch" as const }),
+  };
 }
 
 function isInsideDir(baseDir: string, targetPath: string): boolean {
@@ -440,10 +520,11 @@ export async function runRepairLoop(
       ? [
           "## PATCH INCOMPLETE",
           `Previous patch round did not cover all required target files. Detail: ${incompleteDetail}`,
-          `Files already modified (do NOT re-modify): ${(prevPatch?.files_changed ?? []).join(", ") || "(none)"}`,
-          "PRIMARY REPAIR TASK: emit change blocks for the uncovered files. Do not duplicate edits to already-modified files.",
+          `Files already modified: ${(prevPatch?.files_changed ?? []).join(", ") || "(none)"}`,
+          "PRIMARY REPAIR TASK: emit change blocks for the uncovered files. Avoid duplicating edits to already-modified files unless a failed verification assertion still targets that file or the previous change is wrong.",
         ].join("\n")
       : null;
+    const repairStallHint = buildRepairStallHint(prevPatch);
 
     const isCompilationError = failureHints?.includes("COMPILATION ERRORS") || failureHints?.includes("signature-mismatch") || false;
     const isCompletionMode = incompleteHint !== null;
@@ -453,7 +534,7 @@ export async function runRepairLoop(
       "1. Your PRIMARY goal is to COMPLETE the original task — the previous attempt was INCOMPLETE.",
       "2. Focus on the uncovered files listed above. Read each one, understand what change is needed, then produce the change block.",
       "3. You MAY add new functions, classes, imports, or variables as needed to complete the task.",
-      "4. Do NOT re-modify files that were already changed — only fill in what's missing.",
+      "4. Avoid re-modifying files that were already changed unless a failed verification assertion still targets that file or the previous change is wrong.",
       "5. Produce one change block per uncovered file. Cover every file listed in the PATCH INCOMPLETE section.",
       "6. If you're unsure what a file needs, use read_file to inspect it first.",
       "7. After producing all change blocks, output <DONE/>.",
@@ -476,10 +557,23 @@ export async function runRepairLoop(
       "9. If you changed a function signature (parameters or return type), check ALL callers — they likely need updating, or you should revert the signature change.",
     ].join("\n");
 
+    const rawRepairAssertions = (current.plan?.verify_assertions ?? []) as unknown[];
+    const parsedRepairAssertions = rawRepairAssertions
+      .map((raw) => parseAssertion(raw))
+      .filter((a): a is VerifyAssertion => a !== null);
+    const failedAssertionDiagnostics =
+      prevVerify && parsedRepairAssertions.length > 0
+        ? buildFailedAssertionDiagnostics(parsedRepairAssertions, prevVerify.results)
+        : null;
+
     const taskDescription = [
       isCompletionMode ? completionConstraints : repairConstraints,
       "",
+      failedAssertionDiagnostics ?? "",
+      "",
       incompleteHint ?? "",
+      "",
+      repairStallHint ?? "",
       "",
       failureHints ?? (!isCompletionMode ? "The previous patch failed verification. Analyze the errors and fix the code." : ""),
       "",
@@ -511,15 +605,15 @@ export async function runRepairLoop(
     for (let tr = 0; tr <= MAX_REPAIR_TOOL_ROUNDS; tr++) {
       const startedAt = Date.now();
       const response = await config.client.chat({
-        model: "deepseek-v4-pro",
+        model: config.target.model,
         messages,
-        thinking: true,
+        thinking: config.target.thinking,
         tools: repairTools as unknown as Record<string, unknown>[],
       });
       recordDeepSeekUsage(current, {
         phase: "repair",
-        model: "deepseek-v4-pro",
-        thinking: true,
+        model: config.target.model,
+        thinking: config.target.thinking,
         durationMs: Date.now() - startedAt,
         response,
       });
@@ -533,20 +627,44 @@ export async function runRepairLoop(
       if (_salvage.recovered) dsmlSalvageApplied = true;
       const toolCalls = choice.message.tool_calls;
 
-      if (toolCalls && toolCalls.length > 0 && tr < MAX_REPAIR_TOOL_ROUNDS) {
-        const assistantMsg: DeepSeekMessage = { role: "assistant", content, tool_calls: toolCalls };
-        if (choice.message.reasoning_content) assistantMsg.reasoning_content = choice.message.reasoning_content;
-        messages.push(assistantMsg);
-        
-        const toolResult = await executeToolCallsForPolicy({
-          toolCalls,
-          toolPolicy: repairToolPolicy,
-          tools: ALL_TOOL_DEFINITIONS,
-          cwd: config.cwd,
+      if (toolCalls && toolCalls.length > 0) {
+        if (tr < MAX_REPAIR_TOOL_ROUNDS) {
+          const assistantMsg: DeepSeekMessage = { role: "assistant", content, tool_calls: toolCalls };
+          if (choice.message.reasoning_content) assistantMsg.reasoning_content = choice.message.reasoning_content;
+          messages.push(assistantMsg);
+
+          const toolResult = await executeToolCallsForPolicy({
+            toolCalls,
+            toolPolicy: repairToolPolicy,
+            tools: ALL_TOOL_DEFINITIONS,
+            cwd: config.cwd,
+          });
+          messages.push(...toolResult.messages);
+          repairToolRounds.push({ round: tr + 1, calls: toolResult.records });
+          continue;
+        }
+
+        messages.push({ role: "user", content: buildFinalRepairRequest(current.patches.at(-1)) });
+        const finalStartedAt = Date.now();
+        const finalResponse = await config.client.chat({
+          model: config.target.model,
+          messages,
+          thinking: config.target.thinking,
         });
-        messages.push(...toolResult.messages);
-        repairToolRounds.push({ round: tr + 1, calls: toolResult.records });
-        continue;
+        recordDeepSeekUsage(current, {
+          phase: "repair",
+          model: config.target.model,
+          thinking: config.target.thinking,
+          durationMs: Date.now() - finalStartedAt,
+          response: finalResponse,
+        });
+
+        const finalChoice = finalResponse.choices[0];
+        if (finalChoice) {
+          const finalSalvage = recoverDsmlWrappedChange(finalChoice.message.content);
+          content = finalSalvage.content;
+          if (finalSalvage.recovered) dsmlSalvageApplied = true;
+        }
       }
       break;
     }
@@ -597,6 +715,7 @@ export async function runRepairLoop(
     // completion signal (spec docs/specs/2026-05-19 §4.8).
     current.repair_rounds = round;
     const repairContract = buildPlanFileContract(current.plan);
+    const previousCoveredRequiredFiles = current.patches.at(-1)?.covered_required_files ?? [];
     const cumulativeChanged = [
       ...current.patches.flatMap((p) => p.files_changed),
       ...filesChanged,
@@ -607,6 +726,7 @@ export async function runRepairLoop(
     });
     const repairPatchRecord: PatchRecord = {
       round,
+      phase: "repair",
       patch: patchText ?? "",
       apply_status: patched ? "ok" : "failed",
       files_changed: filesChanged,
@@ -617,6 +737,18 @@ export async function runRepairLoop(
       repairPatchRecord.coverage = repairCoverage.fullRequiredCoverage ? "full" : "partial";
       repairPatchRecord.covered_required_files = repairCoverage.coveredRequiredFiles;
       repairPatchRecord.missing_required_files = repairCoverage.missingRequiredFiles;
+    }
+    const repairProgress = classifyRepairProgress({
+      patchText,
+      patched,
+      filesChanged,
+      previousCoveredRequiredFiles,
+      coveredRequiredFiles: repairCoverage.coveredRequiredFiles,
+      missingRequiredFiles: repairCoverage.missingRequiredFiles,
+    });
+    repairPatchRecord.repair_progress = repairProgress.repairProgress;
+    if (repairProgress.repairStallReason) {
+      repairPatchRecord.repair_stall_reason = repairProgress.repairStallReason;
     }
     current.patches.push(repairPatchRecord);
 

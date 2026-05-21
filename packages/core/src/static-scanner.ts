@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { DeepSeekClient } from "@dsh/provider";
+import type { DeepSeekClient, RouteTarget } from "@dsh/provider";
 import {
   assembleIntelligence,
   generateRepoContext,
@@ -98,12 +98,13 @@ export async function repairStaticScanTopN(params: {
   selectedFindings: StaticScanFinding[];
   command: string;
   topNConfig: TopNConfig;
+  target: RouteTarget;
 }): Promise<{
   repair: StaticRepairResult;
   patchRecord?: TaskState["patches"][number];
   postScan?: StaticScanResult;
 }> {
-  const { cwd, client, state, scanRun, selectedFindings, command, topNConfig } = params;
+  const { cwd, client, state, scanRun, selectedFindings, command, topNConfig, target } = params;
   const round = (state.static_repair_results?.length ?? 0) + 1;
 
   if (selectedFindings.length === 0) {
@@ -146,14 +147,14 @@ export async function repairStaticScanTopN(params: {
 
   const startedAt = Date.now();
   const response = await client.chat({
-    model: "deepseek-v4-pro",
+    model: target.model,
     messages: buildMessages({ context, taskDescription, phase: "patch" }),
-    thinking: true,
+    thinking: target.thinking,
   });
   recordDeepSeekUsage(state, {
     phase: "static-repair",
-    model: "deepseek-v4-pro",
-    thinking: true,
+    model: target.model,
+    thinking: target.thinking,
     durationMs: Date.now() - startedAt,
     response,
   });

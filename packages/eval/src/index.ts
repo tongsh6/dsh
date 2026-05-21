@@ -25,11 +25,19 @@ export {
   compareResults,
   formatComparisonReport,
   classifyTaskFailure,
+  collectTaskDiagnostics,
+  summarizePatchDiagnostics,
   runTask,
   runAll,
   formatEvaluationReport,
 } from "./benchmark-runner.js";
-export type { TaskResult, TaskFailureClass, ComparisonReport } from "./benchmark-runner.js";
+export type {
+  TaskResult,
+  TaskFailureClass,
+  ComparisonReport,
+  PatchDiagnosticsSummary,
+  TaskDiagnostics,
+} from "./benchmark-runner.js";
 
 export {
   EVIDENCE_POLICIES,

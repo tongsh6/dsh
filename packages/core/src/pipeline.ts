@@ -333,6 +333,10 @@ function resolveModelRoutingConfig(cwd: string): ModelRoutingConfig {
     patchLargeModel: deepseek.default_model,
     verifyModel: deepseek.flash_model,
     repairModel: deepseek.default_model,
+    preflightModel: deepseek.preflight_model ?? deepseek.default_model,
+    preflightThinking: deepseek.preflight_thinking ?? deepseek.thinking_default,
+    staticRepairModel: deepseek.static_repair_model ?? deepseek.default_model,
+    staticRepairThinking: deepseek.static_repair_thinking ?? deepseek.thinking_default,
     handoffModel: deepseek.flash_model,
     initScanModel: deepseek.flash_model,
     initRuleDetectModel: deepseek.default_model,
@@ -637,6 +641,10 @@ async function runPostImplementationStaticScan(params: {
     return state;
   }
 
+  const staticRepairTarget = classify(
+    { command: "static-repair" },
+    resolveModelRoutingConfig(cwd),
+  );
   const repair = await repairStaticScanTopN({
     cwd,
     client,
@@ -645,6 +653,7 @@ async function runPostImplementationStaticScan(params: {
     selectedFindings: scan.run.selected_top_n,
     command: scanConfig.command,
     topNConfig: scanConfig.topNConfig,
+    target: staticRepairTarget,
   });
 
   state.static_repair_results.push(repair.repair);
@@ -847,7 +856,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
   const fullLayers = { ...layers, dynamic };
 
   const fileCount = state.plan?.files?.length ?? 0;
-  const target = classify({ command: "patch", fileCount });
+  const target = classify({ command: "patch", fileCount }, resolveModelRoutingConfig(cwd));
   const patchToolPolicy = getToolPolicy("patch");
   const patchTools = filterToolsForPolicy(ALL_TOOL_DEFINITIONS, patchToolPolicy);
 
@@ -1147,6 +1156,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
 
   const newPatch: PatchRecord = {
     round: (state.repair_rounds ?? 0) + 1,
+    phase: "patch",
     patch: patchText,
     apply_status: applyStatus,
     files_changed: dedupedFiles,
@@ -1198,10 +1208,11 @@ export async function runVerify(params: VerifyParams): Promise<TaskState> {
     throw new Error(`当前状态为 ${state.status}，需要 patched、repairing、patch_failed 或 patch_partial`);
   }
 
-  // patch_failed / patch_partial: route directly to repair without running the
-  // verify assertions. patch_partial already carries a structured missing-file
-  // signal on the patch record (spec 2026-05-19 §4.8 D2).
-  if (state.status === "patch_failed" || state.status === "patch_partial") {
+  // patch_failed: route directly to repair without running assertions because
+  // there may be no coherent applied state to verify. patch_partial still has
+  // a real applied state, so run assertions below to give repair the full
+  // verification contract in addition to missing_required_files.
+  if (state.status === "patch_failed") {
     state = transition(state, "verification_failed");
     writeTaskState(cwd, state);
     return state;
@@ -1239,7 +1250,11 @@ export async function runVerify(params: VerifyParams): Promise<TaskState> {
   const round = (state.verify_results?.length ?? 0) + 1;
   state.verify_results.push({ round, results });
 
-  state = transition(state, isAllPassed(results) ? "verified" : "verification_failed");
+  const passed = isAllPassed(results);
+  state = transition(
+    state,
+    passed && state.status !== "patch_partial" ? "verified" : "verification_failed",
+  );
   writeTaskState(cwd, state);
 
   return state;
@@ -1261,6 +1276,7 @@ export async function runRepair(params: RepairParams): Promise<TaskState> {
   }
 
   const layers = await buildLayers(cwd, state);
+  const target = classify({ command: "repair" }, resolveModelRoutingConfig(cwd));
 
   const config = loadDshConfig(cwd);
   if (config.verify && state.plan) {
@@ -1282,6 +1298,7 @@ export async function runRepair(params: RepairParams): Promise<TaskState> {
     cwd,
     maxRounds,
     contextLayers: layers,
+    target,
     onRound,
   });
 
@@ -1319,6 +1336,7 @@ export async function runPreflight(params: PreflightParams): Promise<TaskState> 
   writeTaskState(cwd, state);
 
   const config = loadDshConfig(cwd);
+  const target = classify({ command: "preflight" }, resolveModelRoutingConfig(cwd));
   const initialPreflight = config.verify?.initial_preflight !== false;
 
   if (!initialPreflight) {
@@ -1353,15 +1371,15 @@ export async function runPreflight(params: PreflightParams): Promise<TaskState> 
   for (let turn = 1; turn <= MAX_PREFLIGHT_TURNS; turn++) {
     const startedAt = Date.now();
     const response = await client.chat({
-      model: "deepseek-v4-pro",
+      model: target.model,
       messages,
-      thinking: true,
+      thinking: target.thinking,
       tools: preflightTools as unknown as Record<string, unknown>[],
     });
     recordDeepSeekUsage(state, {
       phase: "preflight",
-      model: "deepseek-v4-pro",
-      thinking: true,
+      model: target.model,
+      thinking: target.thinking,
       durationMs: Date.now() - startedAt,
       response,
     });
@@ -1444,7 +1462,7 @@ export async function runFullPipeline(params: FullPipelineParams): Promise<TaskS
   await runPreflight({ cwd, client });
   let state = await runPatch({ cwd, client, auto, dryRun });
 
-  if (state.status === "patched") {
+  if (state.status === "patched" || state.status === "patch_partial") {
     try {
       state = await runVerify({ cwd });
     } catch (e) {
@@ -1458,7 +1476,11 @@ export async function runFullPipeline(params: FullPipelineParams): Promise<TaskS
     }
   }
 
-  if (state.status === "verification_failed" || state.status === "patch_failed") {
+  if (
+    state.status === "verification_failed" ||
+    state.status === "patch_failed" ||
+    state.status === "patch_partial"
+  ) {
     state = await runRepair({ cwd, client, maxRounds: maxRepairRounds });
   }
 

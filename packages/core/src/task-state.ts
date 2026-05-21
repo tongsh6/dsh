@@ -40,6 +40,7 @@ const planContractAttemptSchema = z.object({
 
 const patchRecordSchema = z.object({
   round: z.number(),
+  phase: z.enum(["patch", "repair"]).optional(),
   patch: z.string(),
   apply_status: z.enum(["ok", "failed", "skipped", "partial_ok"]),
   files_changed: z.array(z.string()),
@@ -64,6 +65,18 @@ const patchRecordSchema = z.object({
   // (ledger §8 patchloop-dsml-content-leak) — explore stage uses the
   // patchRoundSchema's homonymous field; repair uses this one on PatchRecord.
   dsml_salvage_applied: z.boolean().optional(),
+  repair_progress: z.enum([
+    "advanced_required_coverage",
+    "changed_non_required_files",
+    "empty_patch",
+    "apply_failed",
+    "no_required_coverage_progress",
+  ]).optional(),
+  repair_stall_reason: z.enum([
+    "empty_patch",
+    "missing_required_files",
+    "no_required_coverage_progress",
+  ]).optional(),
 });
 
 const patchRoundSchema = z.object({

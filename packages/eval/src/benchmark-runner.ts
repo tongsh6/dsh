@@ -40,7 +40,20 @@ export interface TaskResult {
   toolRounds: number;
   toolCalls: { name: string; status: string }[];
   patchRounds: number;
-  patchRoundActions: { round: number; action: string; toolCalls?: { name: string; status: string }[] }[];
+  patchRoundActions: {
+    round: number;
+    action: string;
+    toolCalls?: { name: string; status: string }[];
+    dsmlSalvageApplied?: boolean;
+    invalidReason?: string;
+    change?: {
+      op: string;
+      file: string;
+      applyStatus: string;
+      applyError?: string;
+    };
+  }[];
+  patchDiagnostics?: PatchDiagnosticsSummary;
   verifyOutput: { command: string }[];
   planDiagnostics?: PlanDiagnostics;
   diagnostics?: TaskDiagnostics;
@@ -70,12 +83,48 @@ export interface TaskDiagnostics {
   }>;
   patches: Array<{
     round: number;
+    phase?: "patch" | "repair";
     apply_status: string;
     files_changed: string[];
+    empty_patch: boolean;
+    literal_empty_patch: boolean;
     rolled_back?: boolean;
     rollback_reason?: string;
+    coverage?: "full" | "partial";
+    covered_required_files?: string[];
+    missing_required_files?: string[];
+    coverage_finalization_attempted?: boolean;
+    plan_file_contract_version?: "legacy" | "v2";
+    patch_partial_reason?: string;
+    patch_incomplete_reason?: string;
+    dsml_salvage_applied?: boolean;
+    repair_progress?: string;
+    repair_stall_reason?: string;
+    tool_rounds?: Array<{
+      round: number;
+      calls: Array<{
+        name: string;
+        status: string;
+        summary: string;
+      }>;
+    }>;
     patch: string;
   }>;
+}
+
+export interface PatchDiagnosticsSummary {
+  totalPatchRecords: number;
+  byPhase: Record<string, number>;
+  emptyPatchRecords: number;
+  literalEmptyPatchRecords: number;
+  failedEmptyPatchRecords: number;
+  failedNonEmptyPatchRecords: number;
+  dsmlSalvageAppliedRecords: number;
+  dsmlSalvageAppliedRounds: number;
+  partialCoverageRecords: number;
+  repairEmptyPatchStalls: number;
+  repairNoCoverageProgressStalls: number;
+  missingRequiredFiles: string[];
 }
 
 export interface PlanDiagnostics {
@@ -174,15 +223,125 @@ export function collectTaskDiagnostics(state: TaskState): TaskDiagnostics {
         duration_ms: result.duration_ms,
       })),
     })),
-    patches: (state.patches ?? []).map((patch) => ({
-      round: patch.round,
-      apply_status: patch.apply_status,
-      files_changed: patch.files_changed,
-      ...(patch.rolled_back !== undefined ? { rolled_back: patch.rolled_back } : {}),
-      ...(patch.rollback_reason !== undefined ? { rollback_reason: patch.rollback_reason } : {}),
-      patch: patch.patch,
-    })),
+    patches: (state.patches ?? []).map((patch) => {
+      const emptyPatch = isEmptyPatchText(patch.patch);
+      return {
+        round: patch.round,
+        ...(patch.phase !== undefined ? { phase: patch.phase } : {}),
+        apply_status: patch.apply_status,
+        files_changed: patch.files_changed,
+        empty_patch: emptyPatch,
+        literal_empty_patch: isLiteralEmptyPatchText(patch.patch),
+        ...(patch.rolled_back !== undefined ? { rolled_back: patch.rolled_back } : {}),
+        ...(patch.rollback_reason !== undefined ? { rollback_reason: patch.rollback_reason } : {}),
+        ...(patch.coverage !== undefined ? { coverage: patch.coverage } : {}),
+        ...(patch.covered_required_files !== undefined ? { covered_required_files: patch.covered_required_files } : {}),
+        ...(patch.missing_required_files !== undefined ? { missing_required_files: patch.missing_required_files } : {}),
+        ...(patch.coverage_finalization_attempted !== undefined ? { coverage_finalization_attempted: patch.coverage_finalization_attempted } : {}),
+        ...(patch.plan_file_contract_version !== undefined ? { plan_file_contract_version: patch.plan_file_contract_version } : {}),
+        ...(patch.patch_partial_reason !== undefined ? { patch_partial_reason: patch.patch_partial_reason } : {}),
+        ...(patch.patch_incomplete_reason !== undefined ? { patch_incomplete_reason: patch.patch_incomplete_reason } : {}),
+        ...(patch.dsml_salvage_applied !== undefined ? { dsml_salvage_applied: patch.dsml_salvage_applied } : {}),
+        ...(patch.repair_progress !== undefined ? { repair_progress: patch.repair_progress } : {}),
+        ...(patch.repair_stall_reason !== undefined ? { repair_stall_reason: patch.repair_stall_reason } : {}),
+        ...(patch.tool_rounds !== undefined
+          ? {
+              tool_rounds: patch.tool_rounds.map((round) => ({
+                round: round.round,
+                calls: round.calls.map((call) => ({
+                  name: call.name,
+                  status: call.status,
+                  summary: call.summary,
+                })),
+              })),
+            }
+          : {}),
+        patch: patch.patch,
+      };
+    }),
   };
+}
+
+export function summarizePatchDiagnostics(state: TaskState): PatchDiagnosticsSummary {
+  const byPhase: Record<string, number> = {};
+  const missingRequiredFiles = new Set<string>();
+  let emptyPatchRecords = 0;
+  let literalEmptyPatchRecords = 0;
+  let failedEmptyPatchRecords = 0;
+  let failedNonEmptyPatchRecords = 0;
+  let dsmlSalvageAppliedRecords = 0;
+  let partialCoverageRecords = 0;
+  let repairEmptyPatchStalls = 0;
+  let repairNoCoverageProgressStalls = 0;
+
+  for (const patch of state.patches ?? []) {
+    const phase = patch.phase ?? "unknown";
+    byPhase[phase] = (byPhase[phase] ?? 0) + 1;
+    const empty = isEmptyPatchText(patch.patch);
+    if (empty) emptyPatchRecords++;
+    if (isLiteralEmptyPatchText(patch.patch)) literalEmptyPatchRecords++;
+    if (patch.apply_status === "failed" && empty) failedEmptyPatchRecords++;
+    if (patch.apply_status === "failed" && !empty) failedNonEmptyPatchRecords++;
+    if (patch.dsml_salvage_applied) dsmlSalvageAppliedRecords++;
+    if (patch.coverage === "partial") partialCoverageRecords++;
+    if (patch.repair_stall_reason === "empty_patch") repairEmptyPatchStalls++;
+    if (patch.repair_stall_reason === "no_required_coverage_progress") repairNoCoverageProgressStalls++;
+    for (const file of patch.missing_required_files ?? []) missingRequiredFiles.add(file);
+  }
+
+  const dsmlSalvageAppliedRounds = [
+    ...(state.patch_rounds ?? []).map((round) => round.dsml_salvage_applied === true),
+    ...(state.patches ?? []).map((patch) => patch.dsml_salvage_applied === true),
+  ].filter(Boolean).length;
+
+  return {
+    totalPatchRecords: state.patches?.length ?? 0,
+    byPhase,
+    emptyPatchRecords,
+    literalEmptyPatchRecords,
+    failedEmptyPatchRecords,
+    failedNonEmptyPatchRecords,
+    dsmlSalvageAppliedRecords,
+    dsmlSalvageAppliedRounds,
+    partialCoverageRecords,
+    repairEmptyPatchStalls,
+    repairNoCoverageProgressStalls,
+    missingRequiredFiles: [...missingRequiredFiles],
+  };
+}
+
+function summarizePatchRoundActions(
+  patchRounds: TaskState["patch_rounds"],
+): TaskResult["patchRoundActions"] {
+  return (patchRounds ?? []).map((pr) => ({
+    round: pr.round,
+    action: pr.action,
+    toolCalls:
+      pr.action === "tools" && pr.tool_calls
+        ? pr.tool_calls.map((tc) => ({ name: tc.name, status: tc.status }))
+        : undefined,
+    ...(pr.dsml_salvage_applied !== undefined ? { dsmlSalvageApplied: pr.dsml_salvage_applied } : {}),
+    ...(pr.invalid_reason !== undefined ? { invalidReason: pr.invalid_reason } : {}),
+    ...(pr.change !== undefined
+      ? {
+          change: {
+            op: pr.change.op,
+            file: pr.change.file,
+            applyStatus: pr.change.apply_status,
+            ...(pr.change.apply_error !== undefined ? { applyError: pr.change.apply_error } : {}),
+          },
+        }
+      : {}),
+  }));
+}
+
+function isEmptyPatchText(patch: string): boolean {
+  const trimmed = patch.trim();
+  return trimmed === "" || trimmed === "<empty>";
+}
+
+function isLiteralEmptyPatchText(patch: string): boolean {
+  return patch.trim() === "<empty>";
 }
 
 export function collectPlanDiagnostics(state: TaskState): PlanDiagnostics | undefined {
@@ -634,47 +793,43 @@ export async function runTask(
 
     // Record patch loop stats (v0.4)
     result.patchRounds = state.patch_rounds?.length ?? 0;
-    result.patchRoundActions = (state.patch_rounds ?? []).map((pr) => ({
-      round: pr.round,
-      action: pr.action,
-      toolCalls:
-        pr.action === "tools" && pr.tool_calls
-          ? pr.tool_calls.map((tc) => ({ name: tc.name, status: tc.status }))
-          : undefined,
-    }));
+    result.patchRoundActions = summarizePatchRoundActions(state.patch_rounds);
 
     // 5. Verify
-    if (fixture.verificationCommands.length > 0 || (fixture.verifications && fixture.verifications.length > 0)) {
-      try {
-        state = await runVerify({ cwd: repoPath });
-        // Capture verify output for diagnosis
-        result.verifyOutput = (state.verify_results ?? []).map((vr) => ({
-          command: (vr.results as Array<{ status: string; command: string; output: string }> | undefined)
-            ?.map((r) => `${r.status}: ${r.command}\n${r.output?.slice(0, 500)}`)
-            .join("\n") ?? "",
-        }));
+    try {
+      state = await runVerify({ cwd: repoPath });
+      // Capture verify output for diagnosis
+      result.verifyOutput = (state.verify_results ?? []).map((vr) => ({
+        command: (vr.results as Array<{ status: string; command: string; output: string }> | undefined)
+          ?.map((r) => `${r.status}: ${r.command}\n${r.output?.slice(0, 500)}`)
+          .join("\n") ?? "",
+      }));
+    } catch (verifyErr) {
+      const msg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
+      if (msg.includes("没有配置验证命令")) {
+        // No verify commands configured — non-critical. patch_partial still
+        // falls through to repair below using its missing-required-files signal.
+      } else {
+        result.error = `verify failed: ${msg}`;
+      }
+    }
 
-        if (state.status === "verification_failed") {
-          // 6. Repair
-          try {
-            state = await runRepair({
-              cwd: repoPath,
-              client,
-              maxRounds: fixture.maxRepairRounds ?? 3,
-            });
-            repairRounds = state.repair_rounds;
-            repairSuccess = state.status === "verified";
-          } catch (repairErr) {
-            result.error = `repair failed: ${repairErr instanceof Error ? repairErr.message : String(repairErr)}`;
-          }
-        }
-      } catch (verifyErr) {
-        const msg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
-        if (msg.includes("没有配置验证命令")) {
-          // No verify commands configured — non-critical
-        } else {
-          result.error = `verify failed: ${msg}`;
-        }
+    if (
+      state.status === "verification_failed" ||
+      state.status === "patch_failed" ||
+      state.status === "patch_partial"
+    ) {
+      // 6. Repair
+      try {
+        state = await runRepair({
+          cwd: repoPath,
+          client,
+          maxRounds: fixture.maxRepairRounds ?? 3,
+        });
+        repairRounds = state.repair_rounds;
+        repairSuccess = state.status === "verified";
+      } catch (repairErr) {
+        result.error = `repair failed: ${repairErr instanceof Error ? repairErr.message : String(repairErr)}`;
       }
     }
 
@@ -735,6 +890,7 @@ export async function runTask(
     result.extraFiles = extraFiles;
     result.scopeViolation = extraFiles.length > 0;
     result.diagnostics = collectTaskDiagnostics(state);
+    result.patchDiagnostics = summarizePatchDiagnostics(state);
     result.planDiagnostics = collectPlanDiagnostics(state);
     result.failureClass = classifyTaskFailure(result);
 
@@ -747,14 +903,7 @@ export async function runTask(
     const stateOnDisk = readTaskState(repoPath);
     if (stateOnDisk) {
       result.patchRounds = stateOnDisk.patch_rounds?.length ?? 0;
-      result.patchRoundActions = (stateOnDisk.patch_rounds ?? []).map((pr) => ({
-        round: pr.round,
-        action: pr.action,
-        toolCalls:
-          pr.action === "tools" && pr.tool_calls
-            ? pr.tool_calls.map((tc) => ({ name: tc.name, status: tc.status }))
-            : undefined,
-      }));
+      result.patchRoundActions = summarizePatchRoundActions(stateOnDisk.patch_rounds);
 
       if (result.patchRounds > 0) {
         // v0.4: consolidate from patch_rounds
@@ -789,6 +938,7 @@ export async function runTask(
       result.filesChanged = patchSummary.filesChanged;
       result.actualProtocolOps = patchSummary.actualProtocolOps;
       result.diagnostics = collectTaskDiagnostics(stateOnDisk);
+      result.patchDiagnostics = summarizePatchDiagnostics(stateOnDisk);
       result.planDiagnostics = collectPlanDiagnostics(stateOnDisk);
     }
     result.failureClass = classifyTaskFailure(result);

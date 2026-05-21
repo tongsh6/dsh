@@ -51,6 +51,18 @@ describe("classify", () => {
     assert.equal(r.thinking, true);
   });
 
+  it("routes preflight to Pro with thinking", () => {
+    const r = classify({ command: "preflight" });
+    assert.equal(r.model, "deepseek-v4-pro");
+    assert.equal(r.thinking, true);
+  });
+
+  it("routes static-repair to Pro with thinking", () => {
+    const r = classify({ command: "static-repair" });
+    assert.equal(r.model, "deepseek-v4-pro");
+    assert.equal(r.thinking, true);
+  });
+
   it("routes handoff to Flash without thinking", () => {
     const r = classify({ command: "handoff" });
     assert.equal(r.model, "deepseek-v4-flash");
@@ -73,10 +85,16 @@ describe("classify", () => {
     const plan = classify({ command: "plan" }, { planModel: "custom-plan" });
     const patchSmall = classify({ command: "patch", fileCount: 1 }, { patchSmallModel: "custom-small" });
     const patchLarge = classify({ command: "patch", fileCount: 5 }, { patchLargeModel: "custom-large" });
+    const repair = classify({ command: "repair" }, { repairModel: "custom-repair" });
+    const preflight = classify({ command: "preflight" }, { preflightModel: "custom-preflight" });
+    const staticRepair = classify({ command: "static-repair" }, { staticRepairModel: "custom-static" });
 
     assert.equal(plan.model, "custom-plan");
     assert.equal(patchSmall.model, "custom-small");
     assert.equal(patchLarge.model, "custom-large");
+    assert.equal(repair.model, "custom-repair");
+    assert.equal(preflight.model, "custom-preflight");
+    assert.equal(staticRepair.model, "custom-static");
   });
 
   it("allows plan phase routing overrides", () => {

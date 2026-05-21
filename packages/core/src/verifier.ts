@@ -186,6 +186,79 @@ export function runVerifyAssertions(assertions: VerifyAssertion[], cwd: string):
   return assertions.map((a, i) => runAssertion(a, cwd, i));
 }
 
+function truncateForRepair(value: string, max = 600): string {
+  const normalized = value.replace(/\s+$/g, "");
+  return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized;
+}
+
+function describeFailedAssertionForRepair(
+  assertion: VerifyAssertion | undefined,
+  result: VerifyRunResult,
+): string {
+  if (!assertion) {
+    return [
+      `- Verification command failed: ${result.command}`,
+      `  Output: ${truncateForRepair(result.output)}`,
+    ].join("\n");
+  }
+
+  switch (assertion.type) {
+    case "file_exists":
+      return [
+        `- File existence assertion failed: ${assertion.file}`,
+        "  Expected: the file must exist.",
+        `  Output: ${truncateForRepair(result.output)}`,
+      ].join("\n");
+    case "file_not_exists":
+      return [
+        `- File absence assertion failed: ${assertion.file}`,
+        "  Expected: the file must not exist.",
+        `  Output: ${truncateForRepair(result.output)}`,
+      ].join("\n");
+    case "file_contains":
+      return [
+        `- File content assertion failed: ${assertion.file}`,
+        `  Expected: file should contain ${assertion.regex ? "regex" : "text"} pattern: ${assertion.pattern}`,
+        `  Output: ${truncateForRepair(result.output)}`,
+      ].join("\n");
+    case "file_not_contains":
+      return [
+        `- File negative-content assertion failed: ${assertion.file}`,
+        `  Expected: file should not contain ${assertion.regex ? "regex" : "text"} pattern: ${assertion.pattern}`,
+        `  Output: ${truncateForRepair(result.output)}`,
+      ].join("\n");
+    case "shell":
+      return [
+        `- Shell verification failed: ${assertion.name ? `${assertion.name}: ` : ""}${assertion.command}`,
+        `  Output: ${truncateForRepair(result.output)}`,
+      ].join("\n");
+    case "maven_test":
+      return [
+        `- Maven verification failed: ${result.command}`,
+        `  Output: ${truncateForRepair(result.output)}`,
+      ].join("\n");
+  }
+}
+
+export function buildFailedAssertionDiagnostics(
+  assertions: VerifyAssertion[],
+  results: VerifyRunResult[],
+): string | null {
+  const failed = results
+    .map((result, index) => ({ result, assertion: assertions[index] }))
+    .filter(({ result }) => result.status === "failed");
+
+  if (failed.length === 0) return null;
+
+  return [
+    "## FAILED VERIFICATION CONTRACTS",
+    "These are structured diagnostics from the configured verification assertions. Treat them as evidence for the repair, not as fixture-specific code hints.",
+    "If a low-level pattern appears to conflict with the original task semantics, prefer the smallest task-correct change and make the verification pass through that design.",
+    "",
+    ...failed.map(({ assertion, result }) => describeFailedAssertionForRepair(assertion, result)),
+  ].join("\n");
+}
+
 // Parse a single assertion value (typically loaded from YAML/JSON config).
 // Returns null on schema violation; caller decides whether to drop or throw.
 export function parseAssertion(raw: unknown): VerifyAssertion | null {

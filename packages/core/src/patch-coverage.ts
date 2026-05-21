@@ -19,6 +19,19 @@ export interface PatchCoverageValidation {
   strictFailureEligible: boolean;
 }
 
+function normalizeAppliedChangedFiles(files: string[]): string[] {
+  const normalized: string[] = [];
+  for (const file of files) {
+    const renameMatch = file.match(/^\s*(.+?)\s+->\s+(.+?)\s*$/);
+    const paths = renameMatch ? [renameMatch[1], renameMatch[2]] : [file];
+    for (const p of paths) {
+      const path = normalizePath(p);
+      if (path.length > 0) normalized.push(path);
+    }
+  }
+  return normalized;
+}
+
 // `appliedChangedFiles` must already be the set of files an apply step changed
 // for real — parsed-but-not-applied changes and no-op applies must be excluded
 // by the caller before reaching this validator (spec §4.2 rules 1-3).
@@ -26,9 +39,7 @@ export function validatePatchCoverage(args: {
   contract: PlanFileContract;
   appliedChangedFiles: string[];
 }): PatchCoverageValidation {
-  const applied = new Set(
-    args.appliedChangedFiles.map(normalizePath).filter((p) => p.length > 0),
-  );
+  const applied = new Set(normalizeAppliedChangedFiles(args.appliedChangedFiles));
 
   const required = args.contract.requiredTargetFiles.map((e) => e.path);
   const optional = args.contract.optionalTargetFiles.map((e) => e.path);
@@ -63,8 +74,7 @@ export function computeCoverageDelta(
   missingRequiredFiles: ReadonlySet<string>,
 ): Set<string> {
   const delta = new Set<string>();
-  for (const file of appliedChangedFiles) {
-    const normalized = normalizePath(file);
+  for (const normalized of normalizeAppliedChangedFiles(appliedChangedFiles)) {
     if (missingRequiredFiles.has(normalized)) {
       delta.add(normalized);
     }
