@@ -152,6 +152,7 @@ interface PatchObservabilitySummary {
   blockedWriteShellGuidanceRecords: number;
   renameIntentDetectedRecords: number;
   deterministicReferenceRepairRecords: number;
+  deterministicAssertionRepairRecords: number;
 }
 
 interface ReplicatedBenchmarkMetadata {
@@ -235,6 +236,7 @@ function summarizePatchObservabilityForConfig(
     blockedWriteShellGuidanceRecords: 0,
     renameIntentDetectedRecords: 0,
     deterministicReferenceRepairRecords: 0,
+    deterministicAssertionRepairRecords: 0,
   };
 
   for (const result of results.filter((r) => r.config === config)) {
@@ -256,6 +258,7 @@ function summarizePatchObservabilityForConfig(
       summary.blockedWriteShellGuidanceRecords += existing.blockedWriteShellGuidanceRecords ?? 0;
       summary.renameIntentDetectedRecords += existing.renameIntentDetectedRecords ?? 0;
       summary.deterministicReferenceRepairRecords += existing.deterministicReferenceRepairRecords ?? 0;
+      summary.deterministicAssertionRepairRecords += existing.deterministicAssertionRepairRecords ?? 0;
       continue;
     }
 
@@ -278,6 +281,7 @@ function summarizePatchObservabilityForConfig(
       if (patch.blocked_write_shell_guidance === true) summary.blockedWriteShellGuidanceRecords++;
       if (patch.rename_intent_detected === true) summary.renameIntentDetectedRecords++;
       if (patch.deterministic_reference_repair === true) summary.deterministicReferenceRepairRecords++;
+      if (patch.deterministic_assertion_repair === true) summary.deterministicAssertionRepairRecords++;
     }
   }
 
@@ -429,6 +433,7 @@ export function formatReplicatedBenchmarkReport(
     "blockedWriteShellGuidanceRecords",
     "renameIntentDetectedRecords",
     "deterministicReferenceRepairRecords",
+    "deterministicAssertionRepairRecords",
   ] as const) {
     lines.push(`| ${metric} | ${patchObservability.card_on?.[metric] ?? 0} | ${patchObservability.card_off?.[metric] ?? 0} |`);
   }

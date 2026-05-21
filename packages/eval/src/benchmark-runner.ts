@@ -98,10 +98,12 @@ export interface TaskDiagnostics {
     patch_partial_reason?: string;
     patch_incomplete_reason?: string;
     dsml_salvage_applied?: boolean;
+    repair_target_files?: string[];
     repair_semantic_hints?: string[];
     blocked_write_shell_guidance?: boolean;
     rename_intent_detected?: boolean;
     deterministic_reference_repair?: boolean;
+    deterministic_assertion_repair?: boolean;
     repair_progress?: string;
     repair_stall_reason?: string;
     tool_rounds?: Array<{
@@ -132,6 +134,7 @@ export interface PatchDiagnosticsSummary {
   blockedWriteShellGuidanceRecords: number;
   renameIntentDetectedRecords: number;
   deterministicReferenceRepairRecords: number;
+  deterministicAssertionRepairRecords: number;
   missingRequiredFiles: string[];
 }
 
@@ -250,10 +253,12 @@ export function collectTaskDiagnostics(state: TaskState): TaskDiagnostics {
         ...(patch.patch_partial_reason !== undefined ? { patch_partial_reason: patch.patch_partial_reason } : {}),
         ...(patch.patch_incomplete_reason !== undefined ? { patch_incomplete_reason: patch.patch_incomplete_reason } : {}),
         ...(patch.dsml_salvage_applied !== undefined ? { dsml_salvage_applied: patch.dsml_salvage_applied } : {}),
+        ...(patch.repair_target_files !== undefined ? { repair_target_files: patch.repair_target_files } : {}),
         ...(patch.repair_semantic_hints !== undefined ? { repair_semantic_hints: patch.repair_semantic_hints } : {}),
         ...(patch.blocked_write_shell_guidance !== undefined ? { blocked_write_shell_guidance: patch.blocked_write_shell_guidance } : {}),
         ...(patch.rename_intent_detected !== undefined ? { rename_intent_detected: patch.rename_intent_detected } : {}),
         ...(patch.deterministic_reference_repair !== undefined ? { deterministic_reference_repair: patch.deterministic_reference_repair } : {}),
+        ...(patch.deterministic_assertion_repair !== undefined ? { deterministic_assertion_repair: patch.deterministic_assertion_repair } : {}),
         ...(patch.repair_progress !== undefined ? { repair_progress: patch.repair_progress } : {}),
         ...(patch.repair_stall_reason !== undefined ? { repair_stall_reason: patch.repair_stall_reason } : {}),
         ...(patch.tool_rounds !== undefined
@@ -289,6 +294,7 @@ export function summarizePatchDiagnostics(state: TaskState): PatchDiagnosticsSum
   let blockedWriteShellGuidanceRecords = 0;
   let renameIntentDetectedRecords = 0;
   let deterministicReferenceRepairRecords = 0;
+  let deterministicAssertionRepairRecords = 0;
 
   for (const patch of state.patches ?? []) {
     const phase = patch.phase ?? "unknown";
@@ -306,6 +312,7 @@ export function summarizePatchDiagnostics(state: TaskState): PatchDiagnosticsSum
     if (patch.blocked_write_shell_guidance) blockedWriteShellGuidanceRecords++;
     if (patch.rename_intent_detected) renameIntentDetectedRecords++;
     if (patch.deterministic_reference_repair) deterministicReferenceRepairRecords++;
+    if (patch.deterministic_assertion_repair) deterministicAssertionRepairRecords++;
     for (const file of patch.missing_required_files ?? []) missingRequiredFiles.add(file);
   }
 
@@ -330,6 +337,7 @@ export function summarizePatchDiagnostics(state: TaskState): PatchDiagnosticsSum
     blockedWriteShellGuidanceRecords,
     renameIntentDetectedRecords,
     deterministicReferenceRepairRecords,
+    deterministicAssertionRepairRecords,
     missingRequiredFiles: [...missingRequiredFiles],
   };
 }

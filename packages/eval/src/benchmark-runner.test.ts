@@ -320,10 +320,12 @@ describe("collectTaskDiagnostics", () => {
           apply_status: "failed",
           files_changed: [],
           dsml_salvage_applied: true,
+          repair_target_files: ["src/anthropic.ts"],
           repair_semantic_hints: ["rename_intent", "file_contains_failed: src/a.ts"],
           blocked_write_shell_guidance: true,
           rename_intent_detected: true,
           deterministic_reference_repair: true,
+          deterministic_assertion_repair: true,
         },
       ],
       patch_rounds: [{
@@ -351,10 +353,12 @@ describe("collectTaskDiagnostics", () => {
     assert.equal(diagnostics.patches[1]!.empty_patch, true);
     assert.equal(diagnostics.patches[1]!.literal_empty_patch, true);
     assert.equal(diagnostics.patches[1]!.dsml_salvage_applied, true);
+    assert.deepEqual(diagnostics.patches[1]!.repair_target_files, ["src/anthropic.ts"]);
     assert.deepEqual(diagnostics.patches[1]!.repair_semantic_hints, ["rename_intent", "file_contains_failed: src/a.ts"]);
     assert.equal(diagnostics.patches[1]!.blocked_write_shell_guidance, true);
     assert.equal(diagnostics.patches[1]!.rename_intent_detected, true);
     assert.equal(diagnostics.patches[1]!.deterministic_reference_repair, true);
+    assert.equal(diagnostics.patches[1]!.deterministic_assertion_repair, true);
   });
 });
 
@@ -392,6 +396,7 @@ describe("summarizePatchDiagnostics", () => {
           blocked_write_shell_guidance: true,
           rename_intent_detected: true,
           deterministic_reference_repair: true,
+          deterministic_assertion_repair: true,
         },
       ],
       patch_rounds: [
@@ -420,6 +425,7 @@ describe("summarizePatchDiagnostics", () => {
     assert.equal(summary.blockedWriteShellGuidanceRecords, 1);
     assert.equal(summary.renameIntentDetectedRecords, 1);
     assert.equal(summary.deterministicReferenceRepairRecords, 1);
+    assert.equal(summary.deterministicAssertionRepairRecords, 1);
     assert.deepEqual(summary.missingRequiredFiles, ["src/b.ts"]);
   });
 });
