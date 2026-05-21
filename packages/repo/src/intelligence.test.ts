@@ -284,19 +284,54 @@ describe("assembleIntelligence + views", () => {
     });
   });
 
-  it("ProjectCard shows unknown entries for project with no build descriptors", () => {
+  it("ProjectCard scopes missing build descriptors to verification command selection", () => {
     withTmp((tmp) => {
       touch(path.join(tmp, "src", "Foo.java"), "class Foo {}");
       touch(path.join(tmp, "src", "Bar.java"), "class Bar {}");
       touch(path.join(tmp, "src", "Baz.java"), "class Baz {}");
       const pi = assembleIntelligence(tmp);
       const card = toProjectCard(pi);
-      assert.ok(card.includes("Inferred Candidates") || card.includes("Unknowns") || card.includes("unconfirmed"),
+      assert.ok(card.includes("Inferred Candidates") || card.includes("Verification Unknowns") || card.includes("unconfirmed"),
         `card should indicate uncertainty, got:\n${card}`);
       assert.ok(card.includes("Inferred candidates are not confirmed facts."));
-      assert.ok(card.includes("Unknowns must not be silently replaced by defaults."));
+      assert.ok(card.includes("These unknowns only affect how verification commands are chosen."));
+      assert.ok(card.includes("They do not block source edits, file renames, or import/export updates."));
+      assert.ok(!card.includes("Unknowns must not be silently replaced by defaults."));
       assert.ok(card.includes("Suggested probes require execution or user confirmation before becoming facts."));
       assert.ok(!card.includes("**Known Facts**\nPrimary language: maven"));
+    });
+  });
+
+  it("ProjectCard does not frame TypeScript package-manager projects as blocked by unknown build system", () => {
+    withTmp((tmp) => {
+      fs.writeFileSync(path.join(tmp, "package.json"), JSON.stringify({
+        scripts: { test: "vitest", typecheck: "tsc --noEmit" },
+        devDependencies: { typescript: "^5.0.0" },
+      }), "utf-8");
+      fs.writeFileSync(path.join(tmp, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf-8");
+      touch(path.join(tmp, "src", "a.ts"), "export const a = 1;");
+      touch(path.join(tmp, "src", "b.ts"), "export const b = 2;");
+      touch(path.join(tmp, "src", "c.ts"), "export const c = 3;");
+
+      const card = toProjectCard(assembleIntelligence(tmp));
+
+      assert.ok(card.includes("**Verification Unknowns**"), `expected scoped verification unknowns:\n${card}`);
+      assert.ok(card.includes("No canonical build descriptor such as Maven, Gradle, Make, or Bazel was detected."));
+      assert.ok(card.includes("inspect package.json scripts before choosing test, build, lint, or typecheck commands."));
+      assert.ok(!card.includes("- Build system"));
+    });
+  });
+
+  it("ProjectCard treats projects without code evidence as verification context, not build-system unknowns", () => {
+    withTmp((tmp) => {
+      fs.writeFileSync(path.join(tmp, "README.md"), "# Notes\n", "utf-8");
+
+      const card = toProjectCard(assembleIntelligence(tmp));
+
+      assert.ok(card.includes("**Verification Context**"), `expected non-code verification context:\n${card}`);
+      assert.ok(card.includes("No code build system was detected"));
+      assert.ok(!card.includes("**Verification Unknowns**"));
+      assert.ok(!card.includes("- Build system"));
     });
   });
 

@@ -4,7 +4,7 @@ A DeepSeek-native, benchmark-gated coding harness optimized for verify-first eng
 
 **Core loop:** Plan → Patch → Verify → Repair → Handoff
 
-**⚠️ 项目宪法（必读）:** `CONSTITUTION.md` — 设计文档先行、验证闭环、最小变更、可审计、实证驱动
+**⚠️ 项目宪法（必读）:** `CONSTITUTION.md` — 设计文档先行、验证闭环、最小变更、可审计、实证驱动、无临时手段
 
 **⚠️ 项目蓝图（必读）:** `BLUEPRINT.md` — 最终产品形态、分维度演进路线、阶段划分。理解 DSH 的长期愿景和当前 MVP 阶段的关系是正确判断所有设计决策的前提。
 

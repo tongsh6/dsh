@@ -642,6 +642,7 @@ export interface ProjectCardOptions {
 
 export function toProjectCard(pi: ProjectIntelligence, opts: ProjectCardOptions = {}): string {
   const lines: string[] = ["## Project Card", ""];
+  const hasCodeEvidence = hasConfirmedCodeEvidence(pi);
 
   // Known
   const known = [
@@ -672,15 +673,27 @@ export function toProjectCard(pi: ProjectIntelligence, opts: ProjectCardOptions 
   }
   lines.push("");
 
-  // Unknown
-  const unknown = [
-    pi.buildSystem.mode === "unknown" ? "Build system" : null,
-    pi.language.mode === "unknown" ? "Primary language" : null,
+  // Verification unknowns are intentionally scoped to verification command
+  // selection. They should not make the agent avoid source edits or renames.
+  const verificationUnknowns = [
+    pi.buildSystem.mode === "unknown" && hasCodeEvidence
+      ? "No canonical build descriptor such as Maven, Gradle, Make, or Bazel was detected."
+      : null,
+    pi.language.mode === "unknown" && hasCodeEvidence
+      ? "Primary language could not be confirmed from current evidence."
+      : null,
   ].filter(Boolean);
-  if (unknown.length > 0) {
-    lines.push("**Unknowns**");
-    lines.push("Unknowns must not be silently replaced by defaults.");
-    for (const u of unknown) lines.push(`- ${u}`);
+  if (verificationUnknowns.length > 0) {
+    lines.push("**Verification Unknowns**");
+    lines.push("These unknowns only affect how verification commands are chosen. They do not block source edits, file renames, or import/export updates.");
+    for (const u of verificationUnknowns) lines.push(`- ${u}`);
+    if (pi.language.selected === "typescript" || pi.language.selected === "javascript") {
+      lines.push("- For TypeScript/JavaScript projects, inspect package.json scripts before choosing test, build, lint, or typecheck commands.");
+    }
+    lines.push("");
+  } else if (!hasCodeEvidence && pi.buildSystem.mode === "unknown") {
+    lines.push("**Verification Context**");
+    lines.push("- No code build system was detected; use content checks, file assertions, formatting, links, or task-specific verification.");
     lines.push("");
   }
 
@@ -697,7 +710,7 @@ export function toProjectCard(pi: ProjectIntelligence, opts: ProjectCardOptions 
   lines.push("");
   lines.push("**Forbidden Assumptions**");
   lines.push("- Do not treat inferred candidates as confirmed facts.");
-  lines.push("- Do not replace unknown build, test, lint, or typecheck commands with defaults.");
+  lines.push("- Do not invent verification commands without checking project scripts, build descriptors, or task-specific evidence.");
   lines.push("");
   lines.push("**Suggested Probes**");
   lines.push("Suggested probes require execution or user confirmation before becoming facts.");
@@ -709,6 +722,17 @@ export function toProjectCard(pi: ProjectIntelligence, opts: ProjectCardOptions 
   }
 
   return lines.join("\n");
+}
+
+function hasConfirmedCodeEvidence(pi: ProjectIntelligence): boolean {
+  if (pi.language.mode === "auto") return true;
+  return pi.facts.some((f) => f.value === true && (
+    f.key.startsWith("source.") ||
+    f.key.startsWith("build.descriptor.") ||
+    f.key.startsWith("build.wrapper.") ||
+    f.key.startsWith("pkg.descriptor.") ||
+    f.key.startsWith("submodule.")
+  ));
 }
 
 // ---- Projection: ProjectIntelligence → consumable views ----

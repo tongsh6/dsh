@@ -67,11 +67,13 @@ type SectionVariant = Exclude<
 const SECTION_TITLES: Record<SectionVariant, string> = {
   known_facts: "Known Facts",
   inferred_candidates: "Inferred Candidates",
-  unknowns: "Unknowns",
+  unknowns: "Verification Unknowns",
   capabilities: "Capabilities",
   forbidden_assumptions: "Forbidden Assumptions",
   suggested_probes: "Suggested Probes",
 };
+
+const UNKNOWN_SECTION_TITLES = new Set(["Unknowns", "Verification Unknowns"]);
 
 interface TrialResult extends Record<string, unknown> {
   fixtureId: string;
@@ -178,7 +180,10 @@ function renderCardFromSections(sections: readonly string[]): string {
 
 function buildSectionCard(fullCard: string, variant: SectionVariant): string {
   const title = SECTION_TITLES[variant];
-  const section = extractProjectCardSections(fullCard).get(title);
+  const sections = extractProjectCardSections(fullCard);
+  const section = variant === "unknowns"
+    ? findUnknownSection(sections)
+    : sections.get(title);
   if (!section) {
     throw new Error(`generated Project Card does not contain section '${title}'`);
   }
@@ -195,18 +200,28 @@ function buildCombinationCard(fullCard: string, variant: "full_minus_unknowns" |
   }
 
   if (variant === "known_plus_unknowns") {
+    const unknownSection = findUnknownSection(sections);
+    if (!unknownSection) throw new Error("generated Project Card does not contain an unknowns section");
     return renderCardFromSections([
       requireSection("Known Facts"),
-      requireSection("Unknowns"),
+      unknownSection,
     ]);
   }
 
-  const dropped = variant === "full_minus_unknowns" ? "Unknowns" : "Known Facts";
+  const dropped = variant === "full_minus_unknowns" ? UNKNOWN_SECTION_TITLES : new Set(["Known Facts"]);
   const retained: string[] = [];
   for (const [title, section] of sections.entries()) {
-    if (title !== dropped) retained.push(section);
+    if (!dropped.has(title)) retained.push(section);
   }
   return renderCardFromSections(retained);
+}
+
+function findUnknownSection(sections: ReadonlyMap<string, string>): string | undefined {
+  for (const title of UNKNOWN_SECTION_TITLES) {
+    const section = sections.get(title);
+    if (section) return section;
+  }
+  return undefined;
 }
 
 function buildInjection(repoPath: string, variant: CardVariant): {
