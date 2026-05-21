@@ -69,6 +69,16 @@
 - [ ] 顶层 export / CLI / runtime wiring 指向 canonical 入口
 - [ ] 相关测试覆盖 canonical 入口，而不是只覆盖 legacy wrapper
 
+### 5.5 确定性 repair 规则验收（新增或修改 repair rule 时必填）
+
+> 仅当本 spec 新增或修改确定性 repair 规则时启用；不适用时写"不适用：本 spec 不涉及确定性 repair 规则"。
+
+- [ ] 规则适用域已声明：语言 / 模块系统 / 断言类型 / 文件形态
+- [ ] 规则拒绝条件已声明：适用域外、证据不足、歧义匹配、断言已满足等
+- [ ] 触发条件仅来自结构化验证、代码事实或显式项目配置；不读取 fixture id / benchmark id / runlog 特定样本 / 特定业务文件名
+- [ ] 规则只做可证明的小编辑，不合成业务实现，不改 verification，不扩大任务范围
+- [ ] 正例与负例测试均已覆盖
+
 ## 6. 风险与缓解
 
 | 风险 | 概率 | 影响 | 缓解 |

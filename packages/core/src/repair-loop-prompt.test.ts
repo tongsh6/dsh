@@ -66,17 +66,17 @@ describe("repair-loop prompt helpers", () => {
       patch: "<empty>",
       apply_status: "failed",
       files_changed: [],
-      repair_target_files: ["src/providers/anthropic.ts"],
+      repair_target_files: ["src/consumer.ts"],
       repair_progress: "empty_patch",
       repair_stall_reason: "empty_patch",
     };
 
-    const stallPrompt = buildRepairStallHint(prevPatch, "Refactor provider shared helpers");
-    const finalPrompt = buildFinalRepairRequest(prevPatch, "Refactor provider shared helpers");
+    const stallPrompt = buildRepairStallHint(prevPatch, "Refactor shared helpers");
+    const finalPrompt = buildFinalRepairRequest(prevPatch, "Refactor shared helpers");
 
     assert.match(stallPrompt ?? "", /Files that still require repair attention/);
-    assert.match(stallPrompt ?? "", /src\/providers\/anthropic\.ts/);
+    assert.match(stallPrompt ?? "", /src\/consumer\.ts/);
     assert.match(finalPrompt, /Files that still require repair attention/);
-    assert.match(finalPrompt, /src\/providers\/anthropic\.ts/);
+    assert.match(finalPrompt, /src\/consumer\.ts/);
   });
 });

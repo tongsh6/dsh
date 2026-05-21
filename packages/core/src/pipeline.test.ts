@@ -1765,18 +1765,18 @@ describe("runRepair", () => {
     }
   });
 
-  it("runs deterministic assertion import repair after an applied repair still fails file_contains", async () => {
+  it("runs TypeScript named-import repair after an applied repair still fails file_contains", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
     try {
       fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
-      fs.mkdirSync(path.join(tmp, "src/providers"), { recursive: true });
+      fs.mkdirSync(path.join(tmp, "src"), { recursive: true });
       fs.writeFileSync(
         path.join(tmp, ".dsh", "config.yml"),
         yaml.dump({
           project: { name: "test", language: "typescript" },
           verify: {
             assertions: [
-              { type: "file_contains", file: "src/providers/anthropic.ts", pattern: "withRetry" },
+              { type: "file_contains", file: "src/consumer.ts", pattern: "missingHelper" },
             ],
           },
           rules: { files: [] },
@@ -1785,19 +1785,19 @@ describe("runRepair", () => {
         "utf-8",
       );
       fs.writeFileSync(
-        path.join(tmp, "src/providers/shared.ts"),
-        "export function buildAuthHeaders() { return {}; }\n",
+        path.join(tmp, "src/helpers.ts"),
+        "export function existingHelper() { return {}; }\n",
         "utf-8",
       );
       fs.writeFileSync(
-        path.join(tmp, "src/providers/anthropic.ts"),
+        path.join(tmp, "src/consumer.ts"),
         [
           "import {",
-          "  buildAuthHeaders,",
-          "} from \"./shared.js\";",
+          "  existingHelper,",
+          "} from \"./helpers.js\";",
           "",
-          "export function createProvider() {",
-          "  return buildAuthHeaders;",
+          "export function useHelper() {",
+          "  return existingHelper;",
           "}",
           "",
         ].join("\n"),
@@ -1808,14 +1808,14 @@ describe("runRepair", () => {
         JSON.stringify({
           version: "0.1",
           status: "verification_failed",
-          task: { description: "share provider retry helper", type: "refactor", created_at: new Date().toISOString() },
+          task: { description: "share a helper across modules", type: "refactor", created_at: new Date().toISOString() },
           plan: {
-            summary: "share retry helper",
-            files: ["src/providers/shared.ts", "src/providers/anthropic.ts"],
+            summary: "share helper",
+            files: ["src/helpers.ts", "src/consumer.ts"],
             risks: [],
-            raw_xml: "<PLAN>share retry helper</PLAN>",
+            raw_xml: "<PLAN>share helper</PLAN>",
             verify_assertions: [
-              { type: "file_contains", file: "src/providers/anthropic.ts", pattern: "withRetry" },
+              { type: "file_contains", file: "src/consumer.ts", pattern: "missingHelper" },
             ],
           },
           patches: [{
@@ -1823,12 +1823,12 @@ describe("runRepair", () => {
             phase: "patch",
             patch: "",
             apply_status: "ok",
-            files_changed: ["src/providers/shared.ts"],
+            files_changed: ["src/helpers.ts"],
           }],
           verify_results: [{
             round: 1,
             results: [{
-              command: "file_contains src/providers/anthropic.ts",
+              command: "file_contains src/consumer.ts",
               status: "failed",
               exit_code: 1,
               output: "missing required text",
@@ -1840,13 +1840,13 @@ describe("runRepair", () => {
         "utf-8",
       );
 
-      const client = mockClient(`<PATCH type="search" file="src/providers/shared.ts">
+      const client = mockClient(`<PATCH type="search" file="src/helpers.ts">
 <SEARCH>
-export function buildAuthHeaders() { return {}; }
+export function existingHelper() { return {}; }
 </SEARCH>
 <REPLACE>
-export function buildAuthHeaders() { return {}; }
-export async function withRetry<T>(fn: () => Promise<T>): Promise<T> { return fn(); }
+export function existingHelper() { return {}; }
+export function missingHelper() { return {}; }
 </REPLACE>
 </PATCH>`);
 
@@ -1855,8 +1855,8 @@ export async function withRetry<T>(fn: () => Promise<T>): Promise<T> { return fn
       assert.equal(state.status, "verified");
       assert.ok(state.patches.some((patch) => patch.deterministic_assertion_repair));
       assert.match(
-        fs.readFileSync(path.join(tmp, "src/providers/anthropic.ts"), "utf-8"),
-        /withRetry,\n} from "\.\/shared\.js";/,
+        fs.readFileSync(path.join(tmp, "src/consumer.ts"), "utf-8"),
+        /missingHelper,\n} from "\.\/helpers\.js";/,
       );
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });

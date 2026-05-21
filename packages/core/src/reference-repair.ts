@@ -17,12 +17,6 @@ interface BuildRenameReferenceRepairArgs {
   results: VerifyRunResult[];
 }
 
-interface BuildFailedContainsImportRepairArgs {
-  cwd: string;
-  assertions: VerifyAssertion[];
-  results: VerifyRunResult[];
-}
-
 function countOccurrences(source: string, needle: string): number {
   if (needle.length === 0) return 0;
   let count = 0;
@@ -83,97 +77,6 @@ function readGitHeadFile(cwd: string, filePath: string): string | null {
   } catch {
     return null;
   }
-}
-
-function isSimpleIdentifier(value: string): boolean {
-  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value);
-}
-
-function sourcePathForImport(fromFile: string, importSpec: string): string | null {
-  if (!importSpec.startsWith(".")) return null;
-  const fromDir = path.dirname(fromFile);
-  const withoutJsExtension = importSpec.replace(/\.(?:mjs|cjs|js|jsx)$/i, "");
-  const candidate = path.normalize(path.join(fromDir, `${withoutJsExtension}.ts`));
-  return isSafeRelativePath(candidate) ? candidate : null;
-}
-
-function moduleExportsIdentifier(content: string, identifier: string): boolean {
-  const escaped = identifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`\\bexport\\s+(?:async\\s+)?(?:function|const|let|var|class|interface|type)\\s+${escaped}\\b`).test(content)
-    || new RegExp(`\\bexport\\s*\\{[^}]*\\b${escaped}\\b[^}]*\\}`).test(content);
-}
-
-function buildImportWithIdentifier(importBlock: string, identifier: string): string | null {
-  if (new RegExp(`\\b${identifier}\\b`).test(importBlock)) return null;
-  const lines = importBlock.split("\n");
-  const closeIndex = lines.findIndex((line) => line.trim().startsWith("} from "));
-  if (closeIndex < 0) return null;
-  const typeIndex = lines.findIndex((line, index) => index > 0 && index < closeIndex && line.trim().startsWith("type "));
-  const insertIndex = typeIndex >= 0 ? typeIndex : closeIndex;
-  const indentMatch = lines[Math.max(1, insertIndex - 1)]?.match(/^(\s*)/) ?? ["", "  "];
-  const indent = indentMatch[1] || "  ";
-  lines.splice(insertIndex, 0, `${indent}${identifier},`);
-  return lines.join("\n");
-}
-
-export function buildFailedContainsImportRepair(
-  args: BuildFailedContainsImportRepairArgs,
-): DeterministicReferenceRepair | null {
-  const blocks: string[] = [];
-  const files = new Set<string>();
-  const hints = new Set<string>();
-  const seen = new Set<string>();
-
-  for (let index = 0; index < args.results.length; index++) {
-    const result = args.results[index];
-    const assertion = args.assertions[index];
-    if (result?.status !== "failed" || assertion?.type !== "file_contains" || assertion.regex) continue;
-    if (!isSimpleIdentifier(assertion.pattern) || !isSafeRelativePath(assertion.file)) continue;
-
-    const targetAbs = path.join(args.cwd, assertion.file);
-    if (!fs.existsSync(targetAbs) || !fs.statSync(targetAbs).isFile()) continue;
-    const targetContent = fs.readFileSync(targetAbs, "utf-8");
-    if (targetContent.includes(assertion.pattern)) continue;
-
-    const importRegex = /import\s*\{[\s\S]*?\}\s*from\s*"([^"]+)";/g;
-    let match: RegExpExecArray | null;
-    while ((match = importRegex.exec(targetContent)) !== null) {
-      const importBlock = match[0];
-      const importSpec = match[1] ?? "";
-      const sourcePath = sourcePathForImport(assertion.file, importSpec);
-      if (!sourcePath) continue;
-
-      const sourceAbs = path.join(args.cwd, sourcePath);
-      if (!fs.existsSync(sourceAbs) || !fs.statSync(sourceAbs).isFile()) continue;
-      const sourceContent = fs.readFileSync(sourceAbs, "utf-8");
-      if (!moduleExportsIdentifier(sourceContent, assertion.pattern)) continue;
-
-      const replacement = buildImportWithIdentifier(importBlock, assertion.pattern);
-      if (!replacement || !xmlSafeBlockText(importBlock) || !xmlSafeBlockText(replacement)) continue;
-      if (countOccurrences(targetContent, importBlock) !== 1) continue;
-
-      const editKey = `${assertion.file}\0${importBlock}\0${replacement}`;
-      if (seen.has(editKey)) continue;
-      seen.add(editKey);
-
-      blocks.push([
-        `<PATCH type="search" file="${assertion.file}">`,
-        `<SEARCH>${importBlock}</SEARCH>`,
-        `<REPLACE>${replacement}</REPLACE>`,
-        "</PATCH>",
-      ].join("\n"));
-      files.add(assertion.file);
-      hints.add(`deterministic_failed_contains_import_repair: ${assertion.file} imports ${JSON.stringify(assertion.pattern)} from ${sourcePath}`);
-      break;
-    }
-  }
-
-  if (blocks.length === 0) return null;
-  return {
-    content: blocks.join("\n\n"),
-    files: [...files],
-    hints: [...hints],
-  };
 }
 
 function hasRenamePreservationFailure(

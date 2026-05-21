@@ -37,7 +37,8 @@ import {
   getToolPolicy,
 } from "./agent-turn-loop.js";
 import { detectRenameIntent, formatRenameIntentGuidance } from "./rename-intent.js";
-import { buildFailedContainsImportRepair, buildRenameReferenceRepair } from "./reference-repair.js";
+import { buildRenameReferenceRepair } from "./reference-repair.js";
+import { buildDeterministicAssertionRepair } from "./repair-rules/index.js";
 import { recordDeepSeekUsage } from "./deepseek-usage.js";
 import { isGitRepo, createCheckpoint, applyRollback, assembleIntelligence, moduleRoots } from "@dsh/repo";
 
@@ -781,7 +782,7 @@ export async function runRepairLoop(
           : null;
       const deterministicAssertionRepair =
         !deterministicRenameRepair && prevVerify && parsedRepairAssertions.length > 0
-          ? buildFailedContainsImportRepair({
+          ? buildDeterministicAssertionRepair({
               cwd: config.cwd,
               assertions: parsedRepairAssertions,
               results: prevVerify.results,
@@ -899,7 +900,7 @@ export async function runRepairLoop(
         current.verify_results.push({ round, results });
 
         if (!verified && parsedAssertions.length > 0) {
-          const deterministicPostVerifyRepair = buildFailedContainsImportRepair({
+          const deterministicPostVerifyRepair = buildDeterministicAssertionRepair({
             cwd: config.cwd,
             assertions: parsedAssertions,
             results,

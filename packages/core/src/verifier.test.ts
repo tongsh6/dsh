@@ -433,9 +433,9 @@ describe("buildSemanticRepairHints", () => {
 
   it("classifies non-reference contains failures as concrete target-file edits", () => {
     const hints = buildSemanticRepairHints(
-      [{ type: "file_contains", file: "src/provider.ts", pattern: "withRetry" }],
+      [{ type: "file_contains", file: "src/consumer.ts", pattern: "missingHelper" }],
       [{
-        command: "file_contains src/provider.ts ~ withRetry",
+        command: "file_contains src/consumer.ts ~ missingHelper",
         status: "failed",
         exit_code: 1,
         output: "pattern missing",
@@ -445,7 +445,7 @@ describe("buildSemanticRepairHints", () => {
 
     assert.equal(hints.length, 1);
     assert.match(hints[0]!, /next repair change must touch this file/);
-    assert.match(hints[0]!, /withRetry/);
+    assert.match(hints[0]!, /missingHelper/);
   });
 
   it("classifies content equality shell failures without injecting fixture paths", () => {
@@ -481,14 +481,14 @@ describe("buildSemanticRepairHints", () => {
 describe("failedAssertionTargetFiles", () => {
   it("extracts unique file targets from failed structured file assertions", () => {
     const assertions: VerifyAssertion[] = [
-      { type: "file_contains", file: "src/anthropic.ts", pattern: "withRetry" },
+      { type: "file_contains", file: "src/consumer.ts", pattern: "missingHelper" },
       { type: "shell", command: "pnpm test", name: "tests" },
-      { type: "file_contains", file: "src/openai.ts", pattern: "buildAuthHeaders" },
-      { type: "file_contains", file: "src/anthropic.ts", pattern: "withRetry" },
+      { type: "file_contains", file: "src/producer.ts", pattern: "existingHelper" },
+      { type: "file_contains", file: "src/consumer.ts", pattern: "missingHelper" },
     ];
     const results = [
       {
-        command: "file_contains src/anthropic.ts",
+        command: "file_contains src/consumer.ts",
         status: "failed" as const,
         exit_code: 1,
         output: "missing",
@@ -502,14 +502,14 @@ describe("failedAssertionTargetFiles", () => {
         duration_ms: 0,
       },
       {
-        command: "file_contains src/openai.ts",
+        command: "file_contains src/producer.ts",
         status: "passed" as const,
         exit_code: 0,
         output: "ok",
         duration_ms: 0,
       },
       {
-        command: "file_contains src/anthropic.ts",
+        command: "file_contains src/consumer.ts",
         status: "failed" as const,
         exit_code: 1,
         output: "missing",
@@ -517,6 +517,6 @@ describe("failedAssertionTargetFiles", () => {
       },
     ];
 
-    assert.deepEqual(failedAssertionTargetFiles(assertions, results), ["src/anthropic.ts"]);
+    assert.deepEqual(failedAssertionTargetFiles(assertions, results), ["src/consumer.ts"]);
   });
 });
