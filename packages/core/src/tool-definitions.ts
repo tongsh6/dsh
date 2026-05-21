@@ -179,6 +179,7 @@ export const EXEC_SHELL_BLOCK_PATTERNS = [
   /git\s+rebase/,
   /&&/,
   /;/,
+  /\bsed\s+(-[A-Za-z]*i[A-Za-z]*|\S+\s+-[A-Za-z]*i[A-Za-z]*)\b/,
   /\bmv\b/,
   /\bcp\b/,
   /\bdd\b/,

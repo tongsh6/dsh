@@ -8,6 +8,8 @@ import {
   runVerifyAssertions,
   parseAssertion,
   buildFailedAssertionDiagnostics,
+  buildSemanticRepairHints,
+  formatSemanticRepairHints,
   type VerifyAssertion,
 } from "./verifier.js";
 
@@ -375,5 +377,85 @@ describe("buildFailedAssertionDiagnostics", () => {
     );
 
     assert.equal(diagnostics, null);
+  });
+});
+
+describe("buildSemanticRepairHints", () => {
+  it("turns file existence and absence failures into edit-protocol hints", () => {
+    const assertions: VerifyAssertion[] = [
+      { type: "file_exists", file: "src/distill-state.ts" },
+      { type: "file_not_exists", file: "src/state.ts" },
+    ];
+    const results = [
+      {
+        command: "file_exists src/distill-state.ts",
+        status: "failed" as const,
+        exit_code: 1,
+        output: "missing",
+        duration_ms: 0,
+      },
+      {
+        command: "file_not_exists src/state.ts",
+        status: "failed" as const,
+        exit_code: 1,
+        output: "still exists",
+        duration_ms: 0,
+      },
+    ];
+
+    const hints = buildSemanticRepairHints(assertions, results);
+
+    assert.equal(hints.length, 2);
+    assert.match(hints[0]!, /file_exists_failed/);
+    assert.match(hints[0]!, /<RENAME from=/);
+    assert.match(hints[1]!, /file_not_exists_failed/);
+    assert.match(hints[1]!, /<DELETE path="src\/state\.ts"/);
+  });
+
+  it("classifies import reference failures as SEARCH_REPLACE work", () => {
+    const hints = buildSemanticRepairHints(
+      [{ type: "file_contains", file: "src/index.ts", pattern: "./distill-state.js" }],
+      [{
+        command: "file_contains src/index.ts ~ ./distill-state.js",
+        status: "failed",
+        exit_code: 1,
+        output: "pattern missing",
+        duration_ms: 0,
+      }],
+    );
+
+    assert.equal(hints.length, 1);
+    assert.match(hints[0]!, /file_contains_failed/);
+    assert.match(hints[0]!, /<SEARCH_REPLACE>/);
+    assert.match(hints[0]!, /\.\/distill-state\.js/);
+  });
+
+  it("classifies content equality shell failures without injecting fixture paths", () => {
+    const hints = buildSemanticRepairHints(
+      [{
+        type: "shell",
+        command: "git show HEAD:old.ts | cmp - new.ts",
+        name: "renamed_file_content_unchanged",
+      }],
+      [{
+        command: "renamed_file_content_unchanged: git show HEAD:old.ts | cmp - new.ts",
+        status: "failed",
+        exit_code: 1,
+        output: "byte 1, line 1",
+        duration_ms: 0,
+      }],
+    );
+
+    assert.equal(hints.length, 1);
+    assert.match(hints[0]!, /content_equality_failed/);
+    assert.match(hints[0]!, /prefer <RENAME>/);
+    assert.doesNotMatch(hints[0]!, /old\.ts \| cmp/);
+  });
+
+  it("formats semantic hints as a repair prompt block", () => {
+    const block = formatSemanticRepairHints(["file_exists_failed: ensure src/new.ts exists."]);
+
+    assert.match(block ?? "", /SEMANTIC REPAIR HINTS/);
+    assert.match(block ?? "", /file_exists_failed/);
   });
 });

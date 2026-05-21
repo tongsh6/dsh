@@ -32,6 +32,7 @@ import {
   getToolPolicy,
 } from "./agent-turn-loop.js";
 import { recordDeepSeekUsage } from "./deepseek-usage.js";
+import { formatRenameIntentGuidance } from "./rename-intent.js";
 import { buildPlanFileContract, normalizePath } from "./plan-file-contract.js";
 import type { PlanFileContract } from "./plan-file-contract.js";
 import { validatePatchCoverage, computeCoverageDelta } from "./patch-coverage.js";
@@ -126,6 +127,7 @@ export interface ExploreResult {
 
 export interface FinalizationResult {
   appliedChangedFiles: string[];
+  patchText?: string;
   attempted: boolean;
   succeeded: boolean;
 }
@@ -166,6 +168,9 @@ function isExploreStalled(loop: PatchLoopState): boolean {
 // has either declared DONE or stalled. Used by maybeRunCoverageFinalization.
 export function shouldEnterCoverageFinalization(loop: PatchLoopState): boolean {
   if (loop.missingRequiredFiles.size === 0) return false;
+  if (!loop.hasStartedPatching) {
+    return loop.invalidStreak >= MAX_CONSECUTIVE_INVALID || loop.round >= loop.maxRounds;
+  }
   return loop.modelSaidDoneWithMissing || isExploreStalled(loop);
 }
 
@@ -535,6 +540,8 @@ async function maybeRunCoverageFinalization(args: {
     "",
     `Original task:\n${state.task.description}`,
     "",
+    formatRenameIntentGuidance(state.task.description) ?? "",
+    "",
     `Required target files: ${contract.requiredTargetFiles.map((e) => e.path).join(", ") || "(none)"}`,
     `Already covered: ${covered.join(", ") || "(none)"}`,
     `Still MISSING — you must produce a change for each of these: ${missing.join(", ")}`,
@@ -620,6 +627,7 @@ async function maybeRunCoverageFinalization(args: {
   const validation = validatePatchCoverage({ contract, appliedChangedFiles });
   return {
     appliedChangedFiles,
+    ...(appliedFinalize.length > 0 ? { patchText: content } : {}),
     attempted: true,
     succeeded: validation.fullRequiredCoverage,
   };
@@ -661,9 +669,14 @@ function decidePatchResult(args: {
   });
 
   const patchText =
-    state.patch_rounds
+    [
+      state.patch_rounds
       .filter((r) => r.action === "change" && r.change)
       .map((r) => r.change!.raw_block)
+        .join("\n\n"),
+      finalization.patchText ?? "",
+    ]
+      .filter((text) => text.trim().length > 0)
       .join("\n\n") || "<empty>";
 
   let applyStatus: "ok" | "partial_ok" | "failed";

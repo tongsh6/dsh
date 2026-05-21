@@ -191,6 +191,85 @@ function truncateForRepair(value: string, max = 600): string {
   return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized;
 }
 
+function quoteForRepair(value: string, max = 160): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  const truncated = compact.length > max ? `${compact.slice(0, max)}...` : compact;
+  return JSON.stringify(truncated);
+}
+
+function looksLikeReferencePattern(pattern: string): boolean {
+  return /(?:^|[./@_-])[\w.-]+\.(?:js|ts|tsx|jsx|mjs|cjs)$/.test(pattern)
+    || pattern.includes("./")
+    || pattern.includes("../")
+    || /\b(import|export|require)\b/.test(pattern);
+}
+
+function isContentEqualityShell(assertion: VerifyAssertion): boolean {
+  if (assertion.type !== "shell") return false;
+  const text = `${assertion.name ?? ""} ${assertion.command}`.toLowerCase();
+  return text.includes("cmp")
+    || text.includes("content_unchanged")
+    || text.includes("content unchanged")
+    || text.includes("same content")
+    || text.includes("equivalent content");
+}
+
+function semanticHintForFailedAssertion(
+  assertion: VerifyAssertion | undefined,
+  result: VerifyRunResult,
+): string | null {
+  if (result.status !== "failed") return null;
+  if (!assertion) return `verification_command_failed: inspect the failed command output and emit a concrete change block; command=${quoteForRepair(result.command)}`;
+
+  switch (assertion.type) {
+    case "file_exists":
+      return `file_exists_failed: ensure ${assertion.file} exists. If the task is a rename/move, prefer <RENAME from="old/path" to="${assertion.file}" /> so content is preserved; otherwise use <CREATE> or <PATCH> as appropriate.`;
+    case "file_not_exists":
+      return `file_not_exists_failed: stale file remains at ${assertion.file}. Remove it with <DELETE path="${assertion.file}" /> or use <RENAME from="${assertion.file}" to="new/path" /> when preserving content under a new name.`;
+    case "file_contains": {
+      const protocol = looksLikeReferencePattern(assertion.pattern)
+        ? " This looks like an import/export/reference expectation; update the existing reference with a precise <SEARCH_REPLACE> block."
+        : " Add the missing required text with the smallest task-correct edit.";
+      return `file_contains_failed: ${assertion.file} must contain ${assertion.regex ? "regex" : "text"} ${quoteForRepair(assertion.pattern)}.${protocol}`;
+    }
+    case "file_not_contains":
+      return `file_not_contains_failed: ${assertion.file} still contains forbidden ${assertion.regex ? "regex" : "text"} ${quoteForRepair(assertion.pattern)}. Remove only the stale occurrence with a precise <SEARCH_REPLACE> or <PATCH>.`;
+    case "shell":
+      if (isContentEqualityShell(assertion)) {
+        return "content_equality_failed: destination content does not match the required source content. For rename/move tasks, prefer <RENAME> to preserve bytes instead of recreating a large file by hand.";
+      }
+      return `shell_verification_failed: repair the concrete failure reported by ${quoteForRepair(assertion.name ?? assertion.command)}; do not change verification commands.`;
+    case "maven_test":
+      return `maven_test_failed: fix the compilation or test failure reported by ${quoteForRepair(result.command)} with the smallest code change.`;
+  }
+}
+
+export function buildSemanticRepairHints(
+  assertions: VerifyAssertion[],
+  results: VerifyRunResult[],
+): string[] {
+  const hints: string[] = [];
+  const seen = new Set<string>();
+
+  results.forEach((result, index) => {
+    const hint = semanticHintForFailedAssertion(assertions[index], result);
+    if (!hint || seen.has(hint)) return;
+    seen.add(hint);
+    hints.push(hint);
+  });
+
+  return hints;
+}
+
+export function formatSemanticRepairHints(hints: string[]): string | null {
+  if (hints.length === 0) return null;
+  return [
+    "## SEMANTIC REPAIR HINTS",
+    "These hints are derived from failed verification assertions. They describe the next repair constraints; they are not fixture-specific answer injection.",
+    ...hints.map((hint) => `- ${hint}`),
+  ].join("\n");
+}
+
 function describeFailedAssertionForRepair(
   assertion: VerifyAssertion | undefined,
   result: VerifyRunResult,

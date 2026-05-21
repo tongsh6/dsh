@@ -10,7 +10,16 @@ import { parseChanges, applyChanges } from "./patch-parser.js";
 import { recoverDsmlWrappedChange } from "./dsml-recovery.js";
 import { buildPlanFileContract } from "./plan-file-contract.js";
 import { validatePatchCoverage } from "./patch-coverage.js";
-import { runVerify, runVerifyAssertions, parseAssertion, isAllPassed, formatResults, buildFailedAssertionDiagnostics } from "./verifier.js";
+import {
+  runVerify,
+  runVerifyAssertions,
+  parseAssertion,
+  isAllPassed,
+  formatResults,
+  buildFailedAssertionDiagnostics,
+  buildSemanticRepairHints,
+  formatSemanticRepairHints,
+} from "./verifier.js";
 import type { VerifyAssertion } from "./verifier.js";
 import type { ContextLayers } from "./context-builder.js";
 import {
@@ -26,6 +35,8 @@ import {
   filterToolsForPolicy,
   getToolPolicy,
 } from "./agent-turn-loop.js";
+import { detectRenameIntent, formatRenameIntentGuidance } from "./rename-intent.js";
+import { buildRenameReferenceRepair } from "./reference-repair.js";
 import { recordDeepSeekUsage } from "./deepseek-usage.js";
 import { isGitRepo, createCheckpoint, applyRollback, assembleIntelligence, moduleRoots } from "@dsh/repo";
 
@@ -166,7 +177,14 @@ function isEmptyPatchText(patch: string | null | undefined): boolean {
   return trimmed === "" || trimmed === "<empty>";
 }
 
-function buildRepairStallHint(prevPatch: PatchRecord | undefined): string | null {
+function buildRenameRepairGuidance(taskDescription: string | null | undefined): string | null {
+  return formatRenameIntentGuidance(taskDescription);
+}
+
+export function buildRepairStallHint(
+  prevPatch: PatchRecord | undefined,
+  taskDescription?: string,
+): string | null {
   if (!prevPatch?.repair_stall_reason) return null;
 
   const missing = prevPatch.missing_required_files ?? [];
@@ -187,11 +205,15 @@ function buildRepairStallHint(prevPatch: PatchRecord | undefined): string | null
     missingLine,
     "Do not spend another round only exploring. Use the evidence already available and emit a concrete change block that covers the missing target.",
     "If you need one file, output one change block for that file. If several files remain, output one change block per missing file.",
+    buildRenameRepairGuidance(taskDescription) ?? "",
     "An empty patch, prose-only answer, or <DONE/> will be treated as no progress.",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
-function buildFinalRepairRequest(prevPatch: PatchRecord | undefined): string {
+export function buildFinalRepairRequest(
+  prevPatch: PatchRecord | undefined,
+  taskDescription?: string,
+): string {
   const missing = prevPatch?.missing_required_files ?? [];
   return [
     "## SYSTEM: REPAIR TOOL ACCESS PAUSED",
@@ -199,8 +221,9 @@ function buildFinalRepairRequest(prevPatch: PatchRecord | undefined): string {
     missing.length > 0
       ? `Required files still missing coverage: ${missing.join(", ")}`
       : "Use the verification failure and previous patch evidence already in context.",
+    buildRenameRepairGuidance(taskDescription) ?? "",
     "Now emit the final repair change block. Do not call tools. Do not answer with prose only. Do not output <DONE/>.",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 function classifyRepairProgress(args: {
@@ -524,7 +547,7 @@ export async function runRepairLoop(
           "PRIMARY REPAIR TASK: emit change blocks for the uncovered files. Avoid duplicating edits to already-modified files unless a failed verification assertion still targets that file or the previous change is wrong.",
         ].join("\n")
       : null;
-    const repairStallHint = buildRepairStallHint(prevPatch);
+    const repairStallHint = buildRepairStallHint(prevPatch, current.task.description);
 
     const isCompilationError = failureHints?.includes("COMPILATION ERRORS") || failureHints?.includes("signature-mismatch") || false;
     const isCompletionMode = incompleteHint !== null;
@@ -565,11 +588,18 @@ export async function runRepairLoop(
       prevVerify && parsedRepairAssertions.length > 0
         ? buildFailedAssertionDiagnostics(parsedRepairAssertions, prevVerify.results)
         : null;
+    const semanticRepairHints =
+      prevVerify && parsedRepairAssertions.length > 0
+        ? buildSemanticRepairHints(parsedRepairAssertions, prevVerify.results)
+        : [];
+    const semanticRepairHintBlock = formatSemanticRepairHints(semanticRepairHints);
 
     const taskDescription = [
       isCompletionMode ? completionConstraints : repairConstraints,
       "",
       failedAssertionDiagnostics ?? "",
+      "",
+      semanticRepairHintBlock ?? "",
       "",
       incompleteHint ?? "",
       "",
@@ -644,7 +674,7 @@ export async function runRepairLoop(
           continue;
         }
 
-        messages.push({ role: "user", content: buildFinalRepairRequest(current.patches.at(-1)) });
+        messages.push({ role: "user", content: buildFinalRepairRequest(current.patches.at(-1), current.task.description) });
         const finalStartedAt = Date.now();
         const finalResponse = await config.client.chat({
           model: config.target.model,
@@ -675,14 +705,16 @@ export async function runRepairLoop(
     let patched = false;
     let filesChanged: string[] = [];
     let rolledBack = false;
+    let deterministicReferenceRepairApplied = false;
+    let deterministicReferenceRepairHints: string[] = [];
 
     // ---- Checkpoint (PHASE-3-D) ----
     if (isGitRepo(config.cwd)) {
       createCheckpoint(config.cwd, `dsh-checkpoint-repair-round-${round}`);
     }
 
-    try {
-      const changes = parseChanges(content);
+    const applyRepairContent = (rawContent: string): void => {
+      const changes = parseChanges(rawContent);
       patchText = [
         ...changes.creates.map((c) => `<CREATE path="${c.path}">\n${c.content}\n</CREATE>`),
         ...changes.renames.map((r) => `<RENAME from="${r.from}" to="${r.to}" />`),
@@ -704,8 +736,37 @@ export async function runRepairLoop(
       if (!applyResult.success) {
         applyError = applyResult.error ?? "unknown apply error";
       }
+    };
+
+    try {
+      applyRepairContent(content);
     } catch (e) {
-      applyError = e instanceof Error ? e.message : String(e);
+      const firstApplyError = e instanceof Error ? e.message : String(e);
+      const deterministicRepair =
+        prevVerify && parsedRepairAssertions.length > 0
+          ? buildRenameReferenceRepair({
+              cwd: config.cwd,
+              taskDescription: current.task.description,
+              assertions: parsedRepairAssertions,
+              results: prevVerify.results,
+            })
+          : null;
+
+      if (deterministicRepair) {
+        try {
+          content = deterministicRepair.content;
+          deterministicReferenceRepairApplied = true;
+          deterministicReferenceRepairHints = deterministicRepair.hints;
+          applyRepairContent(content);
+        } catch (deterministicError) {
+          applyError = [
+            firstApplyError,
+            `deterministic reference repair failed: ${deterministicError instanceof Error ? deterministicError.message : String(deterministicError)}`,
+          ].join("; ");
+        }
+      } else {
+        applyError = firstApplyError;
+      }
     }
 
     // Record the patch attempt. Re-stamp required-file coverage onto this
@@ -724,6 +785,17 @@ export async function runRepairLoop(
       contract: repairContract,
       appliedChangedFiles: cumulativeChanged,
     });
+    const renameIntentDetected = detectRenameIntent(current.task.description);
+    const repairSemanticHints = [
+      ...(renameIntentDetected ? ["rename_intent"] : []),
+      ...semanticRepairHints,
+      ...deterministicReferenceRepairHints,
+    ];
+    const blockedWriteShellGuidance = repairToolRounds.some((toolRound) =>
+      toolRound.calls.some((call) =>
+        call.name === "exec_shell"
+        && call.status === "error"
+        && call.summary.includes("exec_shell is read-only")));
     const repairPatchRecord: PatchRecord = {
       round,
       phase: "repair",
@@ -732,6 +804,10 @@ export async function runRepairLoop(
       files_changed: filesChanged,
       tool_rounds: repairToolRounds.length > 0 ? repairToolRounds : undefined,
       ...(dsmlSalvageApplied ? { dsml_salvage_applied: true } : {}),
+      ...(blockedWriteShellGuidance ? { blocked_write_shell_guidance: true } : {}),
+      ...(renameIntentDetected ? { rename_intent_detected: true } : {}),
+      ...(deterministicReferenceRepairApplied ? { deterministic_reference_repair: true } : {}),
+      ...(repairSemanticHints.length > 0 ? { repair_semantic_hints: repairSemanticHints } : {}),
     };
     if (repairContract.requiredTargetFiles.length > 0) {
       repairPatchRecord.coverage = repairCoverage.fullRequiredCoverage ? "full" : "partial";

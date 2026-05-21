@@ -342,6 +342,8 @@ describe("executeTool with exec_shell", () => {
     assert.equal(result.status, "error");
     // "rm" is not in the allow list, so it gets rejected before block pattern check
     assert.ok(result.error?.includes("不在允许列表中"));
+    assert.match(result.error ?? "", /exec_shell is read-only/);
+    assert.match(result.error ?? "", /<DELETE path=/);
   });
 
   it("rejects unrecognized command", () => {
@@ -359,6 +361,32 @@ describe("executeTool with exec_shell", () => {
     );
 
     assert.equal(result.status, "error");
+  });
+
+  it("explains change-block protocol when a shell edit is blocked", () => {
+    const result = executeTool(
+      "exec_shell",
+      { command: "cp src/state.ts src/distill-state.ts" },
+      tmpDir,
+    );
+
+    assert.equal(result.status, "error");
+    assert.match(result.error ?? "", /exec_shell is read-only/);
+    assert.match(result.error ?? "", /<RENAME from=/);
+    assert.match(result.error ?? "", /<SEARCH_REPLACE path=/);
+    assert.match(result.error ?? "", /not as tool calls/);
+  });
+
+  it("blocks sed in-place edits and points to change blocks", () => {
+    const result = executeTool(
+      "exec_shell",
+      { command: "sed -i 's/state/distill-state/g' src/index.ts" },
+      tmpDir,
+    );
+
+    assert.equal(result.status, "error");
+    assert.match(result.error ?? "", /禁止的模式|not in allow list|不在允许列表/);
+    assert.match(result.error ?? "", /<SEARCH_REPLACE path=/);
   });
 
   it("returns error for failed command", () => {

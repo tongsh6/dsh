@@ -11,6 +11,12 @@ const GREP_TIMEOUT_MS = 10_000;
 const EXEC_SHELL_TIMEOUT_MS = 120_000;
 const EXEC_SHELL_MAX_OUTPUT = 100_000;
 const PROTOCOL_BLOCK_NAMES = new Set(["CREATE", "PATCH", "INSERT", "DELETE", "RENAME"]);
+const EDIT_PROTOCOL_GUIDANCE = [
+  "exec_shell is read-only; do not retry file writes through shell.",
+  "To modify files, emit change blocks directly in assistant content, not as tool calls.",
+  'Use <RENAME from="old/path" to="new/path" /> for renames so file content is preserved.',
+  'Use <DELETE path="old/path" /> to remove a file, and <SEARCH_REPLACE path="file"> blocks to update references.',
+].join(" ");
 
 const SKIP_DIRS = /\/node_modules\/|\/\.git\/|\/dist\/|\/\.dsh\/|\/__pycache__\/|\/\.next\/|\/build\/|\/coverage\//i;
 
@@ -41,13 +47,34 @@ function isSafePath(filePath: string): boolean {
   return true;
 }
 
+function commandLooksLikeShellEdit(command: string): boolean {
+  const trimmed = command.trim();
+  if (/\b(rm|rmdir|unlink|mv|cp)\b/.test(trimmed)) return true;
+  if (/\bsed\s+(-[A-Za-z]*i[A-Za-z]*|\S+\s+-[A-Za-z]*i[A-Za-z]*)\b/.test(trimmed)) return true;
+
+  const withoutSafeRedirects = trimmed.replace(
+    /&?[0-9]*\s*>>?\s*\/dev\/(null|stdout|stderr)\b/g,
+    "",
+  );
+  return />{1,2}\s*[^\s&]/.test(withoutSafeRedirects);
+}
+
+function withEditProtocolGuidance(error: string, command: string): string {
+  return commandLooksLikeShellEdit(command)
+    ? `${error} ${EDIT_PROTOCOL_GUIDANCE}`
+    : error;
+}
+
 export function isShellAllowed(command: string): string | null {
   const trimmed = command.trim();
   if (trimmed.length === 0) return "命令为空";
 
   const matched = EXEC_SHELL_ALLOW_LIST.some((prefix) => trimmed.startsWith(prefix));
   if (!matched) {
-    return `命令 "${trimmed.slice(0, 80)}" 不在允许列表中。允许的命令前缀: ${EXEC_SHELL_ALLOW_LIST.slice(0, 10).join(", ")}...`;
+    return withEditProtocolGuidance(
+      `命令 "${trimmed.slice(0, 80)}" 不在允许列表中。允许的命令前缀: ${EXEC_SHELL_ALLOW_LIST.slice(0, 10).join(", ")}...`,
+      trimmed,
+    );
   }
 
   for (const pattern of EXEC_SHELL_BLOCK_PATTERNS) {
@@ -93,7 +120,7 @@ export function isShellAllowed(command: string): string | null {
         }
       }
 
-      return `命令包含禁止的模式: ${String(pattern)}`;
+      return withEditProtocolGuidance(`命令包含禁止的模式: ${String(pattern)}`, trimmed);
     }
   }
 

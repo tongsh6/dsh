@@ -77,6 +77,10 @@ const patchRecordSchema = z.object({
     "missing_required_files",
     "no_required_coverage_progress",
   ]).optional(),
+  repair_semantic_hints: z.array(z.string()).optional(),
+  blocked_write_shell_guidance: z.boolean().optional(),
+  rename_intent_detected: z.boolean().optional(),
+  deterministic_reference_repair: z.boolean().optional(),
 });
 
 const patchRoundSchema = z.object({

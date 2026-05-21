@@ -79,12 +79,37 @@ describe("shouldEnterCoverageFinalization", () => {
       shouldEnterCoverageFinalization(
         loopState({
           hasStartedPatching: false,
+          invalidStreak: 0,
           roundsSinceCoverageProgress: 99,
           consecutiveToolsOnly: 99,
-          invalidStreak: 99,
         }),
       ),
       false,
+    );
+  });
+
+  it("enters finalization on a terminal invalid streak even before patching starts", () => {
+    assert.equal(
+      shouldEnterCoverageFinalization(
+        loopState({
+          hasStartedPatching: false,
+          invalidStreak: 3,
+        }),
+      ),
+      true,
+    );
+  });
+
+  it("enters finalization at max rounds even when no patch started", () => {
+    assert.equal(
+      shouldEnterCoverageFinalization(
+        loopState({
+          round: 30,
+          maxRounds: 30,
+          hasStartedPatching: false,
+        }),
+      ),
+      true,
     );
   });
 });
@@ -193,11 +218,17 @@ const EMPTY_LAYERS: ContextLayers = {
 // Returns the client plus a `toolsSeen` log: one boolean per chat call,
 // recording whether that call was given a non-empty tools list. Lets a test
 // assert that coverage_finalization runs with tools disabled.
-function scriptedClient(responses: string[]): { client: DeepSeekClient; toolsSeen: boolean[] } {
+function scriptedClient(responses: string[]): {
+  client: DeepSeekClient;
+  toolsSeen: boolean[];
+  requests: Array<{ tools?: unknown[]; messages?: Array<{ role?: string; content?: string }> }>;
+} {
   let index = 0;
   const toolsSeen: boolean[] = [];
+  const requests: Array<{ tools?: unknown[]; messages?: Array<{ role?: string; content?: string }> }> = [];
   const client = {
-    chat: async (request: { tools?: unknown[] }) => {
+    chat: async (request: { tools?: unknown[]; messages?: Array<{ role?: string; content?: string }> }) => {
+      requests.push(request);
       toolsSeen.push(Array.isArray(request.tools) && request.tools.length > 0);
       const content = responses[Math.min(index, responses.length - 1)] ?? "<DONE/>";
       index++;
@@ -220,11 +251,11 @@ function scriptedClient(responses: string[]): { client: DeepSeekClient; toolsSee
       yield undefined as never;
     },
   } as unknown as DeepSeekClient;
-  return { client, toolsSeen };
+  return { client, toolsSeen, requests };
 }
 
-function plannedState(files: string[]): TaskState {
-  const state = createTaskState("create the modules", "feature");
+function plannedState(files: string[], description = "create the modules"): TaskState {
+  const state = createTaskState(description, "feature");
   state.status = "planned";
   state.plan = { summary: "", files, risks: [], raw_xml: "" };
   return state;
@@ -292,7 +323,38 @@ describe("runPatchPipeline coverage_finalization", () => {
       const patch = state.patches.at(-1);
       assert.equal(patch?.coverage, "full");
       assert.equal(patch?.coverage_finalization_attempted, true);
+      assert.match(patch?.patch ?? "", /<CREATE path="b\.ts">/);
       assert.ok(fs.existsSync(path.join(dir, "b.ts")));
+    });
+  });
+
+  it("runs no-tools finalization after repeated invalid responses before any patch", async () => {
+    await withTempDir(async (dir) => {
+      const { client, toolsSeen, requests } = scriptedClient([
+        "I will inspect the files first.",
+        "Still thinking.",
+        "No patch yet.",
+        createBlock("a.ts", "export const a = 1;"),
+      ]);
+      const state = await runPatchPipeline({
+        state: plannedState(["a.ts"], "Move old.ts -> a.ts and update imports"),
+        cwd: dir,
+        client,
+        dryRun: false,
+        messages: [],
+        target: { model: "deepseek-v4-pro", thinking: false },
+        contextLayers: EMPTY_LAYERS,
+      });
+
+      assert.equal(state.status, "patched");
+      assert.equal(state.patches.at(-1)?.coverage_finalization_attempted, true);
+      assert.deepEqual(state.patches.at(-1)?.files_changed, ["a.ts"]);
+      assert.match(state.patches.at(-1)?.patch ?? "", /<CREATE path="a\.ts">/);
+      assert.equal(toolsSeen.at(-1), false);
+      const finalizationPrompt = requests.at(-1)?.messages?.at(-1)?.content ?? "";
+      assert.match(finalizationPrompt, /RENAME \/ MOVE INTENT DETECTED FROM ORIGINAL TASK/);
+      assert.match(finalizationPrompt, /<RENAME from="old\.ts" to="a\.ts" \/>/);
+      assert.match(finalizationPrompt, /Do not use <CREATE> to copy/);
     });
   });
 
