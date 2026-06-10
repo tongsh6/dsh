@@ -84,3 +84,10 @@ assignee: "ai"
 - Boundary: targeted adoption and aggregate no-regression are proven, but default remains off. Remaining work is broader/stability evidence plus invalid/error and plan-contract failure reduction.
 - Follow-up: `260610024705` did not retain invalid argument shapes, so local telemetry now preserves redacted invalid `apply_patch` arguments for the next run; this is an observability fix, not new benchmark evidence.
 - Excluded partials: `260609165914` (interrupted baseline partial), `260609200316` (interrupted flag-on partial), and `260610024543` (accidental full-shape partial) are not used as A/B conclusions.
+
+## Evidence Update 4 (2026-06-10)
+- Precondition: `pnpm -r run build` was required before benchmark because workspace package `main` fields point to `dist`; pre-build run `260610144529` is excluded from current-code telemetry evidence.
+- Experiment: `docs/reports/runlogs/260610153758-pie-replicated/`, `PATCH_EDITS_AS_NATIVE_TOOL=true`, 18/18 total, Card ON 9/9, Card OFF 9/9.
+- Native adoption: 76 `apply_patch` tool calls, 67 successful native apply records, 9 apply error records, 5 invalid native rounds, and 0 content-XML change records.
+- Invalid argument telemetry is now present in benchmark results. Observed invalid native rounds were dominated by terminal intent expressed as tool args, e.g. `protocol_op: "DONE"` and `protocol_op: "<DONE/>"`.
+- Boundary: this is strong targeted flag-on evidence, but it is not a default-on decision. Default remains off until broader/stability evidence and invalid/error reduction are reviewed in the ledger.

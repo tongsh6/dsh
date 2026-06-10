@@ -9,7 +9,7 @@
 
 ## Summary
 
-This report is chronological. The latest current-code evidence is the 2026-06-10 post-compat targeted A/B in the final section.
+This report is chronological. The latest current-code evidence is the 2026-06-10 post-build telemetry rerun in the final section.
 
 The default-off Route X runtime slice did not regress the first targeted loam-refactor benchmark when the flag was enabled.
 
@@ -175,8 +175,54 @@ Follow-up implementation now records redacted tool-call arguments on invalid nat
 
 This does not change the A/B conclusion above. It makes the next targeted or broader run auditable enough to distinguish model argument-shape drift from parser/schema gaps before changing the default.
 
+## Post-Build Telemetry Rerun (Latest Evidence)
+
+The invalid-argument telemetry change required a package rebuild before benchmark execution because workspace packages expose `dist` through their `main` fields. A pre-build flag-on run (`docs/reports/runlogs/260610144529-pie-replicated/`) is therefore excluded from current-code telemetry evidence.
+
+After `pnpm -r run build`, the same targeted flag-on shape was rerun:
+
+```bash
+PATCH_EDITS_AS_NATIVE_TOOL=true ./packages/core/node_modules/.bin/tsx scripts/benchmark-pie-replicated.ts --filter=loam-refactor --reps=3 --seed=26060901 --lanes-per-repo=1
+```
+
+Artifact:
+
+- Experiment: `docs/reports/runlogs/260610153758-pie-replicated/`
+
+| Metric | Experiment flag on |
+|--------|--------------------|
+| `patch.edits_as_native_tool` | `true` |
+| Total pass | 18/18 |
+| Card ON | 9/9 |
+| Card OFF | 9/9 |
+| Failed trials | 0 |
+| `apply_patch` tool calls | 76 |
+| Successful native `apply_patch` applications | 67 |
+| Native `apply_patch` apply errors | 9 |
+| Invalid native `apply_patch` rounds | 5 |
+| Content XML change records | 0 |
+
+Fixture breakdown:
+
+| Fixture | Experiment |
+|---------|------------|
+| `loam-refactor-provider-dedup` | 6/6 |
+| `loam-refactor-rename-distill-state` | 6/6 |
+| `loam-refactor-reorganize-tests` | 6/6 |
+
+Invalid argument audit:
+
+- Invalid native rounds now retain argument summaries in `patchRoundActions`.
+- Observed invalid terminal intent was expressed as `apply_patch` arguments, e.g. `protocol_op: "DONE"` and `protocol_op: "<DONE/>"`, rather than missing opaque argument evidence.
+- Apply errors were recoverable in passing trials. Examples include failed `PATCH` payloads with `patch_length` metadata and repeated `CREATE` attempts for an existing `distill-state.ts` with `content_length` metadata.
+
+Decision:
+
+Keep `patch.edits_as_native_tool` default `false`. The targeted flag-on evidence is now strong (18/18 and native-only edits), but default-on still needs broader/stability evidence and review of the remaining invalid/error patterns.
+
 Excluded partial runs:
 
 - `docs/reports/runlogs/260609165914-pie-replicated/`: interrupted baseline partial, 8/18.
 - `docs/reports/runlogs/260609200316-pie-replicated/`: interrupted flag-on partial, 9/18; useful as early adoption signal but not A/B conclusion.
 - `docs/reports/runlogs/260610024543-pie-replicated/`: accidental full-shape partial from a `--help` probe; excluded entirely.
+- `docs/reports/runlogs/260610144529-pie-replicated/`: pre-build flag-on run, 16/18; excluded from current-code telemetry evidence because `dist` did not yet contain the invalid-argument telemetry changes.

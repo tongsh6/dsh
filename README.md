@@ -8,7 +8,7 @@ DSH provides a DeepSeek-oriented provider with official Chat Completion support,
 **当前阶段:** Phase 4 Agent Loop 实施期
 **Phase 3 起点基线:** testsPassed 11/24 = 45%（`260508-003359` / `260509-165142`）
 **Phase 3 退出实证:** 2026-05-22 N=3 replicated benchmark `260521151313`：Project Card on `64/84 = 76.2%`，Pure Standard on `52/63 = 82.5%`；loamlog 取得 Project Card 正向 lift（on `20/24 = 83.3%`，off `18/24 = 75.0%`），详见 `docs/reports/knowledge/20260522-phase3-exit-replicated-benchmark.md`
-**Phase 4 当前目标:** 推进 Route X（文件编辑转 DeepSeek-native `apply_patch` 工具通道）与后续 Agent Loop 编排。2026-06-10 targeted post-compat A/B 显示 baseline `260609173815` 与 flag-on `260610024705` 均为 17/18；flag-on 记录 72 次 `apply_patch` tool call、68 条 successful native apply、content XML 为 0。Route X targeted adoption 已被实测证明，但仍有 7 个 invalid native rounds / 4 条 apply error 和单点 plan-contract failure，默认仍关闭，下一步转 broader/stability 复审。
+**Phase 4 当前目标:** 推进 Route X（文件编辑转 DeepSeek-native `apply_patch` 工具通道）与后续 Agent Loop 编排。2026-06-10 targeted post-build telemetry run `260610153758` 显示 flag-on `loam-refactor*` 为 18/18；记录 76 次 `apply_patch` tool call、67 条 successful native apply、9 条 apply error、5 个 invalid native rounds、content XML 为 0。Route X targeted adoption 已被实测证明，但默认仍关闭，下一步转 broader/stability 复审。
 
 ## 快速开始
 
@@ -102,4 +102,4 @@ pnpm run scan         # 全量质量门禁（lint + typecheck + test）
 - **历史基线:** Phase 3 起点 testsPassed 11/24 = 45%
 - **已验证阶段门槛:** Phase 3 已于 2026-05-22 通过 N=3 replicated benchmark 退出；runlog `260521151313` 共 28 fixtures × 3 reps × on/off = 168 trials，Project Card on `64/84 = 76.2%`
 - **最新特性:** 结构化 Verify、Repair Loop、ProjectIntelligence 主路径、Project Card 默认注入、PatchCoverage 状态机、DSML salvage、`dsh run` / `dsh doctor` 可用、replicated benchmark evidence 已落地
-- **当前重点:** Route X `apply_patch` 工具通道 broader/stability 复审、invalid native rounds 收敛、repair loop 收敛、DeepSeek 原生工具调用闭环；`patch.edits_as_native_tool` 仍默认关闭，targeted adoption 已成立但尚未进入默认开启
+- **当前重点:** Route X `apply_patch` 工具通道 broader/stability 复审、invalid native rounds / apply errors 收敛、repair loop 收敛、DeepSeek 原生工具调用闭环；`patch.edits_as_native_tool` 仍默认关闭，targeted adoption 与 flag-on 18/18 已成立但尚未进入默认开启
