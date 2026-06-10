@@ -6,13 +6,14 @@ import * as path from "node:path";
 import {
   shouldEnterCoverageFinalization,
   decidePatchStatus,
+  parseApplyPatchToolCall,
   runPatchPipeline,
   type PatchLoopState,
 } from "./patch-pipeline.js";
 import { canTransition, createTaskState } from "./task-state.js";
 import type { TaskState } from "./task-state.js";
 import type { ContextLayers } from "./context-builder.js";
-import type { DeepSeekClient } from "@dsh/provider";
+import type { DeepSeekClient, DeepSeekMessage, DeepSeekResponse, DeepSeekToolCall } from "@dsh/provider";
 
 function loopState(over: Partial<PatchLoopState> = {}): PatchLoopState {
   return {
@@ -218,19 +219,24 @@ const EMPTY_LAYERS: ContextLayers = {
 // Returns the client plus a `toolsSeen` log: one boolean per chat call,
 // recording whether that call was given a non-empty tools list. Lets a test
 // assert that coverage_finalization runs with tools disabled.
-function scriptedClient(responses: string[]): {
+type ScriptedAssistantMessage = DeepSeekResponse["choices"][number]["message"];
+
+function scriptedClient(responses: Array<string | ScriptedAssistantMessage>): {
   client: DeepSeekClient;
   toolsSeen: boolean[];
-  requests: Array<{ tools?: unknown[]; messages?: Array<{ role?: string; content?: string }> }>;
+  requests: Array<{ tools?: unknown[]; messages?: DeepSeekMessage[] }>;
 } {
   let index = 0;
   const toolsSeen: boolean[] = [];
-  const requests: Array<{ tools?: unknown[]; messages?: Array<{ role?: string; content?: string }> }> = [];
+  const requests: Array<{ tools?: unknown[]; messages?: DeepSeekMessage[] }> = [];
   const client = {
-    chat: async (request: { tools?: unknown[]; messages?: Array<{ role?: string; content?: string }> }) => {
+    chat: async (request: { tools?: unknown[]; messages?: DeepSeekMessage[] }) => {
       requests.push(request);
       toolsSeen.push(Array.isArray(request.tools) && request.tools.length > 0);
-      const content = responses[Math.min(index, responses.length - 1)] ?? "<DONE/>";
+      const next = responses[Math.min(index, responses.length - 1)] ?? "<DONE/>";
+      const message: ScriptedAssistantMessage = typeof next === "string"
+        ? { role: "assistant" as const, content: next }
+        : next;
       index++;
       return {
         id: "test",
@@ -240,8 +246,8 @@ function scriptedClient(responses: string[]): {
         choices: [
           {
             index: 0,
-            message: { role: "assistant" as const, content },
-            finish_reason: "stop",
+            message,
+            finish_reason: message.tool_calls && message.tool_calls.length > 0 ? "tool_calls" : "stop",
           },
         ],
         usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
@@ -274,6 +280,385 @@ async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
 function createBlock(file: string, body: string): string {
   return `<CREATE path="${file}">\n${body}\n</CREATE>`;
 }
+
+function applyPatchToolCall(args: Record<string, unknown>, id = "apply_1"): DeepSeekToolCall {
+  return {
+    id,
+    type: "function",
+    function: {
+      name: "apply_patch",
+      arguments: JSON.stringify(args),
+    },
+  };
+}
+
+function readFileToolCall(filePath: string, id = "read_1"): DeepSeekToolCall {
+  return {
+    id,
+    type: "function",
+    function: {
+      name: "read_file",
+      arguments: JSON.stringify({ path: filePath }),
+    },
+  };
+}
+
+function writePatchConfig(dir: string, body: string): void {
+  fs.writeFileSync(path.join(dir, ".dsh", "config.yml"), `patch:\n${body}`, "utf-8");
+}
+
+async function withPatchEditsEnv<T>(
+  value: string | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const previous = process.env["PATCH_EDITS_AS_NATIVE_TOOL"];
+  if (value === undefined) {
+    delete process.env["PATCH_EDITS_AS_NATIVE_TOOL"];
+  } else {
+    process.env["PATCH_EDITS_AS_NATIVE_TOOL"] = value;
+  }
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) {
+      delete process.env["PATCH_EDITS_AS_NATIVE_TOOL"];
+    } else {
+      process.env["PATCH_EDITS_AS_NATIVE_TOOL"] = previous;
+    }
+  }
+}
+
+describe("apply_patch tool-call conversion", () => {
+  it("converts all supported protocol ops to existing change blocks", () => {
+    const cases: Array<[string, Record<string, unknown>, string]> = [
+      ["CREATE", { protocol_op: "CREATE", path: "a.ts", content: "export const a = 1;" }, "a.ts"],
+      ["DELETE", { protocol_op: "DELETE", path: "old.ts" }, "old.ts"],
+      ["RENAME", { protocol_op: "RENAME", from: "old.ts", to: "new.ts" }, "old.ts -> new.ts"],
+      [
+        "SEARCH_REPLACE",
+        { protocol_op: "SEARCH_REPLACE", path: "a.ts", search: "old", replace: "new" },
+        "a.ts",
+      ],
+      [
+        "INSERT",
+        { protocol_op: "INSERT", path: "a.ts", anchor: "export", position: "after", content: "export const b = 2;" },
+        "a.ts",
+      ],
+      [
+        "PATCH",
+        {
+          protocol_op: "PATCH",
+          patch: [
+            "--- a/a.ts",
+            "+++ b/a.ts",
+            "@@ -1 +1 @@",
+            "-old",
+            "+new",
+          ].join("\n"),
+        },
+        "a.ts",
+      ],
+    ];
+
+    for (const [op, args, file] of cases) {
+      const action = parseApplyPatchToolCall(applyPatchToolCall(args));
+      assert.equal(action.kind, "change", op);
+      if (action.kind === "change") {
+        assert.equal(action.source, "tool_call");
+        assert.equal(action.change.op, op);
+        assert.equal(action.change.file, file);
+      }
+    }
+  });
+
+  it("rejects malformed apply_patch arguments before any write path", () => {
+    const action = parseApplyPatchToolCall(applyPatchToolCall({ protocol_op: "CREATE", content: "x" }));
+    assert.equal(action.kind, "invalid");
+    if (action.kind === "invalid") {
+      assert.match(action.reason, /path is required/);
+    }
+  });
+
+  it("accepts common operation aliases and infers unambiguous protocol ops", () => {
+    const aliasAction = parseApplyPatchToolCall(applyPatchToolCall({
+      op: "search-replace",
+      path: "a.ts",
+      search: "old",
+      replace: "new",
+    }));
+    assert.equal(aliasAction.kind, "change");
+    if (aliasAction.kind === "change") {
+      assert.equal(aliasAction.change.op, "SEARCH_REPLACE");
+      assert.equal(aliasAction.change.file, "a.ts");
+    }
+
+    const inferredAction = parseApplyPatchToolCall(applyPatchToolCall({
+      from: "old.ts",
+      to: "new.ts",
+    }));
+    assert.equal(inferredAction.kind, "change");
+    if (inferredAction.kind === "change") {
+      assert.equal(inferredAction.change.op, "RENAME");
+      assert.equal(inferredAction.change.file, "old.ts -> new.ts");
+    }
+  });
+
+  it("builds INSERT changes directly so structured anchors may contain quotes or newlines", () => {
+    const action = parseApplyPatchToolCall(applyPatchToolCall({
+      protocol_op: "INSERT",
+      path: "a.ts",
+      anchor: "if (name === \"apply_patch\") {\n  return true;",
+      position: "after",
+      content: "\nreturn false;",
+    }));
+
+    assert.equal(action.kind, "change");
+    if (action.kind === "change") {
+      assert.equal(action.change.op, "INSERT");
+      assert.equal(action.change.insert?.anchor, "if (name === \"apply_patch\") {\n  return true;");
+    }
+  });
+});
+
+describe("runPatchPipeline apply_patch tool channel", () => {
+  it("does not expose apply_patch when the flag is off", async () => {
+    await withPatchEditsEnv("false", async () => {
+      await withTempDir(async (dir) => {
+        const { client, requests } = scriptedClient([
+          createBlock("a.ts", "export const a = 1;"),
+          "<DONE/>",
+        ]);
+        await runPatchPipeline({
+          state: plannedState(["a.ts"]),
+          cwd: dir,
+          client,
+          dryRun: false,
+          messages: [],
+          target: { model: "deepseek-v4-pro", thinking: false },
+          contextLayers: EMPTY_LAYERS,
+        });
+
+        const names = ((requests[0]?.tools ?? []) as Array<{ function: { name: string } }>)
+          .map((tool) => tool.function.name)
+          .sort();
+        assert.deepEqual(names, ["grep_files", "read_file"]);
+      });
+    });
+  });
+
+  it("exposes apply_patch with the flag on and applies it through patch telemetry", async () => {
+    await withPatchEditsEnv(undefined, async () => {
+      await withTempDir(async (dir) => {
+        writePatchConfig(dir, "  edits_as_native_tool: true\n");
+        const { client, requests } = scriptedClient([
+          {
+            role: "assistant",
+            content: "",
+            tool_calls: [
+              applyPatchToolCall({
+                protocol_op: "CREATE",
+                path: "a.ts",
+                content: "export const a = 1;",
+              }, "apply_create"),
+            ],
+          },
+          "<DONE/>",
+        ]);
+
+        const state = await runPatchPipeline({
+          state: plannedState(["a.ts"]),
+          cwd: dir,
+          client,
+          dryRun: false,
+          messages: [],
+          target: { model: "deepseek-v4-pro", thinking: false },
+          contextLayers: EMPTY_LAYERS,
+        });
+
+        const names = ((requests[0]?.tools ?? []) as Array<{ function: { name: string } }>)
+          .map((tool) => tool.function.name)
+          .sort();
+        assert.deepEqual(names, ["apply_patch", "grep_files", "read_file"]);
+        assert.equal(state.status, "patched");
+        assert.equal(fs.readFileSync(path.join(dir, "a.ts"), "utf-8"), "export const a = 1;");
+        assert.equal(state.patch_rounds[0]?.change?.source, "tool_call");
+        assert.equal(state.patch_rounds[0]?.tool_calls?.[0]?.name, "apply_patch");
+        assert.match(state.patches.at(-1)?.patch ?? "", /<CREATE path="a\.ts">/);
+
+        const secondTurnMessages = requests[1]?.messages ?? [];
+        const toolResult = secondTurnMessages.find((message) => message.role === "tool");
+        assert.equal(toolResult?.tool_call_id, "apply_create");
+        assert.match(toolResult?.content ?? "", /"apply_status":"ok"/);
+      });
+    });
+  });
+
+  it("rejects mixed edit and read tool calls without writing files", async () => {
+    await withPatchEditsEnv(undefined, async () => {
+      await withTempDir(async (dir) => {
+        writePatchConfig(dir, "  edits_as_native_tool: true\n  coverage_finalization: false\n");
+        const mixedMessage: ScriptedAssistantMessage = {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            applyPatchToolCall({
+              protocol_op: "CREATE",
+              path: "a.ts",
+              content: "export const a = 1;",
+            }),
+            {
+              id: "read_1",
+              type: "function",
+              function: { name: "read_file", arguments: '{"path":"a.ts"}' },
+            },
+          ],
+        };
+        const { client } = scriptedClient([mixedMessage, mixedMessage, mixedMessage]);
+
+        const state = await runPatchPipeline({
+          state: plannedState(["a.ts"]),
+          cwd: dir,
+          client,
+          dryRun: false,
+          messages: [],
+          target: { model: "deepseek-v4-pro", thinking: false },
+          contextLayers: EMPTY_LAYERS,
+        });
+
+        assert.equal(state.status, "patch_failed");
+        assert.equal(fs.existsSync(path.join(dir, "a.ts")), false);
+        assert.equal(state.patch_rounds[0]?.action, "invalid");
+        assert.match(state.patch_rounds[0]?.invalid_reason ?? "", /cannot be combined/);
+      });
+    });
+  });
+
+  it("rejects apply_patch plus a content change block without writing files", async () => {
+    await withPatchEditsEnv(undefined, async () => {
+      await withTempDir(async (dir) => {
+        writePatchConfig(dir, "  edits_as_native_tool: true\n  coverage_finalization: false\n");
+        const conflictingMessage: ScriptedAssistantMessage = {
+          role: "assistant",
+          content: createBlock("a.ts", "export const fromContent = true;"),
+          tool_calls: [
+            applyPatchToolCall({
+              protocol_op: "CREATE",
+              path: "a.ts",
+              content: "export const fromTool = true;",
+            }),
+          ],
+        };
+        const { client } = scriptedClient([conflictingMessage, conflictingMessage, conflictingMessage]);
+
+        const state = await runPatchPipeline({
+          state: plannedState(["a.ts"]),
+          cwd: dir,
+          client,
+          dryRun: false,
+          messages: [],
+          target: { model: "deepseek-v4-pro", thinking: false },
+          contextLayers: EMPTY_LAYERS,
+        });
+
+        assert.equal(state.status, "patch_failed");
+        assert.equal(fs.existsSync(path.join(dir, "a.ts")), false);
+        assert.equal(state.patch_rounds[0]?.action, "invalid");
+        assert.match(state.patch_rounds[0]?.invalid_reason ?? "", /content change block/);
+        assert.equal(state.patch_rounds[0]?.tool_calls?.[0]?.name, "apply_patch");
+        assert.deepEqual(state.patch_rounds[0]?.tool_calls?.[0]?.arguments, {
+          protocol_op: "CREATE",
+          path: "a.ts",
+          content_length: "export const fromTool = true;".length,
+        });
+      });
+    });
+  });
+
+  it("records redacted apply_patch arguments for invalid native edit rounds", async () => {
+    await withPatchEditsEnv(undefined, async () => {
+      await withTempDir(async (dir) => {
+        writePatchConfig(dir, "  edits_as_native_tool: true\n  coverage_finalization: false\n");
+        const invalidNativeEdit: ScriptedAssistantMessage = {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            applyPatchToolCall({
+              filename: "a.ts",
+              body: "export const a = 1;",
+            }),
+          ],
+        };
+        const { client } = scriptedClient([invalidNativeEdit, invalidNativeEdit, invalidNativeEdit]);
+
+        const state = await runPatchPipeline({
+          state: plannedState(["a.ts"]),
+          cwd: dir,
+          client,
+          dryRun: false,
+          messages: [],
+          target: { model: "deepseek-v4-pro", thinking: false },
+          contextLayers: EMPTY_LAYERS,
+        });
+
+        assert.equal(state.status, "patch_failed");
+        assert.equal(state.patch_rounds[0]?.action, "invalid");
+        assert.match(state.patch_rounds[0]?.invalid_reason ?? "", /protocol_op/);
+        assert.equal(state.patch_rounds[0]?.tool_calls?.[0]?.name, "apply_patch");
+        assert.equal(state.patch_rounds[0]?.tool_calls?.[0]?.status, "error");
+        assert.deepEqual(state.patch_rounds[0]?.tool_calls?.[0]?.arguments, {
+          filename: "a.ts",
+          body_length: "export const a = 1;".length,
+        });
+      });
+    });
+  });
+
+  it("keeps apply_patch available when exploration tools are paused in native edit mode", async () => {
+    await withPatchEditsEnv(undefined, async () => {
+      await withTempDir(async (dir) => {
+        writePatchConfig(dir, "  edits_as_native_tool: true\n");
+        fs.writeFileSync(path.join(dir, "context.txt"), "read me", "utf-8");
+        const readTurns = Array.from({ length: 10 }, (_, i): ScriptedAssistantMessage => ({
+          role: "assistant",
+          content: "",
+          tool_calls: [readFileToolCall("context.txt", `read_${i + 1}`)],
+        }));
+        const { client, requests } = scriptedClient([
+          ...readTurns,
+          {
+            role: "assistant",
+            content: "",
+            tool_calls: [
+              applyPatchToolCall({
+                protocol_op: "CREATE",
+                path: "a.ts",
+                content: "export const a = 1;",
+              }, "apply_after_pause"),
+            ],
+          },
+          "<DONE/>",
+        ]);
+
+        const state = await runPatchPipeline({
+          state: plannedState(["a.ts"]),
+          cwd: dir,
+          client,
+          dryRun: false,
+          messages: [],
+          target: { model: "deepseek-v4-pro", thinking: false },
+          contextLayers: EMPTY_LAYERS,
+        });
+
+        const pausedToolNames = ((requests[10]?.tools ?? []) as Array<{ function: { name: string } }>)
+          .map((tool) => tool.function.name);
+        assert.deepEqual(pausedToolNames, ["apply_patch"]);
+        assert.equal(state.status, "patched");
+        assert.equal(fs.readFileSync(path.join(dir, "a.ts"), "utf-8"), "export const a = 1;");
+        assert.equal(state.patch_rounds[10]?.change?.source, "tool_call");
+      });
+    });
+  });
+});
 
 describe("runPatchPipeline coverage_finalization", () => {
   it("calls the model with tools disabled during coverage_finalization", async () => {

@@ -95,6 +95,14 @@ describe("runAgentTurnLoop", () => {
     assert.equal(seen[0]!.tools, undefined);
   });
 
+  it("exposes apply_patch only when patch native edits are explicitly enabled", () => {
+    assert.deepEqual(getToolPolicy("patch").allowedTools, ["read_file", "grep_files"]);
+    assert.deepEqual(
+      getToolPolicy("patch", { editsAsNativeTool: true }).allowedTools,
+      ["read_file", "grep_files", "apply_patch"],
+    );
+  });
+
   it("appends tool result messages with the matching tool_call_id", async () => {
     const client = mockClient([
       response({

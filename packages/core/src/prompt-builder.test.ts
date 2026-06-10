@@ -26,6 +26,15 @@ describe("buildSystemPrompt", () => {
     assert.ok(prompt.includes("Loop Protocol"));
     assert.ok(prompt.includes("<DONE/>"));
     assert.ok(prompt.includes("After-Apply Feedback"));
+    assert.ok(!prompt.includes("NATIVE EDIT TOOL MODE"));
+  });
+
+  it("returns native edit tool prompt for patch phase when enabled", () => {
+    const prompt = buildSystemPrompt("patch", { patchEditsAsNativeTool: true });
+    assert.ok(prompt.includes("NATIVE EDIT TOOL MODE"));
+    assert.ok(prompt.includes("Use the `apply_patch` tool for every file edit"));
+    assert.ok(prompt.includes("Do NOT output XML change blocks"));
+    assert.ok(prompt.includes("apply_status, files_changed, coverage_delta"));
   });
 
   it("returns plan prompt (unchanged)", () => {
@@ -86,6 +95,18 @@ describe("buildMessages", () => {
     const layers = makeLayers();
     const msgs = buildMessages({ context: layers, taskDescription: "test" });
     assert.ok(msgs[0]!.content.includes("PATCH LOOP MODE"));
+    assert.ok(!msgs[0]!.content.includes("NATIVE EDIT TOOL MODE"));
+  });
+
+  it("uses native edit patch prompt when requested", () => {
+    const layers = makeLayers();
+    const msgs = buildMessages({
+      context: layers,
+      taskDescription: "test",
+      patchEditsAsNativeTool: true,
+    });
+    assert.ok(msgs[0]!.content.includes("NATIVE EDIT TOOL MODE"));
+    assert.ok(msgs[0]!.content.includes("apply_patch"));
   });
 });
 

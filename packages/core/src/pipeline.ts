@@ -65,7 +65,7 @@ import {
   getToolPolicy,
 } from "./agent-turn-loop.js";
 import { recordDeepSeekUsage } from "./deepseek-usage.js";
-import { runPatchPipeline, isPatchStateMachineV2Enabled } from "./patch-pipeline.js";
+import { runPatchPipeline, resolvePatchFlags } from "./patch-pipeline.js";
 
 // ---- Helpers ----
 
@@ -857,19 +857,22 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
 
   const fileCount = state.plan?.files?.length ?? 0;
   const target = classify({ command: "patch", fileCount }, resolveModelRoutingConfig(cwd));
-  const patchToolPolicy = getToolPolicy("patch");
+  const patchFlags = resolvePatchFlags(cwd);
+  const useNativeEditPrompt = patchFlags.stateMachineV2 && patchFlags.editsAsNativeTool;
+  const patchToolPolicy = getToolPolicy("patch", { editsAsNativeTool: useNativeEditPrompt });
   const patchTools = filterToolsForPolicy(ALL_TOOL_DEFINITIONS, patchToolPolicy);
 
   const messages: DeepSeekMessage[] = buildMessages({
     context: fullLayers,
     taskDescription: state.task.description,
     phase: "patch",
+    patchEditsAsNativeTool: useNativeEditPrompt,
   });
 
   // ---- Patch coverage state machine v2 (spec 2026-05-19) ----
   // When enabled, the v2 pipeline owns the patch stage and returns early. The
   // legacy loop below is preserved unchanged for flag-off / rollback.
-  if (isPatchStateMachineV2Enabled(cwd)) {
+  if (patchFlags.stateMachineV2) {
     state = await runPatchPipeline({
       state,
       cwd,
@@ -1015,6 +1018,7 @@ export async function runPatch(params: PatchParams): Promise<TaskState> {
         record.change = {
           op: action.change.op,
           file: action.change.file,
+          source: "content_xml",
           apply_status: result.ok ? "ok" : "failed",
           apply_error: result.error,
           raw_block: action.change.raw_block,

@@ -95,6 +95,7 @@ const patchRoundSchema = z.object({
   change: z.object({
     op: z.enum(["CREATE", "PATCH", "SEARCH_REPLACE", "INSERT", "DELETE", "RENAME"]),
     file: z.string(),
+    source: z.enum(["content_xml", "tool_call"]).optional(),
     apply_status: z.enum(["ok", "failed"]),
     apply_error: z.string().optional(),
     raw_block: z.string(),

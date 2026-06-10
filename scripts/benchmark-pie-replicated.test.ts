@@ -102,6 +102,10 @@ describe("formatReplicatedBenchmarkReport", () => {
         configs: ["card_on", "card_off"] as const,
         fixtureCount: 1,
         totalTrials: 2,
+        patchFlags: {
+          editsAsNativeTool: true,
+          editsAsNativeToolEnv: "true",
+        },
         failureMatrixFixtures: [
           {
             fixture: "rh-test-dashboard-version",
@@ -165,6 +169,18 @@ describe("formatReplicatedBenchmarkReport", () => {
           testsPassed: false,
           error: "DeepSeek 未返回有效的 FILES 块",
           failureClass: "model_protocol_plan_invalid",
+          toolCalls: [{ name: "apply_patch", status: "success" }],
+          patchRoundActions: [{
+            round: 1,
+            action: "change",
+            toolCalls: [{ name: "apply_patch", status: "success" }],
+            change: {
+              op: "CREATE",
+              file: "src/a.ts",
+              source: "tool_call",
+              applyStatus: "ok",
+            },
+          }],
         },
       ],
     );
@@ -173,11 +189,16 @@ describe("formatReplicatedBenchmarkReport", () => {
     assert.match(md, /\| rh-test-dashboard-version \| label_required \| yes \| regressed \| label separately until repaired \|/);
     assert.match(md, /Card ON: 0\/1/);
     assert.match(md, /Card OFF: 1\/1/);
+    assert.match(md, /patch\.edits_as_native_tool: true/);
     assert.match(md, /Failure Classification/);
     assert.match(md, /\| model_protocol_plan_invalid \| 1 \| 0 \|/);
     assert.match(md, /Patch Observability/);
     assert.match(md, /\| failedEmptyPatchRecords \| 1 \| 0 \|/);
     assert.match(md, /\| dsmlSalvageAppliedRounds \| 1 \| 0 \|/);
     assert.match(md, /\| repairEmptyPatchStalls \| 1 \| 0 \|/);
+    assert.match(md, /Native Edit Tool Observability/);
+    assert.match(md, /\| applyPatchToolCalls \| 1 \| 0 \|/);
+    assert.match(md, /\| applyPatchSuccessRecords \| 1 \| 0 \|/);
+    assert.match(md, /\| toolCallChangeRecords \| 1 \| 0 \|/);
   });
 });

@@ -9,7 +9,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { DeepSeekClient, DeepSeekMessage } from "@dsh/provider";
+import type { DeepSeekClient, DeepSeekMessage, DeepSeekToolCall } from "@dsh/provider";
 import {
   isGitRepo,
   createCheckpoint,
@@ -21,6 +21,7 @@ import {
 import type { TaskState, PatchRoundRecord, PatchRecord } from "./task-state.js";
 import { transition, writeTaskState } from "./task-state.js";
 import { parsePatchTurn, parseChanges, applyChanges } from "./patch-parser.js";
+import type { ChangeBlock, PatchTurnAction, ProtocolOp } from "./patch-parser.js";
 import { recoverDsmlWrappedChange } from "./dsml-recovery.js";
 import { buildMessages } from "./prompt-builder.js";
 import type { ContextLayers } from "./context-builder.js";
@@ -61,6 +62,7 @@ export interface PatchFlags {
   planFileContractV2: boolean;
   coverageFinalization: boolean;
   strictRequiredCoverage: boolean;
+  editsAsNativeTool: boolean;
 }
 
 function resolveFlag(
@@ -89,6 +91,7 @@ export function resolvePatchFlags(cwd: string): PatchFlags {
     planFileContractV2: resolveFlag(patchConfig, "plan_file_contract_v2", "PLAN_FILE_CONTRACT_V2", true),
     coverageFinalization: resolveFlag(patchConfig, "coverage_finalization", "PATCH_COVERAGE_FINALIZATION", true),
     strictRequiredCoverage: resolveFlag(patchConfig, "strict_required_target_coverage", "STRICT_REQUIRED_TARGET_COVERAGE", false),
+    editsAsNativeTool: resolveFlag(patchConfig, "edits_as_native_tool", "PATCH_EDITS_AS_NATIVE_TOOL", false),
   };
 }
 
@@ -243,6 +246,7 @@ function buildCoverageProgressMessage(
   changeFile: string,
   op: string,
   loop: PatchLoopState,
+  editInstruction = "change block",
 ): string {
   const base = applyOk
     ? `✓ change applied: ${changeFile} (op=${op})`
@@ -254,7 +258,7 @@ function buildCoverageProgressMessage(
   }
   return (
     `${base}\n进度: required target 覆盖 ${loop.coveredRequiredFiles.size}/${required}，` +
-    `仍未修改: [${[...loop.missingRequiredFiles].join(", ")}]。请优先对这些文件输出 change block。`
+    `仍未修改: [${[...loop.missingRequiredFiles].join(", ")}]。请优先对这些文件输出 ${editInstruction}。`
   );
 }
 
@@ -264,11 +268,24 @@ function buildCoverageProgressMessage(
 // paused silently, the model then emitted prose and the turn parsed as
 // "no action" three times in a row). Tell the model explicitly what happened
 // and what it must do.
-function buildToolsPausedWarning(contract: PlanFileContract, loop: PatchLoopState): string {
+function buildToolsPausedWarning(
+  contract: PlanFileContract,
+  loop: PatchLoopState,
+  editsAsNativeTool: boolean,
+): string {
   const target =
     [...loop.missingRequiredFiles][0] ??
     contract.requiredTargetFiles[0]?.path ??
     "the first target file";
+  if (editsAsNativeTool) {
+    return [
+      "## SYSTEM: EXPLORATION TOOLS PAUSED",
+      `You have used ${MAX_INITIAL_TOOLS_ONLY} consecutive exploration tool calls without producing any change.`,
+      "Exploration tools are now disabled. Your next response MUST be exactly ONE apply_patch tool call — not read_file, not grep_files, not prose, not explanation.",
+      `Start with: ${target}`,
+      'Use protocol_op CREATE for a new file, RENAME to rename a file, DELETE to remove one, or PATCH/SEARCH_REPLACE/INSERT to edit an existing file.',
+    ].join("\n");
+  }
   return [
     "## SYSTEM: TOOL ACCESS PAUSED",
     `You have used ${MAX_INITIAL_TOOLS_ONLY} consecutive tool calls without producing any change.`,
@@ -279,6 +296,371 @@ function buildToolsPausedWarning(contract: PlanFileContract, loop: PatchLoopStat
   ].join("\n");
 }
 
+type EditSource = "content_xml" | "tool_call";
+
+type PatchExploreAction =
+  | { kind: "tools" }
+  | { kind: "done" }
+  | { kind: "invalid"; reason: string }
+  | {
+      kind: "change";
+      change: ChangeBlock;
+      source: EditSource;
+      toolCallId?: string;
+      toolCallArgs?: Record<string, unknown>;
+    };
+
+const APPLY_PATCH_TOOL_NAME = "apply_patch";
+const PROTOCOL_OPS = new Set<ProtocolOp>([
+  "CREATE",
+  "PATCH",
+  "SEARCH_REPLACE",
+  "INSERT",
+  "DELETE",
+  "RENAME",
+]);
+
+function withContentSource(action: PatchTurnAction): PatchExploreAction {
+  if (action.kind === "change") return { ...action, source: "content_xml" };
+  return action;
+}
+
+function selectPatchExploreAction(args: {
+  contentAction: PatchTurnAction;
+  toolCalls: DeepSeekToolCall[];
+  toolsPaused: boolean;
+  editsAsNativeTool: boolean;
+}): PatchExploreAction {
+  const hasToolCalls = args.toolCalls.length > 0;
+  const contentAction = withContentSource(args.contentAction);
+  const editToolCalls = args.toolCalls.filter(
+    (toolCall) => toolCall.function.name === APPLY_PATCH_TOOL_NAME,
+  );
+
+  if (args.toolsPaused && hasToolCalls) {
+    const allowPausedNativeEdit =
+      args.editsAsNativeTool && editToolCalls.length === 1 && args.toolCalls.length === 1;
+    if (!allowPausedNativeEdit) {
+      return {
+        kind: "invalid",
+        reason: args.editsAsNativeTool
+          ? "exploration tool calls are paused after analysis paralysis; output one apply_patch tool call"
+          : "tool calls are paused after analysis paralysis; output one change block",
+      };
+    }
+  }
+
+  if (!args.editsAsNativeTool || editToolCalls.length === 0) {
+    return contentAction.kind === "invalid" && hasToolCalls
+      ? { kind: "tools" }
+      : contentAction;
+  }
+
+  if (editToolCalls.length > 1) {
+    return { kind: "invalid", reason: "multiple apply_patch tool calls: output exactly one edit per turn" };
+  }
+  if (args.toolCalls.length > 1) {
+    return { kind: "invalid", reason: "apply_patch cannot be combined with read_file/grep_files in the same turn" };
+  }
+  if (contentAction.kind === "change") {
+    return { kind: "invalid", reason: "apply_patch cannot be combined with a content change block" };
+  }
+  if (contentAction.kind === "done") {
+    return { kind: "invalid", reason: "apply_patch cannot be combined with <DONE/>" };
+  }
+  if (contentAction.kind === "invalid") {
+    return { kind: "invalid", reason: `apply_patch cannot be combined with invalid content: ${contentAction.reason}` };
+  }
+
+  return parseApplyPatchToolCall(editToolCalls[0]!);
+}
+
+export function parseApplyPatchToolCall(toolCall: DeepSeekToolCall): PatchExploreAction {
+  let rawArgs: unknown;
+  try {
+    rawArgs = toolCall.function.arguments.trim().length > 0
+      ? JSON.parse(toolCall.function.arguments)
+      : {};
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    return { kind: "invalid", reason: `Invalid apply_patch arguments JSON: ${detail}` };
+  }
+  if (rawArgs === null || typeof rawArgs !== "object" || Array.isArray(rawArgs)) {
+    return { kind: "invalid", reason: "apply_patch arguments must be a JSON object" };
+  }
+
+  const toolCallArgs = rawArgs as Record<string, unknown>;
+  const rendered = buildApplyPatchChange(toolCallArgs);
+  if (!rendered.ok) return { kind: "invalid", reason: rendered.reason };
+
+  return {
+    kind: "change",
+    change: rendered.change,
+    source: "tool_call",
+    toolCallId: toolCall.id,
+    toolCallArgs: redactApplyPatchToolArgs(toolCallArgs),
+  };
+}
+
+function buildApplyPatchChange(
+  args: Record<string, unknown>,
+) : { ok: true; change: ChangeBlock } | { ok: false; reason: string } {
+  const protocolOp = resolveProtocolOp(args);
+  if (!protocolOp.ok) {
+    return protocolOp;
+  }
+
+  if (protocolOp.value === "PATCH" && hasStringArg(args, "path") && hasStringArg(args, "search") && hasStringArg(args, "replace")) {
+    return buildApplyPatchChange({ ...args, protocol_op: "SEARCH_REPLACE" });
+  }
+
+  switch (protocolOp.value) {
+    case "CREATE": {
+      const filePath = requiredAttr(args, "path");
+      const content = requiredString(args, "content");
+      if (!filePath.ok) return filePath;
+      if (!content.ok) return content;
+      return {
+        ok: true,
+        change: {
+          op: "CREATE",
+          file: filePath.value,
+          raw_block: `<CREATE path="${filePath.value}">\n${content.value}\n</CREATE>`,
+          create: { path: filePath.value, content: content.value },
+        },
+      };
+    }
+    case "DELETE": {
+      const filePath = requiredAttr(args, "path");
+      if (!filePath.ok) return filePath;
+      return {
+        ok: true,
+        change: {
+          op: "DELETE",
+          file: filePath.value,
+          raw_block: `<DELETE path="${filePath.value}" />`,
+        },
+      };
+    }
+    case "RENAME": {
+      const from = requiredAttr(args, "from");
+      const to = requiredAttr(args, "to");
+      if (!from.ok) return from;
+      if (!to.ok) return to;
+      return {
+        ok: true,
+        change: {
+          op: "RENAME",
+          file: `${from.value} -> ${to.value}`,
+          raw_block: `<RENAME from="${from.value}" to="${to.value}" />`,
+          rename: { from: from.value, to: to.value },
+        },
+      };
+    }
+    case "SEARCH_REPLACE": {
+      const filePath = requiredAttr(args, "path");
+      const search = requiredString(args, "search");
+      const replace = requiredString(args, "replace");
+      if (!filePath.ok) return filePath;
+      if (!search.ok) return search;
+      if (!replace.ok) return replace;
+      const rawBlock =
+          `<PATCH type="search" file="${filePath.value}">\n` +
+          `<SEARCH>${search.value}</SEARCH>\n` +
+          `<REPLACE>${replace.value}</REPLACE>\n` +
+          "</PATCH>";
+      return {
+        ok: true,
+        change: {
+          op: "SEARCH_REPLACE",
+          file: filePath.value,
+          raw_block: rawBlock,
+          searchReplace: { filePath: filePath.value, search: search.value, replace: replace.value },
+        },
+      };
+    }
+    case "INSERT": {
+      const filePath = requiredAttr(args, "path");
+      const anchor = requiredString(args, "anchor");
+      const content = requiredString(args, "content");
+      const position = requiredAttr(args, "position");
+      if (!filePath.ok) return filePath;
+      if (!anchor.ok) return anchor;
+      if (!content.ok) return content;
+      if (!position.ok) return position;
+      if (position.value !== "before" && position.value !== "after") {
+        return { ok: false, reason: "apply_patch.position must be before or after" };
+      }
+      const rawBlock =
+          `<INSERT position="${position.value}" anchor="${anchor.value}" file="${filePath.value}">` +
+          `${content.value}` +
+          "</INSERT>";
+      return {
+        ok: true,
+        change: {
+          op: "INSERT",
+          file: filePath.value,
+          raw_block: rawBlock,
+          insert: {
+            filePath: filePath.value,
+            anchor: anchor.value,
+            position: position.value,
+            content: content.value,
+          },
+        },
+      };
+    }
+    case "PATCH": {
+      const patch = requiredString(args, "patch");
+      if (!patch.ok) return patch;
+      const parsed = parsePatchTurn(`<PATCH>\n${patch.value}\n</PATCH>`, false);
+      if (parsed.kind !== "change") {
+        const embedded = parsePatchTurn(patch.value, false);
+        if (embedded.kind === "change") {
+          return { ok: true, change: embedded.change };
+        }
+        const reason = parsed.kind === "invalid" ? parsed.reason : `unexpected ${parsed.kind} action`;
+        return { ok: false, reason: `apply_patch payload invalid: ${reason}` };
+      }
+      return { ok: true, change: parsed.change };
+    }
+  }
+}
+
+function resolveProtocolOp(args: Record<string, unknown>): { ok: true; value: ProtocolOp } | { ok: false; reason: string } {
+  const explicit =
+    stringArg(args, "protocol_op") ??
+    stringArg(args, "protocolOp") ??
+    stringArg(args, "op") ??
+    stringArg(args, "operation") ??
+    stringArg(args, "action") ??
+    stringArg(args, "type");
+  const normalized = normalizeProtocolOp(explicit);
+  if (normalized) return { ok: true, value: normalized };
+
+  const inferred = inferProtocolOp(args);
+  if (inferred) return { ok: true, value: inferred };
+
+  return { ok: false, reason: "apply_patch.protocol_op must be one of CREATE/PATCH/SEARCH_REPLACE/INSERT/DELETE/RENAME" };
+}
+
+function normalizeProtocolOp(value: string | undefined): ProtocolOp | null {
+  if (!value) return null;
+  const normalized = value.trim().replace(/[\s-]+/g, "_").toUpperCase();
+  const aliases: Record<string, ProtocolOp> = {
+    CREATE_FILE: "CREATE",
+    WRITE: "CREATE",
+    ADD: "CREATE",
+    MODIFY: "PATCH",
+    EDIT: "PATCH",
+    UPDATE: "PATCH",
+    DIFF: "PATCH",
+    UNIFIED_DIFF: "PATCH",
+    SEARCH: "SEARCH_REPLACE",
+    REPLACE: "SEARCH_REPLACE",
+    SEARCHREPLACE: "SEARCH_REPLACE",
+    SEARCH_AND_REPLACE: "SEARCH_REPLACE",
+    MOVE: "RENAME",
+  };
+  const op = aliases[normalized] ?? normalized;
+  return PROTOCOL_OPS.has(op as ProtocolOp) ? (op as ProtocolOp) : null;
+}
+
+function inferProtocolOp(args: Record<string, unknown>): ProtocolOp | null {
+  if (hasStringArg(args, "from") && hasStringArg(args, "to")) return "RENAME";
+  if (hasStringArg(args, "path") && hasStringArg(args, "search") && hasStringArg(args, "replace")) return "SEARCH_REPLACE";
+  if (hasStringArg(args, "path") && hasStringArg(args, "anchor") && hasStringArg(args, "position") && hasStringArg(args, "content")) return "INSERT";
+  if (hasStringArg(args, "patch")) return "PATCH";
+  if (hasStringArg(args, "path") && hasStringArg(args, "content")) return "CREATE";
+  return null;
+}
+
+function hasStringArg(args: Record<string, unknown>, key: string): boolean {
+  const value = stringArg(args, key);
+  return value !== undefined && value.length > 0;
+}
+
+function stringArg(args: Record<string, unknown>, key: string): string | undefined {
+  const value = args[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function requiredString(
+  args: Record<string, unknown>,
+  key: string,
+): { ok: true; value: string } | { ok: false; reason: string } {
+  const value = stringArg(args, key);
+  if (value === undefined || value.length === 0) {
+    return { ok: false, reason: `apply_patch.${key} is required` };
+  }
+  return { ok: true, value };
+}
+
+function requiredAttr(
+  args: Record<string, unknown>,
+  key: string,
+): { ok: true; value: string } | { ok: false; reason: string } {
+  const value = requiredString(args, key);
+  if (!value.ok) return value;
+  if (/["\r\n]/.test(value.value)) {
+    return { ok: false, reason: `apply_patch.${key} cannot contain quotes or newlines` };
+  }
+  return value;
+}
+
+const REDACTED_APPLY_PATCH_STRING_KEYS = new Set([
+  "content",
+  "patch",
+  "search",
+  "replace",
+  "body",
+  "text",
+  "code",
+  "new_content",
+  "old_content",
+  "newText",
+  "oldText",
+]);
+
+function redactApplyPatchToolArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const redacted: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (REDACTED_APPLY_PATCH_STRING_KEYS.has(key) && typeof value === "string") {
+      redacted[`${key}_length`] = value.length;
+    } else {
+      redacted[key] = value;
+    }
+  }
+  return redacted;
+}
+
+function redactToolCallArguments(toolCall: DeepSeekToolCall): Record<string, unknown> {
+  const raw = toolCall.function.arguments;
+  if (raw.trim().length === 0) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { invalid_arguments_shape: true };
+    }
+    if (toolCall.function.name === APPLY_PATCH_TOOL_NAME) {
+      return redactApplyPatchToolArgs(parsed as Record<string, unknown>);
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return { invalid_json: true, raw_length: raw.length };
+  }
+}
+
+function summarizeInvalidToolCalls(toolCalls: DeepSeekToolCall[], reason: string): PatchRoundRecord["tool_calls"] | undefined {
+  if (toolCalls.length === 0) return undefined;
+  return toolCalls.map((toolCall) => ({
+    name: toolCall.function.name,
+    arguments: redactToolCallArguments(toolCall),
+    status: "error" as const,
+    summary: reason.slice(0, 200),
+  }));
+}
+
 async function runPatchExplore(args: {
   state: TaskState;
   cwd: string;
@@ -287,10 +669,15 @@ async function runPatchExplore(args: {
   messages: DeepSeekMessage[];
   target: ModelTarget;
   contract: PlanFileContract;
+  editsAsNativeTool: boolean;
 }): Promise<ExploreResult> {
-  const { state, cwd, client, dryRun, messages, target, contract } = args;
-  const toolPolicy = getToolPolicy("patch");
+  const { state, cwd, client, dryRun, messages, target, contract, editsAsNativeTool } = args;
+  const toolPolicy = getToolPolicy("patch", { editsAsNativeTool });
   const tools = filterToolsForPolicy(ALL_TOOL_DEFINITIONS, toolPolicy);
+  const editOnlyTools = filterToolsForPolicy(ALL_TOOL_DEFINITIONS, {
+    phase: "patch",
+    allowedTools: editsAsNativeTool ? [APPLY_PATCH_TOOL_NAME] : [],
+  });
 
   const loop: PatchLoopState = {
     round: 0,
@@ -315,15 +702,16 @@ async function runPatchExplore(args: {
     const toolsPaused =
       !loop.hasStartedPatching && loop.consecutiveToolsOnly >= MAX_INITIAL_TOOLS_ONLY;
     if (toolsPaused && !toolsPauseAnnounced) {
-      messages.push({ role: "user", content: buildToolsPausedWarning(contract, loop) });
+      messages.push({ role: "user", content: buildToolsPausedWarning(contract, loop, editsAsNativeTool) });
       toolsPauseAnnounced = true;
     }
+    const activeTools = toolsPaused && editsAsNativeTool ? editOnlyTools : toolsPaused ? [] : tools;
     const startedAt = Date.now();
     const response = await client.chat({
       model: target.model,
       messages,
       thinking: target.thinking,
-      ...(toolsPaused ? {} : { tools: tools as unknown as Record<string, unknown>[] }),
+      ...(activeTools.length > 0 ? { tools: activeTools as unknown as Record<string, unknown>[] } : {}),
     });
     recordDeepSeekUsage(state, {
       phase: "patch",
@@ -342,12 +730,12 @@ async function runPatchExplore(args: {
     const toolCalls = choice.message.tool_calls;
     const hasToolCalls = (toolCalls?.length ?? 0) > 0;
 
-    let action = toolsPaused && hasToolCalls
-      ? { kind: "invalid" as const, reason: "tool calls are paused after analysis paralysis; output one change block" }
-      : parsePatchTurn(content, hasToolCalls);
-    if (action.kind === "invalid" && hasToolCalls && !toolsPaused) {
-      action = { kind: "tools" };
-    }
+    const action = selectPatchExploreAction({
+      contentAction: parsePatchTurn(content, hasToolCalls),
+      toolCalls: toolCalls ?? [],
+      toolsPaused,
+      editsAsNativeTool,
+    });
 
     const record: PatchRoundRecord = {
       round: loop.round,
@@ -389,6 +777,7 @@ async function runPatchExplore(args: {
       record.change = {
         op: action.change.op,
         file: action.change.file,
+        source: action.source,
         apply_status: result.ok ? "ok" : "failed",
         apply_error: result.error,
         raw_block: action.change.raw_block,
@@ -418,16 +807,38 @@ async function runPatchExplore(args: {
         if (result.ok) loop.validChangesWithoutCoverageProgress++;
       }
 
-      messages.push({
-        role: "user",
-        content: buildCoverageProgressMessage(
-          result.ok,
-          result.error,
-          action.change.file,
-          action.change.op,
-          loop,
-        ),
-      });
+      const progressMessage = buildCoverageProgressMessage(
+        result.ok,
+        result.error,
+        action.change.file,
+        action.change.op,
+        loop,
+        editsAsNativeTool ? "apply_patch tool call" : "change block",
+      );
+      if (action.source === "tool_call" && action.toolCallId) {
+        const assistantMsg: DeepSeekMessage = { role: "assistant", content, tool_calls: toolCalls ?? undefined };
+        if (choice.message.reasoning_content) assistantMsg.reasoning_content = choice.message.reasoning_content;
+        messages.push(assistantMsg);
+        messages.push({
+          role: "tool",
+          tool_call_id: action.toolCallId,
+          content: JSON.stringify({
+            apply_status: result.ok ? "ok" : "failed",
+            files_changed: result.files_changed,
+            coverage_delta: [...coverageDelta],
+            missing_required_files: [...loop.missingRequiredFiles],
+            error: result.error,
+          }),
+        });
+        record.tool_calls = [{
+          name: APPLY_PATCH_TOOL_NAME,
+          arguments: action.toolCallArgs ?? {},
+          status: result.ok ? "success" : "error",
+          summary: progressMessage.slice(0, 200),
+        }];
+      } else {
+        messages.push({ role: "user", content: progressMessage });
+      }
       state.patch_rounds.push(record);
       writeTaskState(cwd, state);
     } else if (action.kind === "done") {
@@ -442,7 +853,9 @@ async function runPatchExplore(args: {
           role: "user",
           content:
             "<DONE/> rejected: no change has been applied yet. " +
-            "Produce at least one change block before signalling done.",
+            (editsAsNativeTool
+              ? "Produce at least one apply_patch tool call before signalling done."
+              : "Produce at least one change block before signalling done."),
         });
       } else {
         modelSaidDone = true;
@@ -461,6 +874,7 @@ async function runPatchExplore(args: {
       }
     } else {
       record.invalid_reason = action.reason;
+      record.tool_calls = summarizeInvalidToolCalls(toolCalls ?? [], action.reason);
       loop.invalidStreak++;
       if (loop.hasStartedPatching) loop.roundsSinceCoverageProgress++;
       state.patch_rounds.push(record);
@@ -469,7 +883,9 @@ async function runPatchExplore(args: {
         role: "user",
         content:
           `Invalid response: ${action.reason}. You must output EXACTLY ONE of: ` +
-          "tool calls, ONE change block, or <DONE/>. Please try again.",
+          (editsAsNativeTool
+            ? "exploration tool calls, ONE apply_patch tool call, or <DONE/>. Please try again."
+            : "tool calls, ONE change block, or <DONE/>. Please try again."),
       });
     }
 
@@ -798,6 +1214,7 @@ export async function runPatchPipeline(args: {
     messages: args.messages,
     target: args.target,
     contract,
+    editsAsNativeTool: flags.editsAsNativeTool,
   });
 
   const finalization: FinalizationResult = flags.coverageFinalization

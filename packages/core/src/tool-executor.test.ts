@@ -461,6 +461,14 @@ describe("executeTool with unknown tool", () => {
     assert.equal(result.status, "error");
     assert.match(result.error ?? "", /<CREATE>/);
   });
+
+  it("does not execute apply_patch through the generic tool executor", () => {
+    const result = executeTool("apply_patch", { protocol_op: "DELETE", path: "a.ts" }, "/tmp");
+
+    assert.equal(result.status, "error");
+    assert.match(result.error ?? "", /patch pipeline/);
+    assert.match(result.error ?? "", /never writes files/);
+  });
 });
 
 describe("formatToolResult", () => {

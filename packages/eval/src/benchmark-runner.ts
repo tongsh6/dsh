@@ -38,17 +38,18 @@ export interface TaskResult {
   expectedProtocolOps: ProtocolOp[];
   actualProtocolOps: ProtocolOp[];
   toolRounds: number;
-  toolCalls: { name: string; status: string }[];
+  toolCalls: { name: string; status: string; arguments?: Record<string, unknown> }[];
   patchRounds: number;
   patchRoundActions: {
     round: number;
     action: string;
-    toolCalls?: { name: string; status: string }[];
+    toolCalls?: { name: string; status: string; arguments?: Record<string, unknown> }[];
     dsmlSalvageApplied?: boolean;
     invalidReason?: string;
     change?: {
       op: string;
       file: string;
+      source?: string;
       applyStatus: string;
       applyError?: string;
     };
@@ -349,8 +350,12 @@ function summarizePatchRoundActions(
     round: pr.round,
     action: pr.action,
     toolCalls:
-      pr.action === "tools" && pr.tool_calls
-        ? pr.tool_calls.map((tc) => ({ name: tc.name, status: tc.status }))
+      pr.tool_calls
+        ? pr.tool_calls.map((tc) => ({
+            name: tc.name,
+            status: tc.status,
+            ...(Object.keys(tc.arguments ?? {}).length > 0 ? { arguments: tc.arguments } : {}),
+          }))
         : undefined,
     ...(pr.dsml_salvage_applied !== undefined ? { dsmlSalvageApplied: pr.dsml_salvage_applied } : {}),
     ...(pr.invalid_reason !== undefined ? { invalidReason: pr.invalid_reason } : {}),
@@ -359,6 +364,7 @@ function summarizePatchRoundActions(
           change: {
             op: pr.change.op,
             file: pr.change.file,
+            ...(pr.change.source !== undefined ? { source: pr.change.source } : {}),
             applyStatus: pr.change.apply_status,
             ...(pr.change.apply_error !== undefined ? { applyError: pr.change.apply_error } : {}),
           },
@@ -809,10 +815,10 @@ export async function runTask(
 
     // Record tool usage — prefer v0.4 patch_rounds data when available
     if (state.patch_rounds && state.patch_rounds.length > 0) {
-      // v0.4: tools are tracked inside patch_rounds as "tools" action rounds
-      const toolActionRounds = state.patch_rounds.filter((pr) => pr.action === "tools");
-      result.toolRounds = toolActionRounds.length;
-      result.toolCalls = toolActionRounds.flatMap((pr) =>
+      // v0.4: tool calls are tracked inside patch_rounds, including native edit change rounds.
+      const toolCallRounds = state.patch_rounds.filter((pr) => (pr.tool_calls?.length ?? 0) > 0);
+      result.toolRounds = toolCallRounds.length;
+      result.toolCalls = toolCallRounds.flatMap((pr) =>
         (pr.tool_calls ?? []).map((tc) => ({ name: tc.name, status: tc.status })),
       );
     } else {
@@ -895,9 +901,9 @@ export async function runTask(
 
     // From patch_rounds (v0.4 format)
     if (state.patch_rounds && state.patch_rounds.length > 0) {
-      const toolActionRounds = state.patch_rounds.filter((pr) => pr.action === "tools");
-      allToolRounds += toolActionRounds.length;
-      allToolCalls.push(...toolActionRounds.flatMap((pr) =>
+      const toolCallRounds = state.patch_rounds.filter((pr) => (pr.tool_calls?.length ?? 0) > 0);
+      allToolRounds += toolCallRounds.length;
+      allToolCalls.push(...toolCallRounds.flatMap((pr) =>
         (pr.tool_calls ?? []).map((tc) => ({ name: tc.name, status: tc.status })),
       ));
     }
@@ -939,9 +945,9 @@ export async function runTask(
 
       if (result.patchRounds > 0) {
         // v0.4: consolidate from patch_rounds
-        const toolActionRounds = result.patchRoundActions.filter((a) => a.action === "tools");
-        result.toolRounds = toolActionRounds.length;
-        result.toolCalls = toolActionRounds.flatMap((a) => a.toolCalls ?? []);
+        const toolCallRounds = result.patchRoundActions.filter((a) => (a.toolCalls?.length ?? 0) > 0);
+        result.toolRounds = toolCallRounds.length;
+        result.toolCalls = toolCallRounds.flatMap((a) => a.toolCalls ?? []);
       } else {
         result.toolRounds = stateOnDisk.tool_rounds?.length ?? 0;
         result.toolCalls = (stateOnDisk.tool_rounds ?? []).flatMap((tr) =>

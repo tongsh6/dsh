@@ -4,6 +4,7 @@ import {
   READ_FILE_DEF,
   GREP_FILES_DEF,
   EXEC_SHELL_DEF,
+  APPLY_PATCH_DEF,
   ALL_TOOL_DEFINITIONS,
   EXEC_SHELL_ALLOW_LIST,
   EXEC_SHELL_BLOCK_PATTERNS,
@@ -37,10 +38,22 @@ describe("tool definitions", () => {
     assert.deepEqual(EXEC_SHELL_DEF.function.parameters.required, ["command"]);
   });
 
-  it("returns all 3 definitions in ALL_TOOL_DEFINITIONS", () => {
-    assert.equal(ALL_TOOL_DEFINITIONS.length, 3);
+  it("has valid JSON Schema for apply_patch", () => {
+    assert.equal(APPLY_PATCH_DEF.type, "function");
+    assert.equal(APPLY_PATCH_DEF.function.name, "apply_patch");
+    assert.ok(APPLY_PATCH_DEF.function.description.length > 10);
+    assert.deepEqual(
+      APPLY_PATCH_DEF.function.parameters.properties["protocol_op"]?.enum,
+      ["CREATE", "PATCH", "SEARCH_REPLACE", "INSERT", "DELETE", "RENAME"],
+    );
+    assert.deepEqual(APPLY_PATCH_DEF.function.parameters.required, ["protocol_op"]);
+    assert.equal(APPLY_PATCH_DEF.function.parameters.additionalProperties, false);
+  });
+
+  it("returns all 4 definitions in ALL_TOOL_DEFINITIONS", () => {
+    assert.equal(ALL_TOOL_DEFINITIONS.length, 4);
     const names = ALL_TOOL_DEFINITIONS.map((d) => d.function.name);
-    assert.deepEqual(names.sort(), ["exec_shell", "grep_files", "read_file"]);
+    assert.deepEqual(names.sort(), ["apply_patch", "exec_shell", "grep_files", "read_file"]);
   });
 });
 

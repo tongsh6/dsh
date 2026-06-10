@@ -1,4 +1,4 @@
-export type ToolName = "read_file" | "grep_files" | "exec_shell";
+export type ToolName = "read_file" | "grep_files" | "exec_shell" | "apply_patch";
 
 export interface ToolCall {
   id: string;
@@ -21,7 +21,7 @@ export interface ToolDefinition {
     strict?: boolean;
     parameters: {
       type: "object";
-      properties: Record<string, { type: string; description: string }>;
+      properties: Record<string, { type: string; description: string; enum?: string[] }>;
       required: string[];
       additionalProperties?: boolean;
     };
@@ -98,10 +98,69 @@ export const EXEC_SHELL_DEF: ToolDefinition = {
   },
 };
 
+export const APPLY_PATCH_DEF: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "apply_patch",
+    description:
+      "在 patch 阶段提交一个文件编辑动作。每次调用只能表达一个 protocol_op，并由 DSH 现有 patch 状态机应用、校验和回滚。",
+    parameters: {
+      type: "object",
+      properties: {
+        protocol_op: {
+          type: "string",
+          enum: ["CREATE", "PATCH", "SEARCH_REPLACE", "INSERT", "DELETE", "RENAME"],
+          description: "编辑操作类型：CREATE、PATCH、SEARCH_REPLACE、INSERT、DELETE 或 RENAME",
+        },
+        path: {
+          type: "string",
+          description: "目标文件相对路径。CREATE/PATCH/SEARCH_REPLACE/INSERT/DELETE 使用。",
+        },
+        from: {
+          type: "string",
+          description: "RENAME 源文件相对路径。",
+        },
+        to: {
+          type: "string",
+          description: "RENAME 目标文件相对路径。",
+        },
+        content: {
+          type: "string",
+          description: "CREATE 的完整文件内容，或 INSERT 要插入的内容。",
+        },
+        patch: {
+          type: "string",
+          description: "PATCH 使用的 unified diff，不包含额外解释。",
+        },
+        search: {
+          type: "string",
+          description: "SEARCH_REPLACE 使用的精确搜索文本。",
+        },
+        replace: {
+          type: "string",
+          description: "SEARCH_REPLACE 使用的替换文本。",
+        },
+        position: {
+          type: "string",
+          enum: ["before", "after"],
+          description: "INSERT 使用，表示插入到 anchor 前或后。",
+        },
+        anchor: {
+          type: "string",
+          description: "INSERT 使用，用于定位插入位置的锚点文本。",
+        },
+      },
+      required: ["protocol_op"],
+      additionalProperties: false,
+    },
+  },
+};
+
 export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
   READ_FILE_DEF,
   GREP_FILES_DEF,
   EXEC_SHELL_DEF,
+  APPLY_PATCH_DEF,
 ];
 
 /** 命令必须以这些前缀之一开头才被允许执行 */

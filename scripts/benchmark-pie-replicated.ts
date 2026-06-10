@@ -155,6 +155,15 @@ interface PatchObservabilitySummary {
   deterministicAssertionRepairRecords: number;
 }
 
+interface NativeEditObservabilitySummary {
+  applyPatchToolCalls: number;
+  applyPatchSuccessRecords: number;
+  applyPatchErrorRecords: number;
+  applyPatchInvalidRounds: number;
+  toolCallChangeRecords: number;
+  contentXmlChangeRecords: number;
+}
+
 interface ReplicatedBenchmarkMetadata {
   runId: string;
   seed: number;
@@ -162,6 +171,10 @@ interface ReplicatedBenchmarkMetadata {
   configs: readonly Config[];
   fixtureCount: number;
   totalTrials: number;
+  patchFlags?: {
+    editsAsNativeTool: boolean;
+    editsAsNativeToolEnv: string | null;
+  };
   failureMatrixFixtures: readonly FailureMatrixFixtureGovernance[];
   summary?: {
     card_on_pass: number;
@@ -170,6 +183,15 @@ interface ReplicatedBenchmarkMetadata {
     card_off_total: number;
     failureClasses?: Record<Config, Record<string, number>>;
     patchObservability?: Record<Config, PatchObservabilitySummary>;
+    nativeEditObservability?: Record<Config, NativeEditObservabilitySummary>;
+  };
+}
+
+function currentPatchFlags(): ReplicatedBenchmarkMetadata["patchFlags"] {
+  const env = process.env["PATCH_EDITS_AS_NATIVE_TOOL"];
+  return {
+    editsAsNativeTool: env !== undefined && env !== "" && env !== "false" && env !== "0",
+    editsAsNativeToolEnv: env ?? null,
   };
 }
 
@@ -215,6 +237,71 @@ function summarizePatchObservability(
     card_on: summarizePatchObservabilityForConfig(results, "card_on"),
     card_off: summarizePatchObservabilityForConfig(results, "card_off"),
   };
+}
+
+function summarizeNativeEditObservability(
+  results: readonly TrialResult[],
+): Record<Config, NativeEditObservabilitySummary> {
+  return {
+    card_on: summarizeNativeEditObservabilityForConfig(results, "card_on"),
+    card_off: summarizeNativeEditObservabilityForConfig(results, "card_off"),
+  };
+}
+
+function summarizeNativeEditObservabilityForConfig(
+  results: readonly TrialResult[],
+  config: Config,
+): NativeEditObservabilitySummary {
+  const summary: NativeEditObservabilitySummary = {
+    applyPatchToolCalls: 0,
+    applyPatchSuccessRecords: 0,
+    applyPatchErrorRecords: 0,
+    applyPatchInvalidRounds: 0,
+    toolCallChangeRecords: 0,
+    contentXmlChangeRecords: 0,
+  };
+
+  for (const result of results.filter((r) => r.config === config)) {
+    const topLevelToolCalls = Array.isArray(result.toolCalls)
+      ? result.toolCalls as Array<{ name?: unknown; status?: unknown }>
+      : [];
+    const hasTopLevelApplyPatch = topLevelToolCalls.some((toolCall) => toolCall.name === "apply_patch");
+    for (const toolCall of topLevelToolCalls) {
+      if (toolCall.name === "apply_patch") {
+        summary.applyPatchToolCalls++;
+        if (toolCall.status === "success") summary.applyPatchSuccessRecords++;
+        if (toolCall.status === "error") summary.applyPatchErrorRecords++;
+      }
+    }
+
+    const actions = Array.isArray(result.patchRoundActions)
+      ? result.patchRoundActions as Array<{
+        action?: unknown;
+        invalidReason?: unknown;
+        change?: { source?: unknown };
+        toolCalls?: Array<{ name?: unknown; status?: unknown }>;
+      }>
+      : [];
+    for (const action of actions) {
+      if (typeof action.invalidReason === "string" && action.invalidReason.includes("apply_patch")) {
+        summary.applyPatchInvalidRounds++;
+      }
+      if (action.action === "change") {
+        if (action.change?.source === "tool_call") summary.toolCallChangeRecords++;
+        if (action.change?.source === "content_xml") summary.contentXmlChangeRecords++;
+      }
+      if (hasTopLevelApplyPatch) continue;
+      for (const toolCall of action.toolCalls ?? []) {
+        if (toolCall.name === "apply_patch") {
+          summary.applyPatchToolCalls++;
+          if (toolCall.status === "success") summary.applyPatchSuccessRecords++;
+          if (toolCall.status === "error") summary.applyPatchErrorRecords++;
+        }
+      }
+    }
+  }
+
+  return summary;
 }
 
 function summarizePatchObservabilityForConfig(
@@ -386,6 +473,9 @@ export function formatReplicatedBenchmarkReport(
   lines.push(`- reps: ${metadata.reps}`);
   lines.push(`- fixtures: ${metadata.fixtureCount}`);
   lines.push(`- trials: ${results.length}/${metadata.totalTrials}`);
+  if (metadata.patchFlags) {
+    lines.push(`- patch.edits_as_native_tool: ${metadata.patchFlags.editsAsNativeTool}`);
+  }
   lines.push("");
   lines.push("## Results");
   lines.push("");
@@ -436,6 +526,24 @@ export function formatReplicatedBenchmarkReport(
     "deterministicAssertionRepairRecords",
   ] as const) {
     lines.push(`| ${metric} | ${patchObservability.card_on?.[metric] ?? 0} | ${patchObservability.card_off?.[metric] ?? 0} |`);
+  }
+  lines.push("");
+  lines.push("## Native Edit Tool Observability");
+  lines.push("");
+  lines.push("These counters show whether the opt-in native edit path was actually used, separately from overall pass rate.");
+  lines.push("");
+  const nativeEditObservability = metadata.summary?.nativeEditObservability ?? summarizeNativeEditObservability(results);
+  lines.push("| Metric | Card ON | Card OFF |");
+  lines.push("|--------|---------|----------|");
+  for (const metric of [
+    "applyPatchToolCalls",
+    "applyPatchSuccessRecords",
+    "applyPatchErrorRecords",
+    "applyPatchInvalidRounds",
+    "toolCallChangeRecords",
+    "contentXmlChangeRecords",
+  ] as const) {
+    lines.push(`| ${metric} | ${nativeEditObservability.card_on?.[metric] ?? 0} | ${nativeEditObservability.card_off?.[metric] ?? 0} |`);
   }
   lines.push("");
   lines.push("## Evidence Governance");
@@ -578,6 +686,7 @@ async function main(): Promise<void> {
     lanesPerRepo: LANES_PER_REPO,
     estimateResults: fs.existsSync(ESTIMATE_RESULTS) ? ESTIMATE_RESULTS : null,
     dshCommit: gitShortHash(), startedAt,
+    patchFlags: currentPatchFlags(),
     fixtureCount: benchFixtures.length,
     totalTrials: trials.length,
     failureMatrixSummary,
@@ -704,6 +813,7 @@ async function main(): Promise<void> {
     dshCommit: gitShortHash(),
     startedAt,
     completedAt: new Date().toISOString(),
+    patchFlags: currentPatchFlags(),
     fixtureCount: benchFixtures.length,
     totalTrials: trials.length,
     failureMatrixSummary,
@@ -726,6 +836,7 @@ async function main(): Promise<void> {
       card_off_total: totalOff,
       failureClasses: summarizeFailureClasses(results),
       patchObservability: summarizePatchObservability(results),
+      nativeEditObservability: summarizeNativeEditObservability(results),
     },
   };
   fs.writeFileSync(path.join(runDir, "metadata.json"), JSON.stringify(finalMetadata, null, 2));

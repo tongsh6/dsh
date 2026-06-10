@@ -23,6 +23,10 @@ export interface ToolPolicy {
   allowedTools: ToolName[];
 }
 
+export interface ToolPolicyOptions {
+  editsAsNativeTool?: boolean;
+}
+
 export type ToolExecutor = (
   name: ToolName,
   args: ToolArguments,
@@ -80,8 +84,12 @@ export const TOOL_POLICIES: Record<AgentPhase, ToolPolicy> = {
   preflight: { phase: "preflight", allowedTools: ["read_file", "grep_files", "exec_shell"] },
 };
 
-export function getToolPolicy(phase: AgentPhase): ToolPolicy {
-  return TOOL_POLICIES[phase];
+export function getToolPolicy(phase: AgentPhase, options: ToolPolicyOptions = {}): ToolPolicy {
+  const policy = TOOL_POLICIES[phase];
+  if (phase === "patch" && options.editsAsNativeTool) {
+    return { ...policy, allowedTools: [...policy.allowedTools, "apply_patch"] };
+  }
+  return policy;
 }
 
 export async function runAgentTurnLoop(input: AgentTurnLoopInput): Promise<AgentTurnLoopResult> {

@@ -390,6 +390,16 @@ export function executeTool(
     }
 
     default: {
+      if (name === "apply_patch") {
+        return {
+          callId,
+          status: "error",
+          content: "",
+          error:
+            "apply_patch can only be executed by the patch pipeline when " +
+            "PATCH_EDITS_AS_NATIVE_TOOL is enabled. The generic tool executor never writes files.",
+        };
+      }
       const upper = name.toUpperCase();
       if (PROTOCOL_BLOCK_NAMES.has(upper) || name === "create_file" || name === "create") {
         const blockName = upper === "CREATE_FILE" ? "CREATE" : upper;
