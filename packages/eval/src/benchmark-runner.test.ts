@@ -17,6 +17,7 @@ import {
   formatEvaluationReport,
   summarizePatchRecords,
   summarizePatchDiagnostics,
+  summarizePatchRoundActions,
   collectTaskDiagnostics,
   collectPlanDiagnostics,
   classifyTaskFailure,
@@ -592,6 +593,56 @@ describe("patch_rounds in TaskResult", () => {
     assert.equal(r.patchRounds, 3);
     assert.equal(r.patchRoundActions.length, 3);
     assert.equal(r.patchRoundActions[1]!.action, "change");
+  });
+
+  it("preserves native edit tool-call argument summaries", () => {
+    const actions = summarizePatchRoundActions([
+      {
+        round: 1,
+        action: "invalid",
+        invalid_reason: "apply_patch.protocol_op must be one of CREATE/PATCH/SEARCH_REPLACE/INSERT/DELETE/RENAME",
+        duration_ms: 4,
+        tool_calls: [
+          {
+            name: "apply_patch",
+            status: "error",
+            arguments: { filename: "src/a.ts", body_length: 21 },
+            summary: "invalid native edit args",
+          },
+        ],
+      },
+      {
+        round: 2,
+        action: "change",
+        duration_ms: 5,
+        tool_calls: [
+          {
+            name: "apply_patch",
+            status: "success",
+            arguments: { protocol_op: "CREATE", path: "src/a.ts", content_length: 21 },
+            summary: "applied",
+          },
+        ],
+        change: {
+          op: "CREATE",
+          file: "src/a.ts",
+          source: "tool_call",
+          apply_status: "ok",
+          raw_block: '<CREATE path="src/a.ts">...</CREATE>',
+        },
+      },
+    ]);
+
+    assert.deepEqual(actions[0]?.toolCalls?.[0]?.arguments, {
+      filename: "src/a.ts",
+      body_length: 21,
+    });
+    assert.deepEqual(actions[1]?.toolCalls?.[0]?.arguments, {
+      protocol_op: "CREATE",
+      path: "src/a.ts",
+      content_length: 21,
+    });
+    assert.equal(actions[1]?.change?.source, "tool_call");
   });
 });
 

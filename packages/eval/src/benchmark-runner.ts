@@ -343,7 +343,7 @@ export function summarizePatchDiagnostics(state: TaskState): PatchDiagnosticsSum
   };
 }
 
-function summarizePatchRoundActions(
+export function summarizePatchRoundActions(
   patchRounds: TaskState["patch_rounds"],
 ): TaskResult["patchRoundActions"] {
   return (patchRounds ?? []).map((pr) => ({
