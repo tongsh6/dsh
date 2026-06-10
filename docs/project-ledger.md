@@ -1,18 +1,19 @@
 # DSH 项目事实台账
 
-> 状态: active | 最后更新: 2026-05-22
+> 状态: active | 最后更新: 2026-06-10
 >
 > 任何新会话 AI 或新人进入项目后，**请先阅读本文件**，以便快速恢复项目状态基线。
 
 ## 1. 当前阶段目标
 
-**Phase 4 Agent Loop 实施期**。详见 [BLUEPRINT.md](../BLUEPRINT.md) §4。
+**Phase 4 Agent Loop 实施期**。详见 [BLUEPRINT.md](../BLUEPRINT.md) §3。
 
 ### Phase 3 退出与 Phase 4 开启说明 (2026-05-22)
 - **Phase 3 成功退出**：于 2026-05-22 完成 168 场全量随机副本基准测试 `docs/reports/runlogs/260521151313-pie-replicated/`。Card ON 绝对通过率达到 **76.2%** (Pure Standard 达 **82.5%**)，大幅超越 $\ge 60\%$ 出期门槛。
 - **正向收益验证**：针对重命名与修复收敛的机制重构大获成功，最大 Blocker `loam-refactor-rename-distill-state` 斩获 **Card ON 3/3 / Card OFF 3/3 完美全绿 (100%)**。在 `loamlog` 仓库整体实现 **+8.3% 的稳健正向 Lift (ON 83.3% vs OFF 75.0%)**，纯标准集两端完全持平（仅 1 场试验方差），收益恶化悬崖被彻底消除。
 - **系统宪法遵循**：本次出期未引入任何针对特定 Fixture 的硬编码或 Harness 端 Coaching 提示，100% 保持 Principles 7.1, 7.2 和 9 的干净纯粹。详见退出知识库报告：[20260522-phase3-exit-replicated-benchmark.md](file:///Users/loong/workspace/code/github/ai/dsh/docs/reports/knowledge/20260522-phase3-exit-replicated-benchmark.md)。
 - **Phase 4 核心目标**：开始推进 **Route X Spec (文件重构转原生工具化 `apply_patch`)**，从 XML 段标记生成演进为 LLM-native 智能重构通道，并进入正式 Agent 自主重构闭环期。
+- **2026-06-10 Route X targeted A/B 复审**：默认关闭的最小 runtime 切片已落地。首轮 `loam-refactor*` N=3 flag-exposure A/B 显示 flag-on `18/18` 优于 baseline `16/18`，但两组 native `apply_patch` tool_calls 均为 0。补 native prompt 后复跑，native attempts 出现但均 invalid。补参数兼容与 native observability 后，post-compat A/B 显示 baseline `260609173815` 为 `17/18`、flag-on `260610024705` 为 `17/18`；flag-on 记录 72 次 `apply_patch` tool call、68 条 successful native apply、content XML 为 0。结论：targeted adoption 已成立但仍默认 off；下一步是 broader/stability 复审、invalid rounds / apply errors 收敛和默认开启前 ledger 复审。
 
 ### Phase 3 核心演进 (已归档)
 - **议题 A (dsh-autonomous-env)**: ✅ P1-P2 已实施（去保姆化 + runPreflight 状态机 + prompt 增强 + 命令白名单 + repair 扩容 + fixture 验证命令修正）。
@@ -54,7 +55,7 @@
 - [x] `dsh run` / `dsh doctor` 作为最小产品入口通过测试。
 - [x] build / typecheck / lint / test 全部通过。
 
-当前剩余退出 blocker 是 Project Card on 必须在最新 N=3 replicated 中同时满足 `testsPassed >60%` 和相对 off 的持续正向收益，而不是文档入口、legacy scanner、ProjectIntelligence wiring 或单个 high-variance fixture。2026-05-17 收口提交 `454f731` 已完成文档一致性、failure matrix JSON、legacy 防回流测试、ProjectIntelligence decision mode 收紧和质量门禁。`rh-test-dashboard-version` 经 2026-05-18 有效性审计已重新归类为 high-variance fixture（非 regressed、非 DSH bug、非 fixture 设计缺陷），按 BLUEPRINT §2.5 第 3 条单独标注、不作为硬门禁；`260517183641-pie-replicated` 又证明聚合 on 虽达 70.2%，但相对 off 为 -2.4pp，Phase 3 仍不可退出。2026-05-19 的 loam-refactor Batch 3 进一步表明 PLAN protocol 修复已把 `<FILES>` 类 blocker 推到次要位置，当前应先消除 fixture contract false positives，再处理 rename/refactor patch loop 的连续 invalid 和 scope 控制。
+Phase 3 已按 2026-05-22 的 `260521151313` N=3 replicated benchmark 关闭。后续不再把 `260517183641` 的负向 Project Card lift 当作当前阶段 blocker；它只作为 Phase 3 收口过程中的历史反例，说明阶段退出必须依赖 clean N=3 evidence。Phase 4 的当前主线转为 Route X `apply_patch` 工具通道、repair loop 收敛与 Agent Loop 编排，且继续禁止 fixture 特判和系统代写业务代码结果。
 
 ### Phase 2 终态（已退出，归档参考）
 - [x] 静态扫描 Phase 2-3（Top N 可解释选择）
@@ -71,7 +72,7 @@
 - baseline（原始）: testsPassed 11/24 (45%) — `260508-003359`
 - **最新稳定全量**: testsPassed 11/24 (45%) — `260509-165142`（parallel=3, 2087s, 3x 加速）
   - pi: 5/7 (71%), loam: 4/8 (50%), rh: 2/9 (22%)
-- **最新 replicated evidence**: Project Card on `59/84 = 70.2%`，off `61/84 = 72.6%`（28 fixtures × 3 reps × on/off，完整 168 trials）；详见 `docs/reports/knowledge/20260518-phase3-exit-benchmark.md`。结论：绝对目标达标，但 Project Card lift 未达标，Phase 3 不可退出。
+- **中途 exit attempt 反例**: `260517183641-pie-replicated` 中 Project Card on `59/84 = 70.2%`，off `61/84 = 72.6%`（28 fixtures × 3 reps × on/off，完整 168 trials）；详见 `docs/reports/knowledge/20260518-phase3-exit-benchmark.md`。结论：绝对目标达标，但 Project Card lift 未达标，因此该轮不能作为 Phase 3 退出证据。
 - **最新 targeted replicated evidence**: `rh-test-dashboard-version` N=3 `260517133604-pie-replicated` 为 card_on 0/3、card_off 0/3；2026-05-18 已重新归类为 high-variance fixture（fixture 有效，失败源于模型输出方差，详见 §1）。
 - **rh debug 后**: 3/9 (33%) — `260509-181614`。NoSuchMethodError 已修（mvn install），剩余 PARTIAL 是模型输出不完整（1/2 files changed）
 - 目标: testsPassed >60%
@@ -124,17 +125,18 @@
 | DeepSeek-native L1-L7 adaptation | 本地质量门禁 + 官方文档核对 | `docs/specs/deepseek-api-compatibility.md` + `docs/specs/execution-contract.md` + `docs/specs/state-evidence.md` + `docs/evals/deepseek-coding-harness-eval.md` | PASS；P0 provider semantics、P1 execution/state evidence、P2 registry/eval design 已落地；root `pnpm test` / `pnpm typecheck` / `pnpm lint` 全部通过 |
 | `rh-test-dashboard-version` 定向 N=3 复审 | Benchmark（1 fixture × card_on/off × 3 reps） | `docs/reports/runlogs/260517133604-pie-replicated/` | card_on 0/3、card_off 0/3。1 次进入 patch/repair 但 Maven compile fail，5 次 PLAN 缺 `<FILES>`。2026-05-18 有效性审计后归类为 high-variance fixture（见 §1） |
 | `rh-test-dashboard-version` fixture 有效性审计 | 仓库源码核对 + runner 清理逻辑核对 + 单跑证据复核 | 本台账 §1（2026-05-18 条目）+ `packages/eval/src/failure-matrix.json` | fixture 有效、无设计缺陷、无状态泄漏、任务可解；N=3 不稳定源于模型输出方差；归类为 `high_variance`，反应式补丁已回退 |
-| Phase 3 exit N=3 benchmark | Benchmark（28 fixtures × card_on/off × 3 reps） | `docs/reports/runlogs/260517183641-pie-replicated/` + `docs/reports/knowledge/20260518-phase3-exit-benchmark.md` | full 168/168 完成；Project Card on 59/84 (70.2%)、off 61/84 (72.6%)。on 超过绝对目标但未保持正向收益，Phase 3 不可退出；run metadata 保留 failure matrix governance 标签 |
+| Phase 3 exit attempt（未通过） | Benchmark（28 fixtures × card_on/off × 3 reps） | `docs/reports/runlogs/260517183641-pie-replicated/` + `docs/reports/knowledge/20260518-phase3-exit-benchmark.md` | full 168/168 完成；Project Card on 59/84 (70.2%)、off 61/84 (72.6%)。on 超过绝对目标但未保持正向收益，因此该轮不能作为 Phase 3 退出证据 |
+| Phase 3 final exit N=3 benchmark | Benchmark（28 fixtures × card_on/off × 3 reps） | `docs/reports/runlogs/260521151313-pie-replicated/` + `docs/reports/knowledge/20260522-phase3-exit-replicated-benchmark.md` | full 168/168 完成；Project Card on 64/84 (76.2%)，Pure Standard on 52/63 (82.5%)；loamlog on 20/24 (83.3%) vs off 18/24 (75.0%)，Phase 3 正式退出并进入 Phase 4 |
 
 ## 4. 进行中事项
 
 | 事项 | 当前状态 | 阻塞点 | 下一步 |
 |------|---------|--------|--------|
-| Phase 3 failure matrix | 已结构化 | `packages/eval/src/failure-matrix.json` 已建立，含 `governance.comparabilityRisk` / `evidencePolicy` 标记；replicated benchmark metadata 已写入 `failureMatrixSummary` 和本次 fixture 的 `failureMatrixFixtures` 治理标注；`summary.md` 报告从 metadata 消费治理标注 | 后续 Phase 3 benchmark 复审必须保留 evidencePolicy 标签，不重新拼散落 Markdown 报告 |
+| Failure matrix governance | 已结构化 | `packages/eval/src/failure-matrix.json` 已建立，含 `governance.comparabilityRisk` / `evidencePolicy` 标记；replicated benchmark metadata 已写入 `failureMatrixSummary` 和本次 fixture 的 `failureMatrixFixtures` 治理标注；`summary.md` 报告从 metadata 消费治理标注 | 后续 Phase 4 benchmark 仍必须保留 evidencePolicy 标签，不重新拼散落 Markdown 报告 |
 | hard-fail fixture 根因分析 | 已分流，仍需能力提升 | `pi-bugfix-count-defs` 本轮 fresh N=3 on/off 各 3/3 PASS，但历史 evidence 仍按污染治理排除；`rh-test-dashboard-version` 已闭环为 high-variance，本轮 on 1/3、off 0/3；`rh-refactor-branch-orchestrator` 5 个 split fixture 已跑 N=3 并按 `label_required` 单独标注，不作为 monolith 等价恢复 | 不再为单 fixture 打补丁；下一步按类别处理 init/preflighted 外部失败、loam Project Card 回归、Java/Vue 多文件 partial 与 repair exhaustion |
 | Benchmark fixture 标准与 contamination audit | 已收口并自动化 | `docs/specs/benchmark-fixture-standard.md` 是新增/修改 fixture 的 canonical 标准；`docs/reports/knowledge/20260517-fixture-contamination-audit.md` 确认 53 个 current fixture 中 0 个 remaining strict contamination risk、6 个 scope reshaping / comparability risk；`packages/eval/src/fixture-audit.ts` 已锁定自动审计；新增 expectedFiles verification coverage audit，四批补充 25 个 fixture 的结构化断言后，当前 baseline 为 0/53 fixture、0 条候选缺口；2026-05-18 新增受控 benchmark fixture metadata audit，真实 `pi-*` / `loam-*` / `rh-*` fixture 的 `benchmarkRef` / `preflightFiles` / `designGoal` / `verificationGoal` 缺口 baseline 为 0；failure matrix schema + 测试已锁定 comparability risk → `label_required`、contamination → `exclude_from_phase3_exit` | 不把 fixture-specific answer hints 当作能力修复；历史污染 evidence 不进入 Phase 3 exit evidence；后续 fixture 修改必须保持审计为 0 gap |
 | 最小 `dsh run` | 已补 CLI 入口 | core 已有 `runFullPipeline`，CLI 已提供一键入口 | 继续通过 CLI 测试和真实 dry-run/smoke 验证输出体验 |
-| Phase 3 收口证据台账 | 已更新，本轮结论未通过 | commit `454f731` + `docs/reports/knowledge/20260517-phase3-closeout-review.md` + `docs/reports/runlogs/260517133604-pie-replicated/` + `docs/reports/knowledge/20260518-phase3-exit-benchmark.md` | `rh-test-dashboard-version` blocker 已闭环（2026-05-18 归类 high-variance，不作硬门禁）；最新 full N=3 `260517183641` on 59/84、off 61/84，Phase 3 不可退出；2026-05-18 已落地 benchmark failureClass 报告字段，下一步聚焦通用 PLAN 协议恢复与 Project Card lift 回归 |
+| Phase 3 收口证据台账 | 已关闭 | `docs/reports/knowledge/20260517-phase3-closeout-review.md` + `docs/reports/knowledge/20260518-phase3-exit-benchmark.md` + `docs/reports/knowledge/20260522-phase3-exit-replicated-benchmark.md` | 2026-05-18 的 `260517183641` 是未通过反例；2026-05-22 的 `260521151313` 是最终退出证据。当前阶段已进入 Phase 4，不再把 Phase 3 Project Card lift 回归列为开放 blocker |
 
 ## 5. 已废弃事项
 
@@ -146,22 +148,22 @@
 
 | 优先级 | 事项 | 原因 | 验收标准 |
 |--------|------|------|---------|
-| P0 | PLAN contract finalization 通用修复 | 已合并并通过 `pnpm run scan`；targeted smoke 与 loam-refactor Batch 3 均显示 `missing_files=0`，真实 benchmark 中 protocol repair 可从 `missing_plan` 恢复并最终 PASS | 保持结构化 diagnostics；下一轮 N=3/full 用 failureClass 验证 `model_protocol_plan_invalid` 是否显著下降，不再把 PLAN 当作唯一主 blocker |
-| P0 | Phase 3 Project Card lift 回归复审 | `phase3-exit-benchmark-evidence` 已完成 full N=3 并进入 in_review；结论为 Phase 3 不可退出：Project Card on 59/84 (70.2%) 达标但低于 off 61/84 (72.6%)。2026-05-19 loam-refactor Batch 3 显示 on/off 均为 1/3，主要失败是 fixture contract false positive、repair_exhausted、scopeViolation 和 rename/refactor patch invalid | 已修 `loam-refactor-provider-dedup` 与 `loam-refactor-rename-distill-state` fixture 合同；先重跑 loam-refactor Batch 3，若 false positive 消失且 patch loop blocker 收敛，再扩大到 Batch 9 / clean N=3 |
-| P1 | `rh-refactor-branch-orchestrator` 拆分后 N=3 复审 | 原 single fixture 在干净 runner 下仍 PARTIAL (`260515-024737`，30 rounds / 0 changes)，已拆为 5 个小 fixture；create/tests/release/code-merge/attach 已全部 single PASS，attach 最新 `260515-044458` PASS | 下次 replicated benchmark 确认 5 个小 fixture 稳定，不恢复 monolith |
-| P2 | `rh-test-dashboard-version` 已归类 high-variance（不再是 blocker） | 2026-05-18 有效性审计确认 fixture 有效、失败为模型输出方差；failure matrix 已标 `high_variance`，反应式补丁已回退 | 不再为该 fixture 单独打补丁；如要系统提升 Java 测试 CREATE 通过率，立「多文件 CREATE 完整性 + Java 编译错误 repair」通用 spec，跨 Java fixture 验证 |
-| P1 | `pi-bugfix-count-defs` semantic failure 复审 | 已修正 fixture source-context hint 并 single smoke PASS (`260515-015045`)；等待下一轮 N=3/全量确认稳定性 | 下次 replicated benchmark 不再 0/6；pytest 定向验证持续通过 |
+| P0 | Route X native `apply_patch` broader/stability 证据闭环 | targeted post-compat A/B 已完成：baseline `260609173815` 17/18，flag-on `260610024705` 17/18；flag-on 72 次 `apply_patch` tool call、68 条 successful native apply、content XML 为 0。targeted adoption 与聚合不退化已成立；残余为 7 个 invalid native rounds、4 条 apply error 和 1 个 flag-on plan-contract failure；invalid 参数脱敏留存已补，下一轮可审真实参数形态 | 默认仍保持 flag off。下一步做 broader/stability 复审：先用 invalid argument telemetry 收敛 invalid/error 与 plan-contract failure，再决定是否扩大到 28 fixture N≥3 和进入默认开启讨论 |
+| P0 | code-result repair 边界保持关闭 | `CONSTITUTION.md` 原则 7.2 已禁止系统替模型补业务代码结果；`code-result-repair-shelved` 仍是 P0 waiting，不能在 Phase 4 为了提升 benchmark 恢复默认 deterministic assertion repair | 默认 repair loop 仍不注册 code-result 规则；provider-dedup 等残余问题回到编排、上下文、工具通道、prompt、轮次策略和验证反馈 |
+| P1 | repair loop / exec_shell 收敛 | Phase 3 最终 run 仍有 `repair_exhausted`，ledger §8 中 `patchloop-repair-upgrade`、`exec-shell-cwd-orientation`、`patch-correctness-repair` 仍未关闭 | 先修工具环境可解释性与 repair 收敛契约；用 targeted run + N≥3 replicated evidence 区分工具缺陷、模型方差和 fixture 治理标签 |
+| P1 | DSML salvage 真实触发证据闭环 | route Y salvage 已有实现与单测，但 `patchloop-dsml-content-leak` 的关闭条件是跨 fixture broader 采样观测到真实 salvage 触发 | 在后续 Phase 4 benchmark 中保留 `dsml_salvage_applied` telemetry，达到关闭条件后更新 ledger |
+| P2 | high-variance / split fixture 治理复审 | `rh-test-dashboard-version`、branch-orchestrator split fixtures、`pi-bugfix-count-defs` 等不再是阶段硬门禁，但仍影响 benchmark 可比性 | 继续通过 failure matrix 的 `label_required` / `exclude_from_phase3_exit` 报告，不做 fixture 特判 |
 
 ## 7. 关键证据索引
 
 | 证据 | 路径 | 说明 |
 |------|------|------|
 | 项目宪法 | `CONSTITUTION.md` | 5 项核心原则 + 3 条 AI 规则 + 技术原则（含原则 7.1 确定性修复规则边界、原则 8 跟踪事项治理、原则 9 无临时手段） |
-| 产品蓝图 | `BLUEPRINT.md` | 7 阶段演进 + Phase 2 退出条件 |
+| 产品蓝图 | `BLUEPRINT.md` | 7 阶段演进 + Phase 4 当前实施约束 |
 | 任务规范 | `docs/TASK-SPEC.md` | 任务格式、生命周期、三层体系 |
-| 最新全量 Benchmark | `docs/reports/runlogs/260509-165142/` | 24 fixtures, parallel=3, 2087s, testsPassed 11/24 (45%) |
-| 最新 replicated Benchmark | `docs/reports/knowledge/20260518-phase3-exit-benchmark.md` + `docs/reports/runlogs/260517183641-pie-replicated/` | N=3 randomized hard cleanup；168/168 完成；Project Card on 59/84 (70.2%)、off 61/84 (72.6%)；Phase 3 不可退出 |
-| 最新 targeted replicated Benchmark | `docs/reports/runlogs/260517133604-pie-replicated/` | `rh-test-dashboard-version` N=3；card_on 0/3、card_off 0/3。2026-05-18 已归类 high-variance fixture（见 §1） |
+| Phase 3 起点 Benchmark | `docs/reports/runlogs/260509-165142/` | 24 fixtures, parallel=3, 2087s, testsPassed 11/24 (45%) |
+| 最新 replicated Benchmark | `docs/reports/knowledge/20260522-phase3-exit-replicated-benchmark.md` + `docs/reports/runlogs/260521151313-pie-replicated/` | N=3 randomized hard cleanup；168/168 完成；Project Card on 64/84 (76.2%)，Pure Standard on 52/63 (82.5%)；Phase 3 已退出，Phase 4 已启动 |
+| 最新 targeted replicated Benchmark | `docs/reports/knowledge/20260609-route-x-native-edit-ab.md` + `docs/reports/runlogs/260609173815-pie-replicated/` + `docs/reports/runlogs/260610024705-pie-replicated/` | Route X post-compat A/B：baseline 17/18、flag-on 17/18；flag-on 72 次 native `apply_patch` tool call、68 条 successful native apply、content XML 为 0。作为 targeted adoption evidence；默认开启仍待 broader/stability 复审 |
 | Phase 3 Failure Matrix | `docs/reports/knowledge/20260514-phase3-failure-matrix.md` + `packages/eval/src/failure-matrix.json` | hard-fail / high-variance fixture 分类与下一轮修复顺序；JSON 含 comparability risk / evidence policy |
 | Benchmark Fixture Standard | `docs/specs/benchmark-fixture-standard.md` | 新增/修改 benchmark fixture 的 canonical 标准；汇总 schema、prompt、verification、protocol ops、isolation、contamination/comparability policy |
 | Fixture Contamination Audit | `docs/reports/knowledge/20260517-fixture-contamination-audit.md` | 53 个 current fixture 审计；0 个 remaining strict contamination risk，6 个 scope reshaping / comparability risk；`pi-bugfix-count-defs` answer leakage 与 attach protocol coaching 已 neutralized |
@@ -274,8 +276,8 @@
 | debt | patch-coverage-noop-exclusion | spec:docs/specs/2026-05-19-patch-pipeline-coverage-state-machine.md | validatePatchCoverage 未排除 no-op apply（apply 成功但文件内容未变仍计入 coverage） | 验收复审发现（CONDITIONAL PASS Major-1）；下次触及 patch 阶段时实现内容比对排除 no-op | P2 | waiting | 2026-05-19 |
 | bug | exec-shell-cwd-orientation | report:docs/reports/runlogs/260519032359-pie-replicated | exec_shell 工具环境致 repair 模型迷路、整轮 tool 预算耗在失败的环境调查上：(A) `pwd` 不在 `EXEC_SHELL_ALLOW_LIST`；(B) `2>/dev/null` 被块模式 `/>{1,2}\s*[^\s&]/` 误杀（与该模式注释的放行意图矛盾）；(C) 工具描述只说「项目根目录」不给绝对路径、不禁 `cd`；(D) `cd <瞎猜路径> && cmd` 被允许执行后只回泛泛 exit 1，模型分不清是 cd 错还是命令真失败 | 修 A 白名单加 `pwd` / B 块模式给 `/dev/null` 开口 / C 工具描述注入真实 cwd 且明确禁 `cd` / D `cd` 到非 cwd 路径回明确错误 | P1 | waiting | 2026-05-19 |
 | bug | patchloop-dsml-content-leak | code:packages/core/src/dsml-recovery.ts | 模型 DSML 工具调用包裹的 change 泄漏进 `content`，内层闭标签被 `</｜｜DSML｜｜parameter>` 替换 → `extractPatchBlock`（`patch-parser.ts:135`）匹配失败 → `parsePatchTurn` 判 `invalid: no action` → 整段被丢弃。r7 标本 byte-level 复现（provider-dedup trial2）。**漏触发是多源上游 bug**：vLLM #40800 流式 chunk 切断 DSML 长开标签、pi-mono #3712 NVIDIA 路由 emit raw DSML as text、sglang #14695 模型偶发缺 marker、vLLM #41240 V4 parser 是 V3.2 薄包装 typed parameter 边界缺陷、HuggingFace DeepSeek-V3.2 #29 双格式输出；HF 官方 `encoding/README.md` 明确"For production use, additional error handling is recommended" | route Y Phase 1+2 已实施（`dsml-recovery.ts` 单/双竖线全覆盖 + 16 单测含 r7 byte-level + 4 解析点接入 + `dsml_salvage_applied` 全管线 telemetry）。**resolve_when 修正**（原"定向 benchmark 显示 rename 不再 actualProtocolOps:[]"被 smoke `260520041442` telemetry 证伪——salvage 0 触发但 card_off PASS，改善源是 LLM 方差非 salvage，rename-distill-state 已标 high_variance）：改为"跨 fixture broader 采样里 telemetry 观测到 ≥1 次真实 salvage 触发即视为部署生效；触发率受多源不可控上游因素影响，不强求单 fixture 正向冲击证明" | P1 | in_progress | 2026-05-20 |
-| deferred | phase4-edits-as-native-tool | spec:docs/specs/2026-05-20-edits-as-native-tool.md | 把文件编辑（CREATE/PATCH/SEARCH_REPLACE/INSERT/DELETE/RENAME）从 content-XML 协议升级为 DeepSeek 原生工具（`apply_patch` 等），与 `read_file`/`grep_files`/`exec_shell` 共用 DSML → `tool_calls` 通道；消除「编辑被劈出工具通道」对 DeepSeek 原生 tool-use 习惯的对抗（原则 6）；BLUEPRINT §2.1 执行引擎演进的「智能工具调用」一块，独立于 Agent Loop 其余部分 | Phase 3 退出（BLUEPRINT §3 退出条件全部勾选）+ 本 spec 由 draft 转 in_review/approved + N≥3 randomized A/B benchmark 显示工具通道的 `testsPassed` 与 baseline 比不退化（Wilson 95% CI）；不替代 `patchloop-dsml-content-leak` 的 salvage 修复（route Y 是底座、并行推进）| P2 | waiting | 2026-05-20 |
-| evidence | edits-as-native-tool-benchmark | spec:docs/specs/2026-05-20-edits-as-native-tool.md | route X（工具通道交付编辑）vs content-XML baseline 的 N≥3 randomized A/B benchmark；覆盖 loam-refactor 全 3 fixture × on/off × ≥3 rep；产出 testsPassed Wilson 95% CI 与 actualProtocolOps:[] / repair_exhausted 比例对照表 | route X 实施分支落地、双轨稳定 ≥1 轮后启动；本 spec §6 成功标准的实证收集；高方差 fixture 单独标注、不作单 fixture 硬门禁 | P1 | waiting | 2026-05-20 |
+| deferred | phase4-edits-as-native-tool | spec:docs/specs/2026-05-20-edits-as-native-tool.md | 把文件编辑（CREATE/PATCH/SEARCH_REPLACE/INSERT/DELETE/RENAME）从 content-XML 协议升级为 DeepSeek 原生工具（`apply_patch` 单工具 op 分支），与 `read_file`/`grep_files`/`exec_shell` 共用 DSML → `tool_calls` 通道；消除「编辑被劈出工具通道」对 DeepSeek 原生 tool-use 习惯的对抗（原则 6）；BLUEPRINT §2.1 执行引擎演进的「智能工具调用」一块，独立于 Agent Loop 其余部分 | 最小 runtime task `docs/tasks/2026-06-09-phase4-edits-as-native-tool-p1.md` 已完成。post-compat A/B `260609173815` vs `260610024705` 显示 baseline 与 flag-on 均 17/18，flag-on 72 次 native `apply_patch` tool call、68 条 successful native apply、content XML 为 0；targeted adoption 与聚合不退化成立。invalid native round 的脱敏参数留存已补，用于下一轮审计真实参数形态。Route X 总项仍 in_progress，resolve_when 改为 broader/stability evidence、invalid/error 收敛、默认开启前 ledger 复审 | P0 | in_progress | 2026-06-10 |
+| evidence | edits-as-native-tool-benchmark | spec:docs/specs/2026-05-20-edits-as-native-tool.md | route X（工具通道交付编辑）vs content-XML baseline 的 N≥3 randomized A/B benchmark；覆盖 loam-refactor 全 3 fixture × on/off × ≥3 rep；产出 testsPassed Wilson 95% CI、actualProtocolOps:[] / repair_exhausted 比例、native `apply_patch` tool_call adoption 对照表 | targeted evidence 已收集（`docs/reports/knowledge/20260609-route-x-native-edit-ab.md`）：首轮 flag exposure no regression 但 native calls=0；post-prompt attempts 均 invalid；post-compat run 证明 successful native application 且聚合 17/18 持平。下一轮转 broader/stability：关注 7 invalid native rounds、4 apply error、plan-contract failure 与 28 fixture 扩样前治理；invalid argument telemetry 已补齐供下一轮归因 | P1 | in_progress | 2026-06-10 |
 | debt | model-routing-hardcoded-production-paths | code:packages/provider/src/router.ts | DeepSeek V4 Pro / Flash 阶段化路由已有设计和 `resolveModelRoutingConfig`，但生产调用点仍未完全收口：`repair-loop.ts` repair 主请求与最终 no-tools 请求写死 `deepseek-v4-pro`；`pipeline.ts` preflight 写死 Pro；`static-scanner.ts` static-repair 写死 Pro；legacy patch 路径调用 `classify({ command: "patch" })` 时未传 `.dsh/config.yml` 路由覆盖。结果是配置项可信度不足，模型 A/B 或 benchmark 归因时可能混入不可见硬编码 | 将 repair/preflight/static-repair/legacy patch 全部改为 router 驱动；必要时扩展 `CommandName` 增加 `preflight` 与 `static-repair`；测试覆盖自定义 `.dsh/config.yml` model override 能进入实际 `client.chat` 与 usage 记录。该项不改变 Pro/Flash 默认分工，只消除生产路径绕过 router 的实现债 | P1 | waiting | 2026-05-20 |
 | bug | patchloop-unified-diff-applylenient-corrupts | code:packages/core/src/patch-parser.ts | `applyPatchLenient` 兜底层(严格 `diff` 库抛错时调) 违反"拼不准就该失败"铁律,5 个并存缺陷:(1) `bestScore===0` 唯一拒绝条件(r8 hunk-2 用 1/9 部分匹配照样 splice 9 行真实代码 → Frankenstein 文件);(2) ±5 搜索窗口太窄(模型行号偏差常 >10 行);(3) `li` 用作源对齐下标在 `+` 行后漂移 off-by-one;(4) `toRemove` 含上下文行无独立校验;(5) apply 后无最终核验。byte-level reproducer 在 `/tmp/bugb-repro/`:r8 真实 patch + benchmarkRef `5e1d3ee` 原始 `openai-compatible.ts` → 与基准实跑落盘的损坏文件**逐字节相等(`=== true`)** | Phase 1+2+3 修复落地(plan `docs/plans/2026-05-20-applylenient-hardening.md`):`srcOffset` 替代 `li` 修 off-by-one;`bestScore === ctxLineCount` 严格阈值;全文件扫 + 多匹配歧义拒绝;跳过 `split("\n")` 末尾杂行;apply 后 +/- delta 不变量核验。新增 7 例单测含 Frankenstein 机制复现、off-by-one 修复、远距唯一匹配定位、歧义拒绝、delta 不变量。`pnpm run scan` 全绿 523/523 | P0 | resolved | 2026-05-20 |
 | evidence | project-card-section-ablation-rename-distill | report:docs/reports/runlogs/260520192205-project-card-ablation/results.json | loam-refactor-rename-distill-state Project Card 段落级消融 | 两轮 directional 证据：260520184643 中 off/capabilities/forbidden_assumptions PASS，known_facts/unknowns/full FAIL；260520192205 组合消融中 full FAIL、unknowns FAIL、known_plus_unknowns FAIL、full_minus_known FAIL，但 full_minus_unknowns PASS。机制判断：Unknowns 是最强负贡献段落；保留 Unknowns 的变体反复出现初始空 patch、错误绝对 cwd 假设、CREATE/DELETE 不传播引用或非法编辑工具调用。去掉 Unknowns 后仍不是理想 RENAME 协议，但可以完成。注意 260520192205 的 off 也 FAIL，说明该轮只作为机制证据，不作为 card_on/off 总体统计 | P0 | waiting | 2026-05-21 |

@@ -5,10 +5,10 @@
 DSH provides a DeepSeek-oriented provider with official Chat Completion support, V4 Pro/Flash routing, thinking mode, streaming, staged tool calls, error retry semantics, cache/reasoning-token usage reporting, execution contracts, and persisted task evidence. Advanced beta capabilities such as strict tool calls, chat prefix, and FIM are exposed as experimental feature-flagged extension points, not enabled by default.
 
 **核心流程:** Plan → Patch → Verify → Repair → Handoff
-**当前阶段:** Phase 3 收口验证期
+**当前阶段:** Phase 4 Agent Loop 实施期
 **Phase 3 起点基线:** testsPassed 11/24 = 45%（`260508-003359` / `260509-165142`）
-**Phase 3 目标:** testsPassed > 60%
-**最新完整实证:** 2026-05-18 N=3 replicated benchmark：Project Card on `59/84 = 70.2%`，off `61/84 = 72.6%`；on 达到 Phase 3 绝对目标但未保持相对 off 正向收益，因此 Phase 3 仍不可退出，详见 `docs/reports/knowledge/20260518-phase3-exit-benchmark.md`
+**Phase 3 退出实证:** 2026-05-22 N=3 replicated benchmark `260521151313`：Project Card on `64/84 = 76.2%`，Pure Standard on `52/63 = 82.5%`；loamlog 取得 Project Card 正向 lift（on `20/24 = 83.3%`，off `18/24 = 75.0%`），详见 `docs/reports/knowledge/20260522-phase3-exit-replicated-benchmark.md`
+**Phase 4 当前目标:** 推进 Route X（文件编辑转 DeepSeek-native `apply_patch` 工具通道）与后续 Agent Loop 编排。2026-06-10 targeted post-compat A/B 显示 baseline `260609173815` 与 flag-on `260610024705` 均为 17/18；flag-on 记录 72 次 `apply_patch` tool call、68 条 successful native apply、content XML 为 0。Route X targeted adoption 已被实测证明，但仍有 7 个 invalid native rounds / 4 条 apply error 和单点 plan-contract failure，默认仍关闭，下一步转 broader/stability 复审。
 
 ## 快速开始
 
@@ -98,8 +98,8 @@ pnpm run scan         # 全量质量门禁（lint + typecheck + test）
 - **部分支持:** eval 回归、成本治理、版本漂移治理、长上下文治理
 - **Experimental:** strict tool calls、chat prefix、FIM、`user_id`，均需显式 feature flag 与 beta endpoint
 - **尚未支持:** Anthropic-compatible DeepSeek API、默认启用 beta API、美元成本估算、全自动 API drift live check
-- **阶段:** Phase 3 收口验证期
-- **当前基线:** testsPassed 11/24 = 45%
-- **目标:** testsPassed >60%
-- **最新特性:** 结构化 Verify、Repair Loop、ProjectIntelligence 主路径、Project Card 默认注入、`dsh run` / `dsh doctor` 可用、Benchmark replicated evidence 已落地
-- **收口重点:** 最新完整 replicated benchmark 绝对达标但 Project Card lift 为负；当前优先处理 benchmark blocker 的可审计诊断、repair 空补丁/缺失文件收敛，以及 loam-refactor / Java CREATE 高方差失败簇
+- **阶段:** Phase 4 Agent Loop 实施期
+- **历史基线:** Phase 3 起点 testsPassed 11/24 = 45%
+- **已验证阶段门槛:** Phase 3 已于 2026-05-22 通过 N=3 replicated benchmark 退出；runlog `260521151313` 共 28 fixtures × 3 reps × on/off = 168 trials，Project Card on `64/84 = 76.2%`
+- **最新特性:** 结构化 Verify、Repair Loop、ProjectIntelligence 主路径、Project Card 默认注入、PatchCoverage 状态机、DSML salvage、`dsh run` / `dsh doctor` 可用、replicated benchmark evidence 已落地
+- **当前重点:** Route X `apply_patch` 工具通道 broader/stability 复审、invalid native rounds 收敛、repair loop 收敛、DeepSeek 原生工具调用闭环；`patch.edits_as_native_tool` 仍默认关闭，targeted adoption 已成立但尚未进入默认开启

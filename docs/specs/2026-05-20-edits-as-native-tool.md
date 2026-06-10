@@ -1,6 +1,6 @@
-# Edits as DeepSeek-Native Tool Call SPEC（骨架）
+# Edits as DeepSeek-Native Tool Call SPEC
 
-> 状态: draft（仅骨架，待人类批准与细化） | 日期: 2026-05-20 | 作者: 人类设计指令 + AI 落盘
+> 状态: in_review | 日期: 2026-05-20 | 最近同步: 2026-06-10 | 作者: 人类设计指令 + AI 落盘/核验
 >
 > 目标: 把文件编辑(`CREATE`/`PATCH`/`SEARCH_REPLACE`/`INSERT`/`DELETE`/`RENAME`)从当前的
 > **content-XML 协议**升级为 **DeepSeek 原生工具调用**(`apply_patch` 等),让编辑与
@@ -10,16 +10,25 @@
 > **关联文档:** BLUEPRINT §2.1(执行引擎演进:XML 协议 → 智能工具调用)| CONSTITUTION 原则 1/3/5/6 |
 > 关联 spec `docs/specs/2026-05-05-patch-loop-architecture.md`、
 > `docs/specs/2026-05-19-patch-pipeline-coverage-state-machine.md` |
-> 实证报告 `docs/reports/runlogs/260519155944-pie-replicated`(Bug A 实证)
+> 实证报告 `docs/reports/runlogs/260519155944-pie-replicated`(Bug A 历史实证)、
+> `docs/reports/runlogs/260521151313-pie-replicated`(Phase 3 final baseline)
 
 ## 1. 背景与问题
 
 ### 1.1 实证证据(Bug A)
 
-runlog `docs/reports/runlogs/260519155944-pie-replicated`(干净环境、reps=1、6 trials):
+历史 runlog `docs/reports/runlogs/260519155944-pie-replicated`(干净环境、reps=1、6 trials)暴露了 Route X 的原始触发场景:
 
 - `loam-refactor-rename-distill-state` × **card_on + card_off 全 FAIL**,`actualProtocolOps: []`、`filesChanged: []`、13 个 patch round 0 落地,3 个 repair patch `<empty>`。Part 2(stall 提示回归修复)正确触发,模型仍连续 3 轮 `invalid`。
 - 早期 debug 抓到的真实 invalid 轮内容(provider-dedup trial2 r7):模型把一个完整合法的 `<PATCH>` unified diff **塞进 DeepSeek 原生 DSML 工具调用的 `<｜DSML｜parameter>`**;开标签被 API 吃掉、tool_calls **没兑现**,parameter 值 + 畸形闭标签(双竖线 `</｜｜DSML｜｜parameter>`)泄漏进 `content`;`<PATCH>` 丢了 `</PATCH>`、被 `parsePatchTurn` 判 `no action`、整段 diff 被丢弃。
+
+2026-06-09 重新核验当前代码与最新 baseline 后,本 spec 的依据需要更新:
+
+- 当前 `ToolName` 只有 `read_file` / `grep_files` / `exec_shell`;patch 阶段 policy 只允许 `read_file` / `grep_files`。编辑工具尚不存在。
+- `tool-executor.ts` 的未知工具分支仍明确告诉模型:文件修改应写在 assistant content 的 change block 中,不要作为 tool calls。
+- `patch-pipeline.ts` 仍通过 `parsePatchTurn(content, hasToolCalls)` 识别 content-XML change block;当 tool_calls 存在且 content 无 change block 时,只按探索工具处理。
+- provider 已支持 `tools` / `tool_calls`,因此 provider 层不是 blocker。
+- route Y salvage 已成为底座。最终 Phase 3 run `260521151313` 的机器数据中,`actualProtocolOps: []` 只剩 **1/168** trial,`dsmlSalvageAppliedRecords=60`,`dsmlSalvageAppliedRounds=122`;`loam-refactor-rename-distill-state` 已 **6/6 PASS**。所以 Route X 不再以"rename-distill-state 全 FAIL"作为当前 blocker,而是以"编辑通道仍非 DeepSeek-native、repair/execution 仍分裂"作为 Phase 4 执行引擎演进目标。
 
 ### 1.2 根因:DSH 把「动作」劈成两个通道
 
@@ -61,43 +70,80 @@ content-XML 协议在 Phase 1/2 是合理的:那时没有工具(Phase 1)或只�
 
 ## 4. 架构与数据模型(概要,待 Phase 4 实施时细化)
 
-### 4.1 工具切分(待定)
+### 4.1 工具切分
 
-两种候选,均待评估:
+采用 **方案 A: 单一 `apply_patch` 工具 + `protocol_op` 分支**。
 
-- **方案 A: 单一 `apply_patch` 工具**,接 `protocol_op: CREATE|PATCH|SEARCH_REPLACE|INSERT|DELETE|RENAME` + 对应 payload。一个工具表达全部 6 种操作,模型决策面单一。
-- **方案 B: 6 个细粒度工具**(`create_file`/`patch_file`/`search_replace`/...)。决策面分散但每个工具签名简单。
+理由:
 
-倾向:**方案 A**(单工具 + op 分支)。理由是 6 个工具的描述会非常重复,且模型已经在用 `parsePatchTurn` 的统一分支逻辑。但留待实施前比较。
+- 当前内部变更模型已经是统一分支(`PatchTurnAction` / `SingleChange`),6 个细粒度工具会重复描述并扩大模型决策面。
+- `apply_patch` 名称与 route Y 的 DSML salvage 标本一致,也是模型已经倾向 hallucinate 的编辑工具名;把 hallucinated tool name 变成真实工具,比另起 6 个名字更贴近 DeepSeek 现有行为。
+- v1 仍保持"一轮一个编辑动作"约束。若模型同轮输出多个 `apply_patch` tool_calls,该轮判 invalid,不批量执行。
+
+工具参数 v1:
+
+| 参数 | 适用 op | 必填 | 说明 |
+|------|--------|------|------|
+| `protocol_op` | all | yes | `CREATE` / `PATCH` / `SEARCH_REPLACE` / `INSERT` / `DELETE` / `RENAME` |
+| `path` | CREATE/PATCH/SEARCH_REPLACE/INSERT/DELETE | conditional | 目标文件相对路径 |
+| `from` / `to` | RENAME | conditional | rename 源/目标相对路径 |
+| `content` | CREATE/INSERT | conditional | 文件内容或插入内容 |
+| `patch` | PATCH | conditional | unified diff 内容,不含额外解释 |
+| `search` / `replace` | SEARCH_REPLACE | conditional | 精确 search/replace 文本 |
+| `position` / `anchor` | INSERT | conditional | 复用现有 INSERT 协议字段 |
 
 ### 4.2 接 patch-parser 复用
 
-工具执行器接 `parseChanges()` / `applyPatch()` / SEARCH_REPLACE applier / 等现有逻辑——通道是新的,内容格式不变。Bug B 的修复(`applyPatchLenient` 删除前核验)与本 spec 解耦推进。
+工具通道不能绕过现有 patch 安全边界。`apply_patch` tool_call 先被转换为现有 `SingleChange` / raw block 形态,再走 `applySingleChange()`、checkpoint/rollback、`PatchCoverageValidator`、managed_files 和 telemetry。
+
+第一版不让 generic `executeToolCallsForPolicy()` 直接写文件。写入由 `patch-pipeline.ts` 拥有事务边界;tool executor 可提供参数规范化/格式化 helper,但不能在脱离 patch 状态机的路径里修改项目文件。
 
 ### 4.3 状态机集成
 
-`runPatchPipeline`(2026-05-19 spec)的状态机不变;`runPatchExplore` 内的「拿一个 change action」从 `parsePatchTurn(content, hasToolCalls)` 改为「优先看 tool_calls(编辑工具)→ 退回看 content(content-XML protocol,旧通道,flag 关时禁用)」。
+`runPatchPipeline`(2026-05-19 spec)的状态机不变;`runPatchExplore` 内的「拿一个 change action」按以下顺序处理:
+
+1. 如果 tool_calls 中恰好有一个 `apply_patch`,且 content 中没有 content-XML change block,把该 tool_call 转为 `PatchTurnAction.kind="change"` 并应用。
+2. 如果 tool_calls 是 `read_file` / `grep_files`,维持当前探索工具逻辑。
+3. 如果同轮同时存在 `apply_patch` 和探索工具、多个 `apply_patch`、或 `apply_patch` + content change block,判 invalid,不执行任何写入。
+4. feature flag 关闭时,`apply_patch` 工具不暴露给模型;content-XML 路径保持当前行为。
 
 ### 4.4 工具结果回路
 
-工具结果原路注入对话上下文(和 `read_file` 同档),让模型在多轮里看到 apply 状态、coverage delta、partial failure。这一步在 v2 状态机的 `patchRoundActions` 里已为「tool result 流」留好接入点。
+当 `apply_patch` tool_call 被执行后,patch pipeline 必须把 assistant tool_call 消息和对应 tool result 消息写回对话上下文,再继续下一轮或收口。tool result 只包含结构化 apply/coverage 结果,不回显大段文件内容:
+
+- `apply_status`: `ok` / `failed`
+- `files_changed`
+- `coverage_delta`
+- `missing_required_files`
+- `error`(失败时)
+
+### 4.5 Feature flag 与配置
+
+新增配置与环境变量:
+
+- `.dsh/config.yml` `patch.edits_as_native_tool: boolean`
+- env `PATCH_EDITS_AS_NATIVE_TOOL`
+
+默认值第一阶段为 `false`;实施分支和 benchmark runner 显式打开做 A/B。只有 N≥3 A/B 不退化并完成 ledger 复审后,才允许讨论默认开启。
 
 ## 5. 与仓库现实的对齐(概要)
 
-- `packages/core/src/tool-definitions.ts`:新增编辑工具定义(JSON Schema)。
-- `packages/core/src/tool-executor.ts`:新增 dispatch 分支,调现有 patch-parser / apply 函数。
-- `packages/core/src/patch-pipeline.ts`(2026-05-19):`runPatchExplore` 的 change-detection 路径加 tool_calls 分支。
+- `packages/core/src/tool-definitions.ts`:新增 `apply_patch` 工具定义(JSON Schema),并让 patch phase policy 在 flag 开启时暴露它。
+- `packages/core/src/tool-executor.ts`:新增参数规范化/格式化 helper;不得在 generic executor 中绕过 patch pipeline 写文件。
+- `packages/core/src/patch-pipeline.ts`(2026-05-19):`runPatchExplore` 的 change-detection 路径加 `apply_patch` tool_call 分支,仍走 `applySingleChange`。
 - `packages/provider/src/client.ts`:无改动(已支持 `tools`/`tool_calls`)。
-- `packages/eval/`:metadata 加 feature flag 字段,runner 支持 A/B 对照。
-- 现有 content-XML 协议代码、`parsePatchTurn`、prompt 模板:**保留**,通过 flag 切换。
+- `packages/eval/` / `scripts/benchmark-pie-replicated.ts`:metadata 加 feature flag 字段,runner 支持 A/B 对照,并在 patch round actions / native edit observability 中保留 `apply_patch` tool records 与 `change.source`。
+- 现有 content-XML 协议代码、`parsePatchTurn` 与默认 prompt:**保留**;`patch.edits_as_native_tool` 开启时切到 native edit prompt。
 
 ## 6. 成功标准
 
-1. **N≥3 randomized A/B benchmark** 显示工具通道的 `testsPassed` ≥ content-XML 通道的 baseline,以 Wilson 95% CI 判断;高方差 fixture 单独标注。
-2. **rename-distill-state 失败模式改变**:由当前的 `actualProtocolOps:[] + filesChanged:[]`(Bug A 全军覆没)变为 ≥1 个 actualProtocolOp 落地、`filesChanged` 非空。
-3. **loam-refactor 聚合 `testsPassed` 不退化**。
-4. **Bug A 残留率下降**:工具通道下,`actualProtocolOps:[]` + `repair_exhausted` 的 trial 比例 < content-XML 通道下的同指标。
-5. 三阶段(explore / finalization / repair)全部走工具通道时,patch-coverage-telemetry 的 coverage 状态字段正确产出。
+1. **功能验收**:`PATCH_EDITS_AS_NATIVE_TOOL=true` 时 patch phase 暴露 `apply_patch`;模型返回单个 `apply_patch` tool_call 时,DSH 通过同一 checkpoint/rollback + `applySingleChange` + coverage validator 路径应用变更。
+2. **回退验收**:`PATCH_EDITS_AS_NATIVE_TOOL=false` 时不暴露 `apply_patch`,content-XML 路径与当前 baseline 字符级行为保持一致(除配置字段存在外)。
+3. **契约验收**:多个 edit tool_calls、edit + read/grep 混合、edit + content change block 均被拒绝且不写文件。
+4. **telemetry 验收**:patch round 记录 change 来源(`content_xml` / `tool_call`)、`actualProtocolOps`、apply status、coverage delta;benchmark metadata 记录 flag 状态。
+5. **N≥3 randomized A/B benchmark**:工具通道的 `testsPassed` 不低于 content-XML baseline,以 Wilson 95% CI 判断;高方差 / split / excluded fixture 继续单独标注。
+6. **failure-mode 验收**:工具通道下 `actualProtocolOps:[]` + `repair_exhausted` 比例不高于 content-XML baseline;route Y salvage 仍保留且 telemetry 可见。
+7. **范围验收**:不新增 fixture-specific hint,不恢复 code-result deterministic repair,不把系统代写业务代码作为 Phase 4 能力证据。
 
 ## 7. 风险与限制
 
@@ -105,13 +151,63 @@ content-XML 协议在 Phase 1/2 是合理的:那时没有工具(Phase 1)或只�
 2. **工具参数尺寸上限。** DeepSeek API 对 tool parameter 的尺寸有无上限、超大 patch(>10K 行)是否会被截断,需先用小工具实测,不能假设。
 3. **多文件 change 的协议约束。** 现行 patch 状态机要求「一轮一个 change block」;工具调用同一轮可包含多个 tool_calls,需明确是否允许「一轮多个编辑工具」或仍约束 1 个(倾向后者,保持状态机不变)。
 4. **回退成本。** content-XML 路径必须长期保留(通过 flag),原则 5 canonical wiring 验收规则约束:legacy 退役前生产调用点迁移率必须 100%、退出条件登记 ledger §8。本 spec 第一版只双轨,不退役。
-5. **prompt 重写工作量。** patch 阶段的 system prompt / 用户消息模板需要重写为「告诉模型用 `apply_patch` 工具,不要在 content 里写 `<PATCH>`」,且需测 DeepSeek 是否真的会遵守这个指令(可能仍偶尔降级到 content)。
-6. **Bug B 不在本 spec 范围。** 工具通道下,模型仍会发出行号有误的 unified diff;`applyPatchLenient` 当前的「拼不准也 splice」行为仍会拼坏文件。Bug B 必须独立修。
+5. **prompt/参数遵守风险。** patch 阶段 native edit system prompt 已重写为「告诉模型用 `apply_patch` 工具,不要在 content 里写 `<PATCH>`」。post-prompt A/B 已证明模型会尝试 native edit,但实测 9 轮 `apply_patch` 均 invalid,主要来自 op 名称和结构化参数形态不匹配。当前实现已补 operation alias/inference、direct `ChangeBlock` conversion 与 embedded XML fallback,但仍需 DeepSeek targeted A/B 复验证明 successful native apply。
+6. **Bug B 不在本 spec 范围。** 工具通道下,模型仍会发出行号有误的 unified diff;`applyPatchLenient` hardening 已作为独立修复落地,本 spec 不再扩大 patch 应用语义。
 7. **route X 不消除 DSML 漏触发的上游 bug。** 漏到 content 是**多源上游 bug**:vLLM #40800(流式 chunk 切断)、pi-mono #3712(NVIDIA 路由)、sglang #14695(模型偶发缺 marker)、vLLM #41240(V4 parser 边界)、DeepSeek-V3.2 #29(双格式)。即使 DSH 把编辑迁到原生工具通道,**DSML 翻译失败的同一批上游 bug 仍会让 tool_call 半途崩坏**——只是 leak 落点从"假 tool 漏到 content"变成"真 tool 漏到 content"。route X 减少**触发条件**(模型不再 hallucinate edit tool name),但不消除**触发概率**。**route Y(salvage)是无论如何要保留的底座**,与 route X 并行不互替——这一点在 §2.2 非目标 #1 已明示,§7 此处补充上游公开 bug 链接作为证据。
 
 ## 8. 实施策略
 
-⚠️ **本节为占位,待 Phase 3 退出 + 本 spec 转 in_review 后细化。** Phase 4 实施时拆 Commit 1–N、列文件映射、定测试粒度。BLUEPRINT 明确「Phase 4 只能在 Phase 3 退出条件满足后进入正式实现;在此之前只允许做设计澄清」(BLUEPRINT §3 Phase 3 退出条件)。
+### Phase 0: spec/task/ledger 对齐
+
+- 本 spec 转 `in_review`,同步 README/BLUEPRINT/project-ledger 的 Phase 4 口径。
+- 新建首个实现 task:`docs/tasks/2026-06-09-phase4-edits-as-native-tool-p1.md`。
+- 仅文档与任务,不改 runtime。
+
+### Phase 1: 工具定义与 flag wiring
+
+- 新增 `apply_patch` tool definition,扩展 `ToolName` 与 patch policy。
+- 新增 `PATCH_EDITS_AS_NATIVE_TOOL` / `patch.edits_as_native_tool` flag,默认 `false`。
+- 测试:flag off 不暴露工具;flag on 只在 patch phase 暴露工具。
+
+### Phase 2: tool_call → SingleChange 转换
+
+- 实现 `apply_patch` 参数校验与 `SingleChange` 转换。
+- 保持一轮一个编辑动作;混合/多 edit tool_calls 全部 invalid。
+- 测试覆盖 6 个 `protocol_op` 和拒绝路径。
+
+### Phase 3: patch-pipeline 集成
+
+- `runPatchExplore` 优先识别单个 `apply_patch` tool_call,走 `applySingleChange`、checkpoint/rollback、coverage delta、managed_files、patch_rounds。
+- 写回 assistant tool_call + tool result messages,保证后续 DeepSeek 对话合法。
+- 保留 content-XML fallback 与 route Y salvage。
+
+### Phase 4: eval / A/B evidence
+
+- replicated benchmark metadata 记录 edit channel flag。
+- 先跑 loam-refactor targeted N≥3 A/B;稳定后扩大到 28 fixture N≥3。
+- 报告必须包含 `testsPassed`、`actualProtocolOps:[]`、`repair_exhausted`、`dsml_salvage_applied`、successful native `apply_patch` applications、tool_call invalid 分类。
+
+### 回退策略
+
+- 运行时回退:设 `PATCH_EDITS_AS_NATIVE_TOOL=false` 或删除 `.dsh/config.yml` flag,立即回到 content-XML。
+- 代码回退:第一版不删除 content-XML parser/prompt/telemetry,因此 git revert 单个 Route X 实施 commit 不应影响 Phase 3 已验证路径。
+- 证据回退:若 A/B 显示工具通道退化,保持 flag 默认 false,ledger 中 `phase4-edits-as-native-tool` 维持 in_progress/waiting,不得宣称 Phase 4 能力提升。
+
+### 2026-06-09 实施状态
+
+- Phase 0–3 最小 runtime 切片已落地于 `docs/tasks/2026-06-09-phase4-edits-as-native-tool-p1.md`。
+- `apply_patch` 仅在 `PATCH_EDITS_AS_NATIVE_TOOL` / `patch.edits_as_native_tool` 开启时暴露;默认仍为 content-XML。
+- `apply_patch` tool_call 转换后复用 `applySingleChange`、checkpoint/rollback、coverage validator、managed_files 和 patch telemetry;generic tool executor 不写文件。
+- flag on 时 patch prompt 已切到 native edit contract:编辑轮必须发一个 `apply_patch` tool_call,不得在 assistant content 中输出 XML change block。
+- native edit 模式下的分析停滞保护只暂停探索工具;`apply_patch` 仍保留,避免运行时在要求 native edit 时关掉唯一编辑通道。
+- `apply_patch` 参数转换已改为直接构造 `ChangeBlock`,支持常见 operation alias/inference,并避免 structured INSERT anchor 因 XML attribute 渲染被误拒。
+- `packages/eval/src/benchmark-runner.ts` 与 `scripts/benchmark-pie-replicated.ts` 已保留 `change.source`、`apply_patch` tool records 和 native edit observability,便于区分 successful native apply、apply error 与 invalid attempts。
+- invalid native edit round 已记录脱敏后的 tool-call arguments;大段 edit payload 字段只保留长度,避免 benchmark 结果丢失真实参数形态同时不泄露大段文件内容。
+- `scripts/benchmark-pie-replicated.ts` metadata/report 已记录 `patch.edits_as_native_tool` flag。
+- 2026-06-09 targeted loam-refactor N=3 A/B 已完成:baseline `260609121703` 为 16/18,flag-on `260609132227` 为 18/18,`repair_exhausted` 2 -> 0,详见 `docs/reports/knowledge/20260609-route-x-native-edit-ab.md`。
+- post-prompt targeted loam-refactor N=3 A/B 已完成:baseline `260609145253` 为 18/18,flag-on `260609155633` 为 17/18。flag-on run 已观察到 native attempts,但 successful native `apply_patch` applications 为 0,invalid native rounds 为 9;唯一 failed trial 是 patch 前的 `model_protocol_plan_invalid`。
+- post-compat targeted loam-refactor N=3 A/B 已完成:baseline `260609173815` 为 17/18,flag-on `260610024705` 为 17/18。flag-on run 记录 72 次 `apply_patch` tool call、68 条 successful native apply、4 条 apply error、7 个 invalid native rounds、content XML 为 0。
+- 当前结论:targeted successful native-call adoption 与聚合不退化成立;默认仍保持 flag off。下一步是用补强后的 invalid argument telemetry 做 broader/stability evidence、invalid/error 收敛与默认开启前 ledger 复审。
 
 ## 9. 禁止事项
 
@@ -126,12 +222,19 @@ content-XML 协议在 Phase 1/2 是合理的:那时没有工具(Phase 1)或只�
 
 | type | id | trigger | priority | notes |
 |------|----|---------|----------|-------|
-| deferred | phase4-edits-as-native-tool | Phase 3 退出 + 本 spec review + N≥3 A/B benchmark 不退化 | P2 | 本 spec 自身,跟踪到 Phase 4 实施前 |
+| deferred | phase4-edits-as-native-tool | Phase 3 退出 + 本 spec review + N≥3 A/B benchmark 不退化 + successful native `apply_patch` application evidence + broader/stability evidence | P0 | targeted successful native apply 已由 `260610024705` 证明;默认开启仍需 broader/stability evidence、invalid/error 收敛与 ledger 复审 |
 | bug | patchloop-dsml-content-leak | route Y salvage 落地 + 单测 + 定向 benchmark | P1 | route X 不替代 route Y;Bug A 底座修复独立推进 |
-| evidence | edits-as-native-tool-benchmark | 本 spec 实施分支稳定 ≥1 轮后启动 N≥3 randomized A/B | P1 | 成功标准 §6 的实证收集 |
+| evidence | edits-as-native-tool-benchmark | 本 spec 实施分支稳定后启动 N≥3 randomized A/B,并记录 native tool_call adoption | P1 | 2026-06-10 post-compat targeted A/B 已证明 successful native application 且聚合不退化;下一步转 broader/stability 与 invalid/error 收敛 |
 
 ## 11. 修订历史
 
 | 日期 | 版本 | 变更 |
 |------|------|------|
 | 2026-05-20 | v0.1 (draft skeleton) | 初始骨架:目标/非目标/设计依据/风险定型;架构与实施策略占位待 Phase 4 |
+| 2026-06-09 | v0.2 (in_review) | 核验当前代码和 `260521151313` baseline;确定单一 `apply_patch` 工具方案、flag、状态机接入、实施 Phase 与 A/B 验收 |
+| 2026-06-09 | v0.3 (runtime slice) | 默认关闭的 `apply_patch` tool_call 最小切片落地;保留 content-XML 回退;A/B evidence 仍待收集 |
+| 2026-06-09 | v0.4 (flag-exposure A/B) | targeted loam-refactor N=3 A/B 完成:flag-on 18/18 vs baseline 16/18,但 native `apply_patch` tool_calls=0;默认仍 off,下一步转 native-call adoption |
+| 2026-06-09 | v0.5 (native prompt contract) | flag-on patch prompt 切到 `apply_patch` native edit contract,停滞保护仅暂停探索工具并保留编辑工具;需复跑 targeted A/B 验证真实 adoption |
+| 2026-06-09 | v0.6 (post-prompt A/B + compatibility) | post-prompt A/B:flag-on 17/18 vs baseline 18/18,native attempts 已出现但 9 轮均 invalid;补 direct ChangeBlock conversion、operation alias/inference 与 native observability,默认仍 off |
+| 2026-06-10 | v0.7 (post-compat targeted A/B) | post-compat A/B:baseline 17/18,flag-on 17/18;flag-on 72 次 `apply_patch` tool call、68 条 successful native apply、content XML 为 0;默认仍 off,下一步 broader/stability |
+| 2026-06-10 | v0.8 (invalid observability) | post-compat residual audit 发现 invalid native rounds 缺参数形态证据;补脱敏 tool-call arguments 留存,供下一轮 broader/stability 定位 `protocol_op` 偏差 |

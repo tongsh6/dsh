@@ -1,10 +1,12 @@
-# DSH 产品蓝图 v1.2
+# DSH 产品蓝图 v1.6
 
-> 状态: active | 日期: 2026-05-02
+> 状态: active | 最近同步: 2026-06-09
 >
 > 本文档描述 DSH 最终产品形态和分阶段演进路线。Spec/Plan/Task 三层文档均从本蓝图衍生。
 >
 > **关联文档:** CONSTITUTION.md（原则）| SPEC v0.3（当前架构）| TASK-SPEC.md（任务规范）
+
+> **当前项目阶段:** Phase 4 Agent Loop 实施期。Phase 3 已于 2026-05-22 基于 N=3 replicated benchmark `260521151313` 退出：Project Card on `64/84 = 76.2%`，Pure Standard on `52/63 = 82.5%`，loamlog Project Card lift 为 `+8.3pp`。阶段性声明优先引用 `docs/reports/knowledge/20260522-phase3-exit-replicated-benchmark.md` 与本地 runlog 机器数据。
 
 ## 1. 最终产品形态
 
@@ -55,7 +57,7 @@
 ### 2.1 执行引擎 — 从协议解析到智能工具调用
 
 ```
-Phase 1 (当前)              Phase 2                     Phase 3
+Phase 1                     Phase 2                     Phase 3
 ┌─────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
 │ XML 协议解析      │    │ 工具化架构            │    │ 自导 Agent Loop      │
 │ • 6 种操作块      │ →  │ • read_file 工具      │ →  │ • 模型自主选择工具     │
@@ -66,7 +68,7 @@ Phase 1 (当前)              Phase 2                     Phase 3
   模型被动"描述变更"      模型主动"调查→变更→验证"      模型自导"分解→执行→聚合"
 ```
 
-**当前状态（Phase 1）**：模型在一个响应中输出所有变更描述（XML 块），系统解析并应用。问题是模型在"闭眼出 patch"——没看过文件就生成 diff。
+**当前状态（Phase 4 启动，2026-05-22 后）**：Phase 3 的基础工具集、ProjectIntelligence 主路径、PatchCoverage 状态机、DSML salvage 与严格验证门禁已作为底座落地。Phase 4 当前主线是 Route X：把文件编辑从 content-XML 变更描述迁到 DeepSeek-native `apply_patch` 工具通道；第一版必须保留 content-XML 双轨回退。2026-06-10 post-compat targeted A/B 已证明模型实际采用 native edit path：baseline `260609173815` 17/18，flag-on `260610024705` 17/18，flag-on 72 次 `apply_patch` tool call、68 条 successful native apply、content XML 为 0。Route X 仍默认 off；下一步是 broader/stability 复审，收敛 7 个 invalid native rounds / 4 条 apply error 和 plan-contract failure 后再讨论默认开启。
 
 **Phase 2 目标**：引入基础工具集（`read_file`、`grep_files`、`exec_shell`），让模型在生成 patch 前能先探索代码库。从"一次响应包含全部变更"升级为"多轮工具调用 + 最终变更"。
 
@@ -75,7 +77,7 @@ Phase 1 (当前)              Phase 2                     Phase 3
 ### 2.2 交互层 — 从无状态 CLI 到流式终端体验
 
 ```
-Phase 1 (当前)              Phase 2                     Phase 3
+Phase 1                     Phase 2                     Phase 3
 ┌─────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
 │ 无状态 CLI        │    │ 流式 + 会话           │    │ 完整 TUI              │
 │ • 8 个独立命令     │ →  │ • 流式输出 thinking    │ →  │ • 实时思考展示         │
@@ -86,7 +88,7 @@ Phase 1 (当前)              Phase 2                     Phase 3
   批处理，异步把关         在线参与，实时可见              交互式，沉浸体验
 ```
 
-**当前状态（Phase 1）**：CLI 命令每次独立调用，状态存 JSON 文件。适合 CI/自动化场景，不适合日常开发。
+**当前状态（基础 CLI 已可用）**：CLI 命令每次独立调用，状态存 JSON 文件；`dsh run` / `dsh doctor` 已作为 Phase 3 退出条件通过测试。交互层增强仍是后续阶段，不能抢 Phase 4 执行引擎主线。
 
 **Phase 2 目标**：CLI 保持可用，但增加流式输出（实时展示 thinking + patch 生成过程）和会话管理（跨命令保持上下文，支持断点续跑）。
 
@@ -95,7 +97,7 @@ Phase 1 (当前)              Phase 2                     Phase 3
 ### 2.3 上下文管理 — 从静态装配到模型自管理
 
 ```
-Phase 1 (当前)              Phase 2                     Phase 3
+Phase 1                     Phase 2                     Phase 3
 ┌─────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
 │ 4 层静态装配      │    │ 动态上下文            │    │ 模型自管理            │
 │ • Base/Repo/     │ →  │ • 工具调用结果注入      │ →  │ • V4 降级曲线认知      │
@@ -113,7 +115,7 @@ Phase 1 (当前)              Phase 2                     Phase 3
 ### 2.4 验证体系 — 从 Shell 命令到智能守护
 
 ```
-Phase 1 (当前)              Phase 2                     Phase 3
+Phase 1                     Phase 2                     Phase 3
 ┌─────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
 │ Shell 命令验证    │    │ 多维度质量门禁         │    │ 智能质量守护          │
 │ • test/lint/     │ →  │ • LSP 诊断注入         │ →  │ • Pre-patch baseline │
@@ -127,7 +129,7 @@ Phase 1 (当前)              Phase 2                     Phase 3
 ### 2.5 评测体系 — 从单仓库到系统化对比
 
 ```
-Phase 1 (当前)              Phase 2                     Phase 3
+Phase 1                     Phase 2                     Phase 3
 ┌─────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
 │ 基础 Benchmark   │    │ 多维度系统化评测        │    │ 持续评测平台          │
 │ • 41 个 fixture  │ →  │ • 多语言(TS/Java/Py)  │ →  │ • 统计显著性           │
@@ -167,13 +169,13 @@ Phase 1 (止血)              Phase 2 (模型)              Phase 3 (替换)
 
 当前 `scanner.ts` 的 `detectTechStack` + `detectVerifyCommands` 存在一类系统性缺陷：**把关联关系当成等价关系**。看到 `.java` 文件 → 推断 Maven；看到 `.py` 文件 → 推断 pip；packageManager 为 null 时 verify 命令默认 Maven。这些不是"识别"，而是"猜测并假装确定"。
 
-**当前实现状态（2026-05-17）**：DSH 处于 Phase 3 收口验证期。`scanner.ts` 已退役，生产路径通过 `assembleIntelligence` 生成 `ProjectIntelligence`；`init` 使用 `pickVerifyPlan` 投影验证命令；`pipeline` 通过 `generateRepoContext(cwd, pi)` 注入 RepoContext；LLM 上下文默认包含 Project Card，并可通过 `DSH_INJECT_PROJECT_CARD=false` 关闭。
+**当前实现状态（2026-05-22 后）**：ProjectIntelligence 已通过 Phase 3 退出门禁。`scanner.ts` 已退役，生产路径通过 `assembleIntelligence` 生成 `ProjectIntelligence`；`init` 使用 `pickVerifyPlan` 投影验证命令；`pipeline` 通过 `generateRepoContext(cwd, pi)` 注入 RepoContext；LLM 上下文默认包含 Project Card，并可通过 `DSH_INJECT_PROJECT_CARD=false` 做 A/B。
 
 **Phase 1 目标（已完成）**：消除 3 个已知危险默认推断；引入最小的 `ProjectIntelligence` 抽象（Fact / Candidate / Decision / Capability 四模型），通过 `toLegacyTechStack` 投影兼容现有调用链路。新增 `toProjectCard` 给 LLM 注入"已知 / 未知 / 禁止推断"的结构化上下文。
 
 **Phase 2 目标（已完成）**：完整 Fact 收集器（文件系统 + 构建描述符 + wrapper 脚本 + 源码语法版本推断）；Candidate 生成器实现多候选排序 + 置信度计算；`dsh doctor` 命令输出候选判断和能力状态；`.dsh/project.yml` 人工确认层。
 
-**Phase 3 目标（主路径已完成，继续验收）**：`detectVerifyCommands` 退役，verify plan 从 `ProjectCapability` 推导；项目识别统一由 `assembleIntelligence` 驱动；LLM context 统一使用 Project Card。当前剩余工作集中在 benchmark failure matrix、hard-fail fixture 复审、verify plan 精细化和 legacy scanner 防回流，不扩展 TUI、MCP、多 Provider 或子 Agent。
+**Phase 3 目标（已完成）**：`detectVerifyCommands` 退役，verify plan 从 `ProjectCapability` 推导；项目识别统一由 `assembleIntelligence` 驱动；LLM context 统一使用 Project Card。后续 verify plan 精细化属于独立增强，不再作为 Phase 3 退出 blocker。
 
 **与主阶段的关系**：本维度是横切关注点——Phase 1 止血与 Phase 3（工具化）并行推进，Phase 2 与 Phase 4（Agent Loop）重叠。它不是独立的 Phase 8，而是对现有 scanner/verify/context 三个模块的渐进式加固。
 
@@ -187,8 +189,8 @@ Phase 1 (止血)              Phase 2 (模型)              Phase 3 (替换)
 |------|------|------|------|
 | **Phase 1** | 核心闭环（MVP） | Plan→Patch→Verify→Repair→Handoff 跑通 | ✅ 已完成 |
 | **Phase 2** | 协议+评测完善 | Patch 协议升级（v0.4）、评测体系建立、静态扫描治理 | ✅ 已完成（2026-05-08，详见 `docs/reports/phase-2-exit-review.md` §5.7） |
-| **Phase 3** | 工具化收口验证 | 引入基础工具集（read_file/grep/exec_shell），模型从"闭眼出 patch"升级为"先探索再修改"；当前处于收口验证期 | 🔧 收口验证中 |
-| **Phase 4** | Agent Loop | 多轮工具调用、模型自主分解任务、repair 内联到 patch 阶段 | 📋 |
+| **Phase 3** | 工具化收口验证 | 引入基础工具集（read_file/grep/exec_shell），模型从"闭眼出 patch"升级为"先探索再修改" | ✅ 已完成（2026-05-22，`260521151313` N=3 replicated benchmark） |
+| **Phase 4** | Agent Loop | Route X `apply_patch` 工具通道、多轮工具调用、模型自主分解任务、repair 内联到 patch 阶段 | 🔧 实施中 |
 | **Phase 5** | 流式+会话 | 流式输出、会话持久化、断点续跑 | 📋 |
 | **Phase 6** | TUI | 完整终端交互体验 | 📋 |
 | **Phase 7** | 生态扩展 | MCP、子 Agent、多 Provider | 📋 |
@@ -201,20 +203,26 @@ Phase 1 (止血)              Phase 2 (模型)              Phase 3 (替换)
 
 2. **先验证核心假设，再扩展范围** — Phase 2 的评测体系必须先建立，因为后续每个阶段的优化都必须用 benchmark 数据证明"确实变好了"（CONSTITUTION 原则 5）。没有评测数据，所有优化都是"我觉得"。
 
-### Phase 3 退出条件（收口验证期）
+### Phase 3 退出条件（已满足 — 2026-05-22）
 
-Phase 3 可以退出，当且仅当以下条件都有证据支撑：
+Phase 3 已退出，证据来自本地机器 runlog `docs/reports/runlogs/260521151313-pie-replicated/`（168 trials）和归档知识报告 `docs/reports/knowledge/20260522-phase3-exit-replicated-benchmark.md`：
 
-- [ ] **ProjectIntelligence 唯一主路径** — `init` / `pipeline` / context builder 均通过 `assembleIntelligence`、`generateRepoContext`、Project Card 工作；`suggest` 只作为候选，不能投影成确定事实。
-- [ ] **入口文档状态一致** — README / BLUEPRINT / project-ledger / GitHub 可见 README 都描述为 Phase 3 收口验证期，不把 historical benchmark 当作当前状态。
-- [ ] **最新 N=3 replicated benchmark 达标** — Project Card on 仍达到 Phase 3 `testsPassed >60%` 目标，并与 off 组保持正向差异。
-- [ ] **hard-fail / high-variance fixture 经复审分流** — single smoke PASS 的 fixture 必须经过新的 N=3 / full benchmark 复审；复审后 pass rate 落入 §2.5 高方差区间（约 25%–75%）的 fixture，在 failure matrix 标注为 high-variance 并单独报告，不作为 Phase 3 退出的单 fixture 硬门禁——Phase 3 退出以上一条「最新 N=3 replicated benchmark 达标」的聚合 `testsPassed >60%` 为准。
-- [ ] **failure matrix 机器可读** — `packages/eval/src/failure-matrix.json` 可被测试校验，并可被 benchmark metadata 读取。
-- [ ] **legacy scanner 防回流** — 生产路径不得 import 或调用旧 `detectTechStack` / `detectVerifyCommands`，并有自动化测试防止回流。
-- [ ] **最小产品入口可用** — `dsh run` / `dsh doctor` 通过 CLI 测试，并能展示 ProjectIntelligence / Project Card 相关状态。
-- [ ] **质量门禁通过** — build / typecheck / lint / test / scan 均通过，或对失败给出明确非本轮引入证据和最小修复方案。
+- [x] **ProjectIntelligence 唯一主路径** — `init` / `pipeline` / context builder 均通过 `assembleIntelligence`、`generateRepoContext`、Project Card 工作；`suggest` 只作为候选，不能投影成确定事实。
+- [x] **入口文档状态一致** — README / BLUEPRINT / project-ledger 描述为 Phase 4 实施期，并把 Phase 3 benchmark 作为归档 evidence，而不是当前 blocker。
+- [x] **最新 N=3 replicated benchmark 达标** — `260521151313`：Project Card on `64/84 = 76.2%`，Pure Standard on `52/63 = 82.5%`；loamlog on `20/24 = 83.3%` vs off `18/24 = 75.0%`。
+- [x] **hard-fail / high-variance fixture 经复审分流** — failure matrix 保留 `exclude_from_phase3_exit` / `label_required` 治理标签，高方差与 split fixture 单独报告，不作为单 fixture 硬门禁。
+- [x] **failure matrix 机器可读** — `packages/eval/src/failure-matrix.json` 可被测试校验，并可被 benchmark metadata 读取。
+- [x] **legacy scanner 防回流** — 生产路径不得 import 或调用旧 `detectTechStack` / `detectVerifyCommands`，并有自动化测试防止回流。
+- [x] **最小产品入口可用** — `dsh run` / `dsh doctor` 通过 CLI 测试，并能展示 ProjectIntelligence / Project Card 相关状态。
+- [x] **质量门禁通过** — build / typecheck / lint / test / scan 作为阶段退出门禁通过；后续代码改动仍需按变更范围重新验证。
 
-Phase 4 只能在上述条件满足后进入正式实现；在此之前只允许做设计澄清，不启动 Agent Loop 正式实现。
+Phase 4 已可进入正式实现，但每个实施切片仍必须遵守 Spec → Plan → Task、原则 5 的 benchmark 证据、原则 7.2 的边界约束和原则 9 的无临时手段。
+
+### Phase 4 当前实施约束
+
+- **Route X 先行**：`docs/specs/2026-05-20-edits-as-native-tool.md` 是当前执行引擎主线；最小 runtime 切片、native edit prompt contract、停滞保护、参数兼容与 native observability 已完成，targeted successful-apply adoption evidence 已成立。下一步是 broader/stability evidence 与 invalid/error 收敛，而不是直接默认开启。
+- **双轨可回退**：第一版 `apply_patch` 工具通道不得物理删除 content-XML 协议；迁移率和退役条件必须由 A/B benchmark 决定，且 benchmark 必须区分"flag 暴露"与"native tool_call 实际采用"。
+- **不以系统代写业务代码作为能力证据**：repair 收敛必须回到编排、上下文、工具通道、prompt、轮次策略和验证反馈，不得恢复默认 code-result deterministic repair。
 
 ### Phase 2 退出条件（已全部勾选 — 2026-05-08）
 
@@ -268,3 +276,8 @@ Phase 4 只能在上述条件满足后进入正式实现；在此之前只允许
 | 2026-05-05 | v1.1 | Phase 2 退出条件追加「长期跟踪事项复审」checkbox；新增 §3.1 Phase 退出复审协议（依据 CONSTITUTION v1.1 原则 8） |
 | 2026-05-18 | v1.2 | Phase 3 退出条件 B 改为「hard-fail / high-variance fixture 经复审分流」，与 §2.5 高方差方法论对齐：复审后落入 25%–75% 区间的 fixture 标注为 high-variance 并单独报告，不作单 fixture 硬门禁；Phase 3 退出以聚合 `testsPassed >60%` 为准 |
 | 2026-05-21 | v1.3 | 架构原则摘录同步 CONSTITUTION v1.3 原则 9「无临时手段」 |
+| 2026-06-09 | v1.4 | 同步 2026-05-22 Phase 3 退出事实与 Phase 4 实施期状态；Phase 3 退出条件改为已满足，新增 Phase 4 当前实施约束 |
+| 2026-06-09 | v1.5 | 同步 Route X flag-exposure A/B:开启工具暴露不退化但 native `apply_patch` tool_calls=0；Phase 4 下一步改为 native tool adoption evidence |
+| 2026-06-09 | v1.6 | 同步 native edit prompt contract 与停滞保护：flag-on patch prompt 要求 `apply_patch`，探索停滞后仅保留编辑工具；证据仍待 targeted A/B 重跑 |
+| 2026-06-09 | v1.7 | 同步 post-prompt A/B：native attempts 已出现但 9 轮均 invalid，flag-on 17/18 vs baseline 18/18；补参数兼容与 native observability，默认仍 off，等待复验 |
+| 2026-06-10 | v1.8 | 同步 post-compat targeted A/B：baseline 与 flag-on 均 17/18，flag-on 72 次 `apply_patch` tool call、68 条 successful native apply、content XML 为 0；默认仍 off，下一步 broader/stability |
