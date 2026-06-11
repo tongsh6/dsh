@@ -1,6 +1,6 @@
-# DSH 产品蓝图 v1.6
+# DSH 产品蓝图 v1.12
 
-> 状态: active | 最近同步: 2026-06-11
+> 状态: active | 最近同步: 2026-06-12
 >
 > 本文档描述 DSH 最终产品形态和分阶段演进路线。Spec/Plan/Task 三层文档均从本蓝图衍生。
 >
@@ -147,6 +147,8 @@ Phase 1                     Phase 2                     Phase 3
 3. **双层判定**：总通过数不得低于 baseline；单 fixture pass rate 用 Wilson 95% CI 判断是否出现显著退化。高方差 fixture（pass rate 约 25%–75%）单独标注，不作为普通退化直接归因。
 4. **证据归档**：报告必须记录 baseline、样本量、随机化方式、清理策略、结论和下一步。阶段性声明优先引用 `docs/reports/knowledge/` 下的归档报告，而不是单个 runlog。
 
+**Project Card 对照口径（2026-06-12）**：生产路径保持单体系，默认注入 Project Card，`DSH_INJECT_PROJECT_CARD=false` 只作为用户逃生开关。`card_on` / `card_off` 保留为 benchmark 对照维度，用于 release/broader benchmark、prompt/context 改动和默认开启决策的防回归判断；局部 repair-contract 迭代不必每次强制双倍运行，后续 benchmark runner 可增加 `--configs=card_on|card_off|both`。退场条件：provider-dedup repair focused N>=3 两侧 6/6，且一次 broader/stability N>=3 未出现 card-specific failure class 后，`card_off` 才可从默认 replicated 配置降级为周期性 canary / prompt 改动专用对照。
+
 ### 2.6 项目识别 — 从结论型推断到证据驱动决策
 
 ```
@@ -284,3 +286,4 @@ Phase 4 已可进入正式实现，但每个实施切片仍必须遵守 Spec →
 | 2026-06-10 | v1.9 | 同步 post-build telemetry rerun：flag-on `260610153758` 为 18/18，76 次 `apply_patch` tool call、67 条 successful native apply、5 个 invalid native rounds 且参数形态可审；默认仍 off |
 | 2026-06-11 | v1.10 | 同步 residual error-class slice：native apply 失败返回 `error_class` / hint，`DONE` tool-call 识别为完成意图；本地 scan 通过，DeepSeek targeted 复跑待外部数据传输风险授权 |
 | 2026-06-11 | v1.11 | 同步 targeted residual run `260611121509`：Card ON 9/9、Card OFF 7/9，native apply error 9 -> 3、invalid native rounds 5 -> 2，provider-dedup Card OFF 仍有 2 个 repair_exhausted；默认仍 off |
+| 2026-06-12 | v1.12 | 明确 `card_on` / `card_off` 仅是 benchmark 对照维度，不是两套生产体系；生产默认 Project Card on，off 保留为逃生开关。局部 repair-contract 迭代可先单侧/小样本，release/broader/default-on 决策仍需双侧 A/B；记录 `card_off` 降级为 canary 的退场条件 |
