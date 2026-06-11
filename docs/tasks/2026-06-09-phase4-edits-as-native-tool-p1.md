@@ -98,3 +98,11 @@ assignee: "ai"
 - Reporting: `scripts/benchmark-pie-replicated.ts` now emits a Native Edit Error Classes table in `summary.md`.
 - Local verification: `pnpm --filter @dsh/core test -- patch-pipeline.test.ts prompt-builder.test.ts`, `pnpm --filter @dsh/eval test -- benchmark-runner.test.ts`, `./packages/core/node_modules/.bin/tsx --test scripts/benchmark-pie-replicated.test.ts`, `pnpm -r run build`, `./packages/core/node_modules/.bin/tsx scripts/check-tracked-items.ts`, `git diff --check`, and `pnpm run scan` passed.
 - External benchmark status: targeted DeepSeek rerun was not completed in this slice. The sandbox blocked `tsx` IPC (`listen EPERM`), and the required escalated rerun was rejected by policy because it would send repository/task context to the external DeepSeek API. A rerun requires explicit user approval after that data-transfer risk is acknowledged.
+
+## Evidence Update 6 (2026-06-11)
+- Authorization: user explicitly allowed the external DeepSeek benchmark after the data-transfer risk was stated.
+- Experiment: `docs/reports/runlogs/260611121509-pie-replicated/`, `PATCH_EDITS_AS_NATIVE_TOOL=true`, 18/18 completed, Card ON 9/9, Card OFF 7/9.
+- Native adoption: 70 `apply_patch` tool calls, 67 successful native apply records, 3 apply error records, 2 invalid native rounds, and 0 content-XML change records.
+- Residual impact: `protocol_op: "DONE"` / `"<DONE/>"` no longer appears as a native invalid/error class. Remaining native error classes were `invalid_patch_payload` (2) and `apply_failed` (1).
+- Residual failures: both failed trials were `loam-refactor-provider-dedup` Card OFF `repair_exhausted`; they changed `shared.ts` and `openai-compatible.ts` but did not cover `anthropic.ts`.
+- Boundary: this validates the residual error-class slice, but it is not a default-on decision. Default remains off until provider-dedup repair convergence and broader/stability evidence are reviewed.

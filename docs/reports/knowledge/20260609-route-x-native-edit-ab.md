@@ -9,7 +9,7 @@
 
 ## Summary
 
-This report is chronological. The latest current-code evidence is the 2026-06-10 post-build telemetry rerun in the final section.
+This report is chronological. The latest current-code evidence is the 2026-06-11 targeted residual rerun in the final section.
 
 The default-off Route X runtime slice did not regress the first targeted loam-refactor benchmark when the flag was enabled.
 
@@ -175,7 +175,7 @@ Follow-up implementation now records redacted tool-call arguments on invalid nat
 
 This does not change the A/B conclusion above. It makes the next targeted or broader run auditable enough to distinguish model argument-shape drift from parser/schema gaps before changing the default.
 
-## Post-Build Telemetry Rerun (Latest Evidence)
+## Post-Build Telemetry Rerun
 
 The invalid-argument telemetry change required a package rebuild before benchmark execution because workspace packages expose `dist` through their `main` fields. A pre-build flag-on run (`docs/reports/runlogs/260610144529-pie-replicated/`) is therefore excluded from current-code telemetry evidence.
 
@@ -219,6 +219,57 @@ Invalid argument audit:
 Decision:
 
 Keep `patch.edits_as_native_tool` default `false`. The targeted flag-on evidence is now strong (18/18 and native-only edits), but default-on still needs broader/stability evidence and review of the remaining invalid/error patterns.
+
+## Targeted Residual Rerun (Latest Evidence)
+
+After the residual error-class slice (`error_class` / tool-result `hint`, benchmark error-class summary, and `DONE` tool-call terminal intent), the same targeted flag-on shape was rerun with explicit authorization for external DeepSeek API data transfer:
+
+```bash
+PATCH_EDITS_AS_NATIVE_TOOL=true ./packages/core/node_modules/.bin/tsx scripts/benchmark-pie-replicated.ts --filter=loam-refactor --reps=3 --seed=26060901 --lanes-per-repo=1
+```
+
+Artifact:
+
+- Experiment: `docs/reports/runlogs/260611121509-pie-replicated/`
+
+| Metric | Experiment flag on |
+|--------|--------------------|
+| `patch.edits_as_native_tool` | `true` |
+| Total pass | 16/18 |
+| Card ON | 9/9 |
+| Card OFF | 7/9 |
+| Failed trials | 2 |
+| Failure class | `repair_exhausted` (Card OFF 2) |
+| `apply_patch` tool calls | 70 |
+| Successful native `apply_patch` applications | 67 |
+| Native `apply_patch` apply errors | 3 |
+| Invalid native `apply_patch` rounds | 2 |
+| Content XML change records | 0 |
+
+Fixture breakdown:
+
+| Fixture | Card ON | Card OFF |
+|---------|---------|----------|
+| `loam-refactor-provider-dedup` | 3/3 | 1/3 |
+| `loam-refactor-rename-distill-state` | 3/3 | 3/3 |
+| `loam-refactor-reorganize-tests` | 3/3 | 3/3 |
+
+Native error classes:
+
+| Error class | Count |
+|-------------|-------|
+| `invalid_patch_payload` | 2 |
+| `apply_failed` | 1 |
+
+Interpretation:
+
+- The residual slice worked for the targeted native-edit failure mode: apply errors dropped from 9 to 3, invalid native rounds dropped from 5 to 2, and the prior `protocol_op: "DONE"` / `"<DONE/>"` residual disappeared.
+- Native edit adoption remains proven: all edit records stayed on the tool-call path and content-XML change records remained 0.
+- The remaining aggregate failures are not native protocol adoption failures. Both failures are `loam-refactor-provider-dedup` Card OFF `repair_exhausted`; both changed `shared.ts` and `openai-compatible.ts` but did not cover `anthropic.ts`.
+
+Decision:
+
+Keep `patch.edits_as_native_tool` default `false`. The next work item is provider-dedup Card OFF repair convergence, then broader/stability evidence before any default-on discussion.
 
 Excluded partial runs:
 

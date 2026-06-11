@@ -211,7 +211,8 @@ content-XML 协议在 Phase 1/2 是合理的:那时没有工具(Phase 1)或只�
 - post-prompt targeted loam-refactor N=3 A/B 已完成:baseline `260609145253` 为 18/18,flag-on `260609155633` 为 17/18。flag-on run 已观察到 native attempts,但 successful native `apply_patch` applications 为 0,invalid native rounds 为 9;唯一 failed trial 是 patch 前的 `model_protocol_plan_invalid`。
 - post-compat targeted loam-refactor N=3 A/B 已完成:baseline `260609173815` 为 17/18,flag-on `260610024705` 为 17/18。flag-on run 记录 72 次 `apply_patch` tool call、68 条 successful native apply、4 条 apply error、7 个 invalid native rounds、content XML 为 0。
 - post-build telemetry targeted rerun `260610153758` 已完成:flag-on `loam-refactor*` 18/18,记录 76 次 `apply_patch` tool call、67 条 successful native apply、9 条 apply error、5 个 invalid native rounds、content XML 为 0;invalid 参数形态已可审,典型为 `protocol_op: DONE` / `<DONE/>`。
-- 当前结论:targeted successful native-call adoption 与 flag-on 全绿成立;默认仍保持 flag off。下一步是获得外部 DeepSeek benchmark 明确授权后复跑 targeted residual check,再进入 broader/stability evidence 与默认开启前 ledger 复审。
+- targeted residual run `260611121509` 已完成:Card ON 9/9,Card OFF 7/9;native apply error 9 -> 3,invalid native rounds 5 -> 2,content XML 为 0,`DONE` tool-call 残余消失。残余失败为 `loam-refactor-provider-dedup` Card OFF 2 个 `repair_exhausted`,未覆盖 `anthropic.ts`。
+- 当前结论:targeted successful native-call adoption 成立,residual slice 已降低 native edit 协议噪音;默认仍保持 flag off。下一步是 provider-dedup Card OFF repair convergence 与 broader/stability evidence,再进入默认开启前 ledger 复审。
 
 ## 9. 禁止事项
 
@@ -226,9 +227,9 @@ content-XML 协议在 Phase 1/2 是合理的:那时没有工具(Phase 1)或只�
 
 | type | id | trigger | priority | notes |
 |------|----|---------|----------|-------|
-| deferred | phase4-edits-as-native-tool | Phase 3 退出 + 本 spec review + N≥3 A/B benchmark 不退化 + successful native `apply_patch` application evidence + broader/stability evidence | P0 | targeted successful native apply 与 flag-on 18/18 已由 `260610153758` 证明;2026-06-11 residual error-class/hint 本地实现已落地,外部 DeepSeek 复跑待授权;默认开启仍需 broader/stability evidence、invalid/error 收敛与 ledger 复审 |
+| deferred | phase4-edits-as-native-tool | Phase 3 退出 + 本 spec review + N≥3 A/B benchmark 不退化 + successful native `apply_patch` application evidence + broader/stability evidence | P0 | targeted successful native apply 与 flag-on 18/18 已由 `260610153758` 证明;`260611121509` 证明 residual slice 降低 native errors,但 Card OFF provider-dedup 仍 repair_exhausted;默认开启仍需 broader/stability evidence 与 ledger 复审 |
 | bug | patchloop-dsml-content-leak | route Y salvage 落地 + 单测 + 定向 benchmark | P1 | route X 不替代 route Y;Bug A 底座修复独立推进 |
-| evidence | edits-as-native-tool-benchmark | 本 spec 实施分支稳定后启动 N≥3 randomized A/B,并记录 native tool_call adoption | P1 | 2026-06-10 post-build telemetry rerun 已证明 flag-on targeted 18/18、successful native application 与 invalid argument telemetry;2026-06-11 已补 native error class summary,下一步需授权外部 targeted 复跑 |
+| evidence | edits-as-native-tool-benchmark | 本 spec 实施分支稳定后启动 N≥3 randomized A/B,并记录 native tool_call adoption | P1 | 2026-06-11 targeted residual run `260611121509`:Card ON 9/9,Card OFF 7/9,native error-class summary 可用;下一步先收敛 provider-dedup Card OFF |
 
 ## 11. 修订历史
 
@@ -244,3 +245,4 @@ content-XML 协议在 Phase 1/2 是合理的:那时没有工具(Phase 1)或只�
 | 2026-06-10 | v0.8 (invalid observability) | post-compat residual audit 发现 invalid native rounds 缺参数形态证据;补脱敏 tool-call arguments 留存,供下一轮 broader/stability 定位 `protocol_op` 偏差 |
 | 2026-06-10 | v0.9 (post-build telemetry rerun) | `pnpm -r run build` 后重跑 flag-on targeted `260610153758`:18/18,76 次 `apply_patch` tool call、67 条 successful native apply、5 个 invalid native rounds 且参数形态可审;默认仍 off |
 | 2026-06-11 | v0.10 (residual error classification) | native apply 失败记录 `error_class`/hint 并在 benchmark summary 聚合;`DONE` tool-call 终止意图转为 done;本地 scan 通过,DeepSeek targeted 复跑待外部数据传输风险授权 |
+| 2026-06-11 | v0.11 (targeted residual rerun) | DeepSeek targeted `260611121509`:Card ON 9/9,Card OFF 7/9,native apply error 9 -> 3,invalid native rounds 5 -> 2,`DONE` residual 消失;provider-dedup Card OFF 仍 repair_exhausted |
