@@ -68,7 +68,7 @@ Phase 1                     Phase 2                     Phase 3
   模型被动"描述变更"      模型主动"调查→变更→验证"      模型自导"分解→执行→聚合"
 ```
 
-**当前状态（Phase 4 启动，2026-05-22 后）**：Phase 3 的基础工具集、ProjectIntelligence 主路径、PatchCoverage 状态机、DSML salvage 与严格验证门禁已作为底座落地。Phase 4 当前主线是 Route X：把文件编辑从 content-XML 变更描述迁到 DeepSeek-native `apply_patch` 工具通道；第一版必须保留 content-XML 双轨回退。2026-06-10 post-build telemetry run `260610153758` 已证明模型实际采用 native edit path 且 flag-on targeted `loam-refactor*` 达到 18/18：76 次 `apply_patch` tool call、67 条 successful native apply、content XML 为 0。Route X 仍默认 off；下一步是 broader/stability 复审，收敛 5 个 invalid native rounds / 9 条 apply error 后再讨论默认开启。
+**当前状态（Phase 4 启动，2026-05-22 后）**：Phase 3 的基础工具集、ProjectIntelligence 主路径、PatchCoverage 状态机、DSML salvage 与严格验证门禁已作为底座落地。Phase 4 当前主线是 Route X：把文件编辑从 content-XML 变更描述迁到 DeepSeek-native `apply_patch` 工具通道；第一版必须保留 content-XML 双轨回退。2026-06-10 post-build telemetry run `260610153758` 已证明模型实际采用 native edit path 且 flag-on targeted `loam-refactor*` 达到 18/18：76 次 `apply_patch` tool call、67 条 successful native apply、content XML 为 0。Route X 仍默认 off。2026-06-11 residual slice 已补 native error class / hint 与 `DONE` tool-call terminal intent；下一步是授权后复跑 targeted residual benchmark，确认 invalid/error 下降后再进入 broader/stability 复审和默认开启讨论。
 
 **Phase 2 目标**：引入基础工具集（`read_file`、`grep_files`、`exec_shell`），让模型在生成 patch 前能先探索代码库。从"一次响应包含全部变更"升级为"多轮工具调用 + 最终变更"。
 
@@ -282,3 +282,4 @@ Phase 4 已可进入正式实现，但每个实施切片仍必须遵守 Spec →
 | 2026-06-09 | v1.7 | 同步 post-prompt A/B：native attempts 已出现但 9 轮均 invalid，flag-on 17/18 vs baseline 18/18；补参数兼容与 native observability，默认仍 off，等待复验 |
 | 2026-06-10 | v1.8 | 同步 post-compat targeted A/B：baseline 与 flag-on 均 17/18，flag-on 72 次 `apply_patch` tool call、68 条 successful native apply、content XML 为 0；默认仍 off，下一步 broader/stability |
 | 2026-06-10 | v1.9 | 同步 post-build telemetry rerun：flag-on `260610153758` 为 18/18，76 次 `apply_patch` tool call、67 条 successful native apply、5 个 invalid native rounds 且参数形态可审；默认仍 off |
+| 2026-06-11 | v1.10 | 同步 residual error-class slice：native apply 失败返回 `error_class` / hint，`DONE` tool-call 识别为完成意图；本地 scan 通过，DeepSeek targeted 复跑待外部数据传输风险授权 |

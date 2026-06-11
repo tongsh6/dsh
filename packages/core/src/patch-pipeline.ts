@@ -301,7 +301,7 @@ type EditSource = "content_xml" | "tool_call";
 type PatchExploreAction =
   | { kind: "tools" }
   | { kind: "done" }
-  | { kind: "invalid"; reason: string }
+  | { kind: "invalid"; reason: string; errorClass?: string }
   | {
       kind: "change";
       change: ChangeBlock;
@@ -383,15 +383,32 @@ export function parseApplyPatchToolCall(toolCall: DeepSeekToolCall): PatchExplor
       : {};
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
-    return { kind: "invalid", reason: `Invalid apply_patch arguments JSON: ${detail}` };
+    return {
+      kind: "invalid",
+      reason: `Invalid apply_patch arguments JSON: ${detail}`,
+      errorClass: "invalid_json",
+    };
   }
   if (rawArgs === null || typeof rawArgs !== "object" || Array.isArray(rawArgs)) {
-    return { kind: "invalid", reason: "apply_patch arguments must be a JSON object" };
+    return {
+      kind: "invalid",
+      reason: "apply_patch arguments must be a JSON object",
+      errorClass: "invalid_arguments_shape",
+    };
   }
 
   const toolCallArgs = rawArgs as Record<string, unknown>;
+  if (isApplyPatchDoneIntent(toolCallArgs)) {
+    return { kind: "done" };
+  }
   const rendered = buildApplyPatchChange(toolCallArgs);
-  if (!rendered.ok) return { kind: "invalid", reason: rendered.reason };
+  if (!rendered.ok) {
+    return {
+      kind: "invalid",
+      reason: rendered.reason,
+      errorClass: classifyApplyPatchInvalidReason(rendered.reason),
+    };
+  }
 
   return {
     kind: "change",
@@ -400,6 +417,19 @@ export function parseApplyPatchToolCall(toolCall: DeepSeekToolCall): PatchExplor
     toolCallId: toolCall.id,
     toolCallArgs: redactApplyPatchToolArgs(toolCallArgs),
   };
+}
+
+function isApplyPatchDoneIntent(args: Record<string, unknown>): boolean {
+  const op =
+    stringArg(args, "protocol_op") ??
+    stringArg(args, "protocolOp") ??
+    stringArg(args, "op") ??
+    stringArg(args, "operation") ??
+    stringArg(args, "action") ??
+    stringArg(args, "type");
+  if (!op) return false;
+  const normalized = op.trim().replace(/[<>\s/]+/g, "").toUpperCase();
+  return normalized === "DONE";
 }
 
 function buildApplyPatchChange(
@@ -653,12 +683,77 @@ function redactToolCallArguments(toolCall: DeepSeekToolCall): Record<string, unk
 
 function summarizeInvalidToolCalls(toolCalls: DeepSeekToolCall[], reason: string): PatchRoundRecord["tool_calls"] | undefined {
   if (toolCalls.length === 0) return undefined;
+  const errorClass = classifyApplyPatchInvalidReason(reason);
   return toolCalls.map((toolCall) => ({
     name: toolCall.function.name,
     arguments: redactToolCallArguments(toolCall),
     status: "error" as const,
+    ...(toolCall.function.name === APPLY_PATCH_TOOL_NAME ? { error_class: errorClass } : {}),
     summary: reason.slice(0, 200),
   }));
+}
+
+function classifyApplyPatchInvalidReason(reason: string): string {
+  if (/Invalid apply_patch arguments JSON/.test(reason)) return "invalid_json";
+  if (/arguments must be a JSON object/.test(reason)) return "invalid_arguments_shape";
+  if (/protocol_op must be one of/.test(reason)) return "invalid_protocol_op";
+  if (/payload invalid/.test(reason)) return "invalid_patch_payload";
+  if (/cannot be combined|multiple apply_patch/.test(reason)) return "invalid_tool_combination";
+  if (/is required/.test(reason)) return "missing_required_argument";
+  if (/cannot contain quotes or newlines|position must be/.test(reason)) return "invalid_argument_value";
+  return "invalid_apply_patch_arguments";
+}
+
+function classifyApplyPatchApplyError(error: string | undefined, op: ProtocolOp): string {
+  const message = error ?? "";
+  if (/already exists/.test(message) && op === "CREATE") return "create_target_exists";
+  if (/Cannot read|source does not exist/.test(message)) return "target_missing";
+  if (/Unsafe/.test(message)) return "unsafe_path";
+  if (/Search text not found|SEARCH\/REPLACE/.test(message)) return "search_replace_failed";
+  if (/missing .*payload|missing patch text/.test(message)) return "missing_internal_payload";
+  if (op === "PATCH") return "patch_apply_failed";
+  if (op === "RENAME") return "rename_failed";
+  if (op === "CREATE") return "create_failed";
+  return "apply_failed";
+}
+
+function hintForApplyPatchError(errorClass: string): string {
+  switch (errorClass) {
+    case "create_target_exists":
+      return "The target file already exists. Read its current content, then use SEARCH_REPLACE, PATCH, or RENAME instead of repeating CREATE.";
+    case "invalid_protocol_op":
+      return "Use protocol_op CREATE, PATCH, SEARCH_REPLACE, INSERT, DELETE, or RENAME for edits. To finish, put <DONE/> in assistant content instead of calling apply_patch.";
+    case "invalid_patch_payload":
+    case "patch_apply_failed":
+      return "Read the current file and retry with a smaller SEARCH_REPLACE or a unified diff whose context matches the current file.";
+    case "search_replace_failed":
+      return "Read the current file and copy the SEARCH text verbatim before retrying.";
+    case "target_missing":
+      return "Check the current path with read_file or grep_files; use CREATE only for a genuinely new file and RENAME only when the source exists.";
+    case "invalid_tool_combination":
+      return "Send exactly one action per turn: exploration tools, one apply_patch call, or <DONE/>.";
+    default:
+      return "Read the current file state and retry with one valid apply_patch call, or output <DONE/> if the task is complete.";
+  }
+}
+
+function applyPatchToolResultContent(args: {
+  status: "ok" | "failed";
+  filesChanged?: string[];
+  coverageDelta?: string[];
+  missingRequiredFiles?: string[];
+  error?: string;
+  errorClass?: string;
+}): string {
+  return JSON.stringify({
+    apply_status: args.status,
+    files_changed: args.filesChanged ?? [],
+    coverage_delta: args.coverageDelta ?? [],
+    missing_required_files: args.missingRequiredFiles ?? [],
+    ...(args.errorClass ? { error_class: args.errorClass } : {}),
+    ...(args.error ? { error: args.error } : {}),
+    ...(args.errorClass ? { hint: hintForApplyPatchError(args.errorClass) } : {}),
+  });
 }
 
 async function runPatchExplore(args: {
@@ -773,6 +868,9 @@ async function runPatchExplore(args: {
       if (!dryRun) performCheckpoint(cwd, checkpointId, state.managed_files);
       const result = applySingleChange(cwd, action.change, dryRun);
       if (!result.ok && !dryRun) performRollback(cwd, checkpointId);
+      const applyErrorClass = result.ok
+        ? undefined
+        : classifyApplyPatchApplyError(result.error, action.change.op);
 
       record.change = {
         op: action.change.op,
@@ -822,18 +920,20 @@ async function runPatchExplore(args: {
         messages.push({
           role: "tool",
           tool_call_id: action.toolCallId,
-          content: JSON.stringify({
-            apply_status: result.ok ? "ok" : "failed",
-            files_changed: result.files_changed,
-            coverage_delta: [...coverageDelta],
-            missing_required_files: [...loop.missingRequiredFiles],
+          content: applyPatchToolResultContent({
+            status: result.ok ? "ok" : "failed",
+            filesChanged: result.files_changed,
+            coverageDelta: [...coverageDelta],
+            missingRequiredFiles: [...loop.missingRequiredFiles],
             error: result.error,
+            errorClass: applyErrorClass,
           }),
         });
         record.tool_calls = [{
           name: APPLY_PATCH_TOOL_NAME,
           arguments: action.toolCallArgs ?? {},
           status: result.ok ? "success" : "error",
+          ...(applyErrorClass ? { error_class: applyErrorClass } : {}),
           summary: progressMessage.slice(0, 200),
         }];
       } else {
@@ -879,6 +979,28 @@ async function runPatchExplore(args: {
       if (loop.hasStartedPatching) loop.roundsSinceCoverageProgress++;
       state.patch_rounds.push(record);
       writeTaskState(cwd, state);
+      const singleApplyPatchToolCall =
+        editsAsNativeTool &&
+        toolCalls?.length === 1 &&
+        toolCalls[0]?.function.name === APPLY_PATCH_TOOL_NAME
+          ? toolCalls[0]
+          : undefined;
+      if (singleApplyPatchToolCall) {
+        const assistantMsg: DeepSeekMessage = { role: "assistant", content, tool_calls: toolCalls };
+        if (choice.message.reasoning_content) assistantMsg.reasoning_content = choice.message.reasoning_content;
+        messages.push(assistantMsg);
+        const errorClass = action.errorClass ?? classifyApplyPatchInvalidReason(action.reason);
+        messages.push({
+          role: "tool",
+          tool_call_id: singleApplyPatchToolCall.id,
+          content: applyPatchToolResultContent({
+            status: "failed",
+            error: action.reason,
+            errorClass,
+            missingRequiredFiles: [...loop.missingRequiredFiles],
+          }),
+        });
+      }
       messages.push({
         role: "user",
         content:

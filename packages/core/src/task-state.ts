@@ -17,6 +17,7 @@ const toolCallRecordSchema = z.object({
   name: z.string(),
   arguments: z.record(z.unknown()),
   status: z.enum(["success", "error"]),
+  error_class: z.string().optional(),
   summary: z.string(),
 });
 

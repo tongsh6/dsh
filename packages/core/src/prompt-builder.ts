@@ -238,9 +238,9 @@ Output <DONE/> when:
 
 After each apply_patch tool call, the system returns a tool result with:
 
-  apply_status, files_changed, coverage_delta, missing_required_files, error
+  apply_status, files_changed, coverage_delta, missing_required_files, error_class, error, hint
 
-If a change fails, read the file again to check its current state, then try a different approach. Do NOT repeat the same failed edit.
+If a change fails, follow the hint, read the file again to check its current state, then try a different approach. Do NOT repeat the same failed edit.
 
 ## Rules
 

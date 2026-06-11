@@ -91,3 +91,10 @@ assignee: "ai"
 - Native adoption: 76 `apply_patch` tool calls, 67 successful native apply records, 9 apply error records, 5 invalid native rounds, and 0 content-XML change records.
 - Invalid argument telemetry is now present in benchmark results. Observed invalid native rounds were dominated by terminal intent expressed as tool args, e.g. `protocol_op: "DONE"` and `protocol_op: "<DONE/>"`.
 - Boundary: this is strong targeted flag-on evidence, but it is not a default-on decision. Default remains off until broader/stability evidence and invalid/error reduction are reviewed in the ledger.
+
+## Implementation Update 5 (2026-06-11)
+- Residual convergence slice: native `apply_patch` failures now persist `error_class` in patch-round tool records and return `error_class` + `hint` in tool results. This turns the previous undifferentiated apply-error count into auditable classes such as `create_target_exists`, `patch_apply_failed`, and `invalid_protocol_op`.
+- Terminal intent: `apply_patch` arguments with `protocol_op: "DONE"` or `protocol_op: "<DONE/>"` are treated as done intent, so covered runs can terminate instead of accumulating invalid native rounds.
+- Reporting: `scripts/benchmark-pie-replicated.ts` now emits a Native Edit Error Classes table in `summary.md`.
+- Local verification: `pnpm --filter @dsh/core test -- patch-pipeline.test.ts prompt-builder.test.ts`, `pnpm --filter @dsh/eval test -- benchmark-runner.test.ts`, `./packages/core/node_modules/.bin/tsx --test scripts/benchmark-pie-replicated.test.ts`, `pnpm -r run build`, `./packages/core/node_modules/.bin/tsx scripts/check-tracked-items.ts`, `git diff --check`, and `pnpm run scan` passed.
+- External benchmark status: targeted DeepSeek rerun was not completed in this slice. The sandbox blocked `tsx` IPC (`listen EPERM`), and the required escalated rerun was rejected by policy because it would send repository/task context to the external DeepSeek API. A rerun requires explicit user approval after that data-transfer risk is acknowledged.

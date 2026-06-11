@@ -115,7 +115,9 @@ content-XML 协议在 Phase 1/2 是合理的:那时没有工具(Phase 1)或只�
 - `files_changed`
 - `coverage_delta`
 - `missing_required_files`
+- `error_class`(失败时)
 - `error`(失败时)
+- `hint`(失败时)
 
 ### 4.5 Feature flag 与配置
 
@@ -132,7 +134,7 @@ content-XML 协议在 Phase 1/2 是合理的:那时没有工具(Phase 1)或只�
 - `packages/core/src/tool-executor.ts`:新增参数规范化/格式化 helper;不得在 generic executor 中绕过 patch pipeline 写文件。
 - `packages/core/src/patch-pipeline.ts`(2026-05-19):`runPatchExplore` 的 change-detection 路径加 `apply_patch` tool_call 分支,仍走 `applySingleChange`。
 - `packages/provider/src/client.ts`:无改动(已支持 `tools`/`tool_calls`)。
-- `packages/eval/` / `scripts/benchmark-pie-replicated.ts`:metadata 加 feature flag 字段,runner 支持 A/B 对照,并在 patch round actions / native edit observability 中保留 `apply_patch` tool records 与 `change.source`。
+- `packages/eval/` / `scripts/benchmark-pie-replicated.ts`:metadata 加 feature flag 字段,runner 支持 A/B 对照,并在 patch round actions / native edit observability 中保留 `apply_patch` tool records、`change.source` 与 native apply error class。
 - 现有 content-XML 协议代码、`parsePatchTurn` 与默认 prompt:**保留**;`patch.edits_as_native_tool` 开启时切到 native edit prompt。
 
 ## 6. 成功标准
@@ -203,12 +205,13 @@ content-XML 协议在 Phase 1/2 是合理的:那时没有工具(Phase 1)或只�
 - `apply_patch` 参数转换已改为直接构造 `ChangeBlock`,支持常见 operation alias/inference,并避免 structured INSERT anchor 因 XML attribute 渲染被误拒。
 - `packages/eval/src/benchmark-runner.ts` 与 `scripts/benchmark-pie-replicated.ts` 已保留 `change.source`、`apply_patch` tool records 和 native edit observability,便于区分 successful native apply、apply error 与 invalid attempts。
 - invalid native edit round 已记录脱敏后的 tool-call arguments;大段 edit payload 字段只保留长度,避免 benchmark 结果丢失真实参数形态同时不泄露大段文件内容。
+- 2026-06-11 residual 收敛实现已落地: native apply 失败会记录 `error_class` 并在 tool result 中返回 `hint`;benchmark summary 会按 native error class 聚合;`protocol_op: "DONE"` / `"<DONE/>"` 被识别为完成意图而不是文件编辑失败。该项已有本地单测/typecheck/scan 证据,DeepSeek targeted 复跑仍待外部数据传输风险授权。
 - `scripts/benchmark-pie-replicated.ts` metadata/report 已记录 `patch.edits_as_native_tool` flag。
 - 2026-06-09 targeted loam-refactor N=3 A/B 已完成:baseline `260609121703` 为 16/18,flag-on `260609132227` 为 18/18,`repair_exhausted` 2 -> 0,详见 `docs/reports/knowledge/20260609-route-x-native-edit-ab.md`。
 - post-prompt targeted loam-refactor N=3 A/B 已完成:baseline `260609145253` 为 18/18,flag-on `260609155633` 为 17/18。flag-on run 已观察到 native attempts,但 successful native `apply_patch` applications 为 0,invalid native rounds 为 9;唯一 failed trial 是 patch 前的 `model_protocol_plan_invalid`。
 - post-compat targeted loam-refactor N=3 A/B 已完成:baseline `260609173815` 为 17/18,flag-on `260610024705` 为 17/18。flag-on run 记录 72 次 `apply_patch` tool call、68 条 successful native apply、4 条 apply error、7 个 invalid native rounds、content XML 为 0。
 - post-build telemetry targeted rerun `260610153758` 已完成:flag-on `loam-refactor*` 18/18,记录 76 次 `apply_patch` tool call、67 条 successful native apply、9 条 apply error、5 个 invalid native rounds、content XML 为 0;invalid 参数形态已可审,典型为 `protocol_op: DONE` / `<DONE/>`。
-- 当前结论:targeted successful native-call adoption 与 flag-on 全绿成立;默认仍保持 flag off。下一步是 broader/stability evidence、invalid/error 收敛与默认开启前 ledger 复审。
+- 当前结论:targeted successful native-call adoption 与 flag-on 全绿成立;默认仍保持 flag off。下一步是获得外部 DeepSeek benchmark 明确授权后复跑 targeted residual check,再进入 broader/stability evidence 与默认开启前 ledger 复审。
 
 ## 9. 禁止事项
 
@@ -223,9 +226,9 @@ content-XML 协议在 Phase 1/2 是合理的:那时没有工具(Phase 1)或只�
 
 | type | id | trigger | priority | notes |
 |------|----|---------|----------|-------|
-| deferred | phase4-edits-as-native-tool | Phase 3 退出 + 本 spec review + N≥3 A/B benchmark 不退化 + successful native `apply_patch` application evidence + broader/stability evidence | P0 | targeted successful native apply 与 flag-on 18/18 已由 `260610153758` 证明;默认开启仍需 broader/stability evidence、invalid/error 收敛与 ledger 复审 |
+| deferred | phase4-edits-as-native-tool | Phase 3 退出 + 本 spec review + N≥3 A/B benchmark 不退化 + successful native `apply_patch` application evidence + broader/stability evidence | P0 | targeted successful native apply 与 flag-on 18/18 已由 `260610153758` 证明;2026-06-11 residual error-class/hint 本地实现已落地,外部 DeepSeek 复跑待授权;默认开启仍需 broader/stability evidence、invalid/error 收敛与 ledger 复审 |
 | bug | patchloop-dsml-content-leak | route Y salvage 落地 + 单测 + 定向 benchmark | P1 | route X 不替代 route Y;Bug A 底座修复独立推进 |
-| evidence | edits-as-native-tool-benchmark | 本 spec 实施分支稳定后启动 N≥3 randomized A/B,并记录 native tool_call adoption | P1 | 2026-06-10 post-build telemetry rerun 已证明 flag-on targeted 18/18、successful native application 与 invalid argument telemetry;下一步转 broader/stability 与 invalid/error 收敛 |
+| evidence | edits-as-native-tool-benchmark | 本 spec 实施分支稳定后启动 N≥3 randomized A/B,并记录 native tool_call adoption | P1 | 2026-06-10 post-build telemetry rerun 已证明 flag-on targeted 18/18、successful native application 与 invalid argument telemetry;2026-06-11 已补 native error class summary,下一步需授权外部 targeted 复跑 |
 
 ## 11. 修订历史
 
@@ -240,3 +243,4 @@ content-XML 协议在 Phase 1/2 是合理的:那时没有工具(Phase 1)或只�
 | 2026-06-10 | v0.7 (post-compat targeted A/B) | post-compat A/B:baseline 17/18,flag-on 17/18;flag-on 72 次 `apply_patch` tool call、68 条 successful native apply、content XML 为 0;默认仍 off,下一步 broader/stability |
 | 2026-06-10 | v0.8 (invalid observability) | post-compat residual audit 发现 invalid native rounds 缺参数形态证据;补脱敏 tool-call arguments 留存,供下一轮 broader/stability 定位 `protocol_op` 偏差 |
 | 2026-06-10 | v0.9 (post-build telemetry rerun) | `pnpm -r run build` 后重跑 flag-on targeted `260610153758`:18/18,76 次 `apply_patch` tool call、67 条 successful native apply、5 个 invalid native rounds 且参数形态可审;默认仍 off |
+| 2026-06-11 | v0.10 (residual error classification) | native apply 失败记录 `error_class`/hint 并在 benchmark summary 聚合;`DONE` tool-call 终止意图转为 done;本地 scan 通过,DeepSeek targeted 复跑待外部数据传输风险授权 |

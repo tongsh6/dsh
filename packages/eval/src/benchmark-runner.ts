@@ -38,12 +38,12 @@ export interface TaskResult {
   expectedProtocolOps: ProtocolOp[];
   actualProtocolOps: ProtocolOp[];
   toolRounds: number;
-  toolCalls: { name: string; status: string; arguments?: Record<string, unknown> }[];
+  toolCalls: { name: string; status: string; arguments?: Record<string, unknown>; errorClass?: string }[];
   patchRounds: number;
   patchRoundActions: {
     round: number;
     action: string;
-    toolCalls?: { name: string; status: string; arguments?: Record<string, unknown> }[];
+    toolCalls?: { name: string; status: string; arguments?: Record<string, unknown>; errorClass?: string }[];
     dsmlSalvageApplied?: boolean;
     invalidReason?: string;
     change?: {
@@ -354,6 +354,7 @@ export function summarizePatchRoundActions(
         ? pr.tool_calls.map((tc) => ({
             name: tc.name,
             status: tc.status,
+            ...(tc.error_class !== undefined ? { errorClass: tc.error_class } : {}),
             ...(Object.keys(tc.arguments ?? {}).length > 0 ? { arguments: tc.arguments } : {}),
           }))
         : undefined,
@@ -819,13 +820,21 @@ export async function runTask(
       const toolCallRounds = state.patch_rounds.filter((pr) => (pr.tool_calls?.length ?? 0) > 0);
       result.toolRounds = toolCallRounds.length;
       result.toolCalls = toolCallRounds.flatMap((pr) =>
-        (pr.tool_calls ?? []).map((tc) => ({ name: tc.name, status: tc.status })),
+        (pr.tool_calls ?? []).map((tc) => ({
+          name: tc.name,
+          status: tc.status,
+          ...(tc.error_class !== undefined ? { errorClass: tc.error_class } : {}),
+        })),
       );
     } else {
       // v0.3: tools are in tool_rounds
       result.toolRounds = state.tool_rounds?.length ?? 0;
       result.toolCalls = (state.tool_rounds ?? []).flatMap((tr) =>
-        tr.calls.map((c) => ({ name: c.name, status: c.status })),
+        tr.calls.map((c) => ({
+          name: c.name,
+          status: c.status,
+          ...(c.error_class !== undefined ? { errorClass: c.error_class } : {}),
+        })),
       );
     }
 
@@ -890,13 +899,17 @@ export async function runTask(
     result.actualProtocolOps = patchSummary.actualProtocolOps;
 
     // Update tool usage including preflight, patch_rounds and repair patches
-    const allToolCalls: { name: string; status: string }[] = [];
+    const allToolCalls: TaskResult["toolCalls"] = [];
     let allToolRounds = 0;
 
     // From tool_rounds (v0.3 format + preflight rounds which are > 1000)
     allToolRounds += state.tool_rounds?.length ?? 0;
     allToolCalls.push(...(state.tool_rounds ?? []).flatMap((tr) =>
-      tr.calls.map((c) => ({ name: c.name, status: c.status })),
+      tr.calls.map((c) => ({
+        name: c.name,
+        status: c.status,
+        ...(c.error_class !== undefined ? { errorClass: c.error_class } : {}),
+      })),
     ));
 
     // From patch_rounds (v0.4 format)
@@ -904,7 +917,11 @@ export async function runTask(
       const toolCallRounds = state.patch_rounds.filter((pr) => (pr.tool_calls?.length ?? 0) > 0);
       allToolRounds += toolCallRounds.length;
       allToolCalls.push(...toolCallRounds.flatMap((pr) =>
-        (pr.tool_calls ?? []).map((tc) => ({ name: tc.name, status: tc.status })),
+        (pr.tool_calls ?? []).map((tc) => ({
+          name: tc.name,
+          status: tc.status,
+          ...(tc.error_class !== undefined ? { errorClass: tc.error_class } : {}),
+        })),
       ));
     }
 
@@ -913,7 +930,11 @@ export async function runTask(
       if (p.tool_rounds && p.tool_rounds.length > 0) {
         allToolRounds += p.tool_rounds.length;
         allToolCalls.push(...p.tool_rounds.flatMap((tr) =>
-          tr.calls.map((c) => ({ name: c.name, status: c.status })),
+          tr.calls.map((c) => ({
+            name: c.name,
+            status: c.status,
+            ...(c.error_class !== undefined ? { errorClass: c.error_class } : {}),
+          })),
         ));
       }
     }
@@ -951,7 +972,11 @@ export async function runTask(
       } else {
         result.toolRounds = stateOnDisk.tool_rounds?.length ?? 0;
         result.toolCalls = (stateOnDisk.tool_rounds ?? []).flatMap((tr) =>
-          tr.calls.map((c) => ({ name: c.name, status: c.status })),
+          tr.calls.map((c) => ({
+            name: c.name,
+            status: c.status,
+            ...(c.error_class !== undefined ? { errorClass: c.error_class } : {}),
+          })),
         );
       }
 
@@ -959,7 +984,11 @@ export async function runTask(
       if (result.patchRounds > 0) {
         const preflightRounds = stateOnDisk.tool_rounds?.filter(tr => tr.round >= 1000) ?? [];
         result.toolRounds += preflightRounds.length;
-        result.toolCalls.push(...preflightRounds.flatMap(tr => tr.calls.map(c => ({ name: c.name, status: c.status }))));
+        result.toolCalls.push(...preflightRounds.flatMap(tr => tr.calls.map(c => ({
+          name: c.name,
+          status: c.status,
+          ...(c.error_class !== undefined ? { errorClass: c.error_class } : {}),
+        }))));
       }
 
       // Add repair tools
@@ -967,7 +996,11 @@ export async function runTask(
         if (p.tool_rounds && p.tool_rounds.length > 0) {
           result.toolRounds += p.tool_rounds.length;
           result.toolCalls.push(...p.tool_rounds.flatMap((tr) =>
-            tr.calls.map((c) => ({ name: c.name, status: c.status })),
+            tr.calls.map((c) => ({
+              name: c.name,
+              status: c.status,
+              ...(c.error_class !== undefined ? { errorClass: c.error_class } : {}),
+            })),
           ));
         }
       }

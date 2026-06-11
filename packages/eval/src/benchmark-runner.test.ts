@@ -606,6 +606,7 @@ describe("patch_rounds in TaskResult", () => {
           {
             name: "apply_patch",
             status: "error",
+            error_class: "invalid_protocol_op",
             arguments: { filename: "src/a.ts", body_length: 21 },
             summary: "invalid native edit args",
           },
@@ -637,6 +638,7 @@ describe("patch_rounds in TaskResult", () => {
       filename: "src/a.ts",
       body_length: 21,
     });
+    assert.equal(actions[0]?.toolCalls?.[0]?.errorClass, "invalid_protocol_op");
     assert.deepEqual(actions[1]?.toolCalls?.[0]?.arguments, {
       protocol_op: "CREATE",
       path: "src/a.ts",

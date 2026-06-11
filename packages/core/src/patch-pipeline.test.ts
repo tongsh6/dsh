@@ -376,6 +376,14 @@ describe("apply_patch tool-call conversion", () => {
     assert.equal(action.kind, "invalid");
     if (action.kind === "invalid") {
       assert.match(action.reason, /path is required/);
+      assert.equal(action.errorClass, "missing_required_argument");
+    }
+  });
+
+  it("treats DONE sent through apply_patch as terminal intent", () => {
+    for (const protocol_op of ["DONE", "<DONE/>"]) {
+      const action = parseApplyPatchToolCall(applyPatchToolCall({ protocol_op }));
+      assert.equal(action.kind, "done", protocol_op);
     }
   });
 
@@ -588,7 +596,7 @@ describe("runPatchPipeline apply_patch tool channel", () => {
             }),
           ],
         };
-        const { client } = scriptedClient([invalidNativeEdit, invalidNativeEdit, invalidNativeEdit]);
+        const { client, requests } = scriptedClient([invalidNativeEdit, invalidNativeEdit, invalidNativeEdit]);
 
         const state = await runPatchPipeline({
           state: plannedState(["a.ts"]),
@@ -605,10 +613,52 @@ describe("runPatchPipeline apply_patch tool channel", () => {
         assert.match(state.patch_rounds[0]?.invalid_reason ?? "", /protocol_op/);
         assert.equal(state.patch_rounds[0]?.tool_calls?.[0]?.name, "apply_patch");
         assert.equal(state.patch_rounds[0]?.tool_calls?.[0]?.status, "error");
+        assert.equal(state.patch_rounds[0]?.tool_calls?.[0]?.error_class, "invalid_protocol_op");
         assert.deepEqual(state.patch_rounds[0]?.tool_calls?.[0]?.arguments, {
           filename: "a.ts",
           body_length: "export const a = 1;".length,
         });
+        const secondTurnToolResult = (requests[1]?.messages ?? []).find((message) => message.role === "tool");
+        assert.match(secondTurnToolResult?.content ?? "", /"error_class":"invalid_protocol_op"/);
+        assert.match(secondTurnToolResult?.content ?? "", /<DONE\/>/);
+      });
+    });
+  });
+
+  it("classifies failed native apply attempts and returns actionable tool feedback", async () => {
+    await withPatchEditsEnv(undefined, async () => {
+      await withTempDir(async (dir) => {
+        writePatchConfig(dir, "  edits_as_native_tool: true\n  coverage_finalization: false\n");
+        fs.writeFileSync(path.join(dir, "a.ts"), "export const existing = true;", "utf-8");
+        const createExisting: ScriptedAssistantMessage = {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            applyPatchToolCall({
+              protocol_op: "CREATE",
+              path: "a.ts",
+              content: "export const a = 1;",
+            }, "apply_create_existing"),
+          ],
+        };
+        const { client, requests } = scriptedClient([createExisting, createExisting, createExisting]);
+
+        const state = await runPatchPipeline({
+          state: plannedState(["a.ts"]),
+          cwd: dir,
+          client,
+          dryRun: false,
+          messages: [],
+          target: { model: "deepseek-v4-pro", thinking: false },
+          contextLayers: EMPTY_LAYERS,
+        });
+
+        assert.equal(state.status, "patch_failed");
+        assert.equal(state.patch_rounds[0]?.change?.apply_status, "failed");
+        assert.equal(state.patch_rounds[0]?.tool_calls?.[0]?.error_class, "create_target_exists");
+        const secondTurnToolResult = (requests[1]?.messages ?? []).find((message) => message.role === "tool");
+        assert.match(secondTurnToolResult?.content ?? "", /"error_class":"create_target_exists"/);
+        assert.match(secondTurnToolResult?.content ?? "", /SEARCH_REPLACE/);
       });
     });
   });

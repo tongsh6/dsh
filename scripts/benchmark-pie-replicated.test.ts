@@ -169,7 +169,10 @@ describe("formatReplicatedBenchmarkReport", () => {
           testsPassed: false,
           error: "DeepSeek 未返回有效的 FILES 块",
           failureClass: "model_protocol_plan_invalid",
-          toolCalls: [{ name: "apply_patch", status: "success" }],
+          toolCalls: [
+            { name: "apply_patch", status: "success" },
+            { name: "apply_patch", status: "error", errorClass: "create_target_exists" },
+          ],
           patchRoundActions: [{
             round: 1,
             action: "change",
@@ -179,6 +182,16 @@ describe("formatReplicatedBenchmarkReport", () => {
               file: "src/a.ts",
               source: "tool_call",
               applyStatus: "ok",
+            },
+          }, {
+            round: 2,
+            action: "change",
+            toolCalls: [{ name: "apply_patch", status: "error", errorClass: "create_target_exists" }],
+            change: {
+              op: "CREATE",
+              file: "src/a.ts",
+              source: "tool_call",
+              applyStatus: "failed",
             },
           }],
         },
@@ -197,8 +210,11 @@ describe("formatReplicatedBenchmarkReport", () => {
     assert.match(md, /\| dsmlSalvageAppliedRounds \| 1 \| 0 \|/);
     assert.match(md, /\| repairEmptyPatchStalls \| 1 \| 0 \|/);
     assert.match(md, /Native Edit Tool Observability/);
-    assert.match(md, /\| applyPatchToolCalls \| 1 \| 0 \|/);
+    assert.match(md, /\| applyPatchToolCalls \| 2 \| 0 \|/);
     assert.match(md, /\| applyPatchSuccessRecords \| 1 \| 0 \|/);
-    assert.match(md, /\| toolCallChangeRecords \| 1 \| 0 \|/);
+    assert.match(md, /\| applyPatchErrorRecords \| 1 \| 0 \|/);
+    assert.match(md, /\| toolCallChangeRecords \| 2 \| 0 \|/);
+    assert.match(md, /Native Edit Error Classes/);
+    assert.match(md, /\| create_target_exists \| 1 \| 0 \|/);
   });
 });

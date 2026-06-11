@@ -162,6 +162,7 @@ interface NativeEditObservabilitySummary {
   applyPatchInvalidRounds: number;
   toolCallChangeRecords: number;
   contentXmlChangeRecords: number;
+  applyPatchErrorClasses: Record<string, number>;
 }
 
 interface ReplicatedBenchmarkMetadata {
@@ -259,18 +260,22 @@ function summarizeNativeEditObservabilityForConfig(
     applyPatchInvalidRounds: 0,
     toolCallChangeRecords: 0,
     contentXmlChangeRecords: 0,
+    applyPatchErrorClasses: {},
   };
 
   for (const result of results.filter((r) => r.config === config)) {
     const topLevelToolCalls = Array.isArray(result.toolCalls)
-      ? result.toolCalls as Array<{ name?: unknown; status?: unknown }>
+      ? result.toolCalls as Array<{ name?: unknown; status?: unknown; errorClass?: unknown }>
       : [];
     const hasTopLevelApplyPatch = topLevelToolCalls.some((toolCall) => toolCall.name === "apply_patch");
     for (const toolCall of topLevelToolCalls) {
       if (toolCall.name === "apply_patch") {
         summary.applyPatchToolCalls++;
         if (toolCall.status === "success") summary.applyPatchSuccessRecords++;
-        if (toolCall.status === "error") summary.applyPatchErrorRecords++;
+        if (toolCall.status === "error") {
+          summary.applyPatchErrorRecords++;
+          recordApplyPatchErrorClass(summary, toolCall.errorClass);
+        }
       }
     }
 
@@ -279,7 +284,7 @@ function summarizeNativeEditObservabilityForConfig(
         action?: unknown;
         invalidReason?: unknown;
         change?: { source?: unknown };
-        toolCalls?: Array<{ name?: unknown; status?: unknown }>;
+        toolCalls?: Array<{ name?: unknown; status?: unknown; errorClass?: unknown }>;
       }>
       : [];
     for (const action of actions) {
@@ -295,13 +300,21 @@ function summarizeNativeEditObservabilityForConfig(
         if (toolCall.name === "apply_patch") {
           summary.applyPatchToolCalls++;
           if (toolCall.status === "success") summary.applyPatchSuccessRecords++;
-          if (toolCall.status === "error") summary.applyPatchErrorRecords++;
+          if (toolCall.status === "error") {
+            summary.applyPatchErrorRecords++;
+            recordApplyPatchErrorClass(summary, toolCall.errorClass);
+          }
         }
       }
     }
   }
 
   return summary;
+}
+
+function recordApplyPatchErrorClass(summary: NativeEditObservabilitySummary, value: unknown): void {
+  const key = typeof value === "string" && value.length > 0 ? value : "unclassified";
+  summary.applyPatchErrorClasses[key] = (summary.applyPatchErrorClasses[key] ?? 0) + 1;
 }
 
 function summarizePatchObservabilityForConfig(
@@ -546,6 +559,24 @@ export function formatReplicatedBenchmarkReport(
     lines.push(`| ${metric} | ${nativeEditObservability.card_on?.[metric] ?? 0} | ${nativeEditObservability.card_off?.[metric] ?? 0} |`);
   }
   lines.push("");
+  const nativeErrorClasses = [
+    ...new Set([
+      ...Object.keys(nativeEditObservability.card_on?.applyPatchErrorClasses ?? {}),
+      ...Object.keys(nativeEditObservability.card_off?.applyPatchErrorClasses ?? {}),
+    ]),
+  ].sort();
+  if (nativeErrorClasses.length > 0) {
+    lines.push("### Native Edit Error Classes");
+    lines.push("");
+    lines.push("| Error class | Card ON | Card OFF |");
+    lines.push("|-------------|---------|----------|");
+    for (const errorClass of nativeErrorClasses) {
+      lines.push(
+        `| ${errorClass} | ${nativeEditObservability.card_on?.applyPatchErrorClasses?.[errorClass] ?? 0} | ${nativeEditObservability.card_off?.applyPatchErrorClasses?.[errorClass] ?? 0} |`,
+      );
+    }
+    lines.push("");
+  }
   lines.push("## Evidence Governance");
   lines.push("");
   lines.push("This section is generated from metadata.failureMatrixFixtures.");
