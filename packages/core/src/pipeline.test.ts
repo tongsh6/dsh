@@ -1863,6 +1863,211 @@ export function missingHelper() { return {}; }
     }
   });
 
+  it("authorizes failed assertion target files omitted from the original plan", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
+    try {
+      fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
+      fs.mkdirSync(path.join(tmp, "src"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "typescript" },
+          verify: {
+            assertions: [
+              { type: "file_contains", file: "src/consumer.ts", pattern: "missingHelper" },
+            ],
+          },
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, "src/helpers.ts"),
+        "export function missingHelper() { return {}; }\n",
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, "src/consumer.ts"),
+        "export function useHelper() { return null; }\n",
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "task-state.json"),
+        JSON.stringify({
+          version: "0.1",
+          status: "verification_failed",
+          task: { description: "share a helper across modules", type: "refactor", created_at: new Date().toISOString() },
+          plan: {
+            summary: "share helper",
+            files: ["src/helpers.ts"],
+            risks: [],
+            raw_xml: "<PLAN>share helper</PLAN>",
+            verify_assertions: [
+              { type: "file_contains", file: "src/consumer.ts", pattern: "missingHelper" },
+            ],
+          },
+          patches: [{
+            round: 1,
+            phase: "patch",
+            patch: "",
+            apply_status: "ok",
+            files_changed: ["src/helpers.ts"],
+          }],
+          verify_results: [{
+            round: 1,
+            results: [{
+              command: "file_contains src/consumer.ts",
+              status: "failed",
+              exit_code: 1,
+              output: "missing required text",
+              duration_ms: 1,
+            }],
+          }],
+          repair_rounds: 0,
+        }, null, 2),
+        "utf-8",
+      );
+
+      const captured: string[] = [];
+      const client = {
+        chat: async (req: any) => {
+          for (const m of req.messages ?? []) {
+            if (m.role === "user" && typeof m.content === "string") captured.push(m.content);
+          }
+          return {
+            id: "r1", object: "chat.completion", created: Date.now(), model: "deepseek-v4-pro",
+            choices: [{ index: 0, message: { role: "assistant" as const, content: "<DONE/>" }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      const state = await runRepair({ cwd: tmp, client, maxRounds: 1 });
+      const allUserContent = captured.join("\n---\n");
+
+      assert.equal(state.status, "repair_exhausted");
+      assert.match(allUserContent, /CRITICAL VERIFICATION-TARGET REPAIR RULES/);
+      assert.match(allUserContent, /FAILED ASSERTION TARGET FILES/);
+      assert.match(allUserContent, /src\/consumer\.ts/);
+      assert.ok(
+        allUserContent.includes("even if they were absent from the original plan's <FILES>"),
+        "repair prompt should authorize failed assertion target files outside the original plan",
+      );
+      const repairPatch = state.patches.find((patch) => patch.phase === "repair");
+      assert.deepEqual(repairPatch?.repair_target_files, ["src/consumer.ts"]);
+      assert.equal(repairPatch?.repair_progress, "empty_patch");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("re-prompts once when failed-assertion repair returns no change block", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
+    try {
+      fs.mkdirSync(path.join(tmp, ".dsh"), { recursive: true });
+      fs.mkdirSync(path.join(tmp, "src"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "config.yml"),
+        yaml.dump({
+          project: { name: "test", language: "typescript" },
+          verify: {
+            assertions: [
+              { type: "file_contains", file: "src/consumer.ts", pattern: "missingHelper" },
+            ],
+          },
+          rules: { files: [] },
+          deepseek: {},
+        }),
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, "src/helpers.ts"),
+        "export function missingHelper() { return {}; }\n",
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, "src/consumer.ts"),
+        "export function useHelper() { return null; }\n",
+        "utf-8",
+      );
+      fs.writeFileSync(
+        path.join(tmp, ".dsh", "task-state.json"),
+        JSON.stringify({
+          version: "0.1",
+          status: "verification_failed",
+          task: { description: "share a helper across modules", type: "refactor", created_at: new Date().toISOString() },
+          plan: {
+            summary: "share helper",
+            files: ["src/helpers.ts"],
+            risks: [],
+            raw_xml: "<PLAN>share helper</PLAN>",
+            verify_assertions: [
+              { type: "file_contains", file: "src/consumer.ts", pattern: "missingHelper" },
+            ],
+          },
+          patches: [{
+            round: 1,
+            phase: "patch",
+            patch: "",
+            apply_status: "ok",
+            files_changed: ["src/helpers.ts"],
+          }],
+          verify_results: [{
+            round: 1,
+            results: [{
+              command: "file_contains src/consumer.ts",
+              status: "failed",
+              exit_code: 1,
+              output: "missing required text",
+              duration_ms: 1,
+            }],
+          }],
+          repair_rounds: 0,
+        }, null, 2),
+        "utf-8",
+      );
+
+      const captured: string[] = [];
+      const responses = [
+        "I inspected the files. The consumer needs the missing helper reference.",
+        `<PATCH type="search" file="src/consumer.ts">
+<SEARCH>export function useHelper() { return null; }</SEARCH>
+<REPLACE>export function useHelper() { return missingHelper; }</REPLACE>
+</PATCH>`,
+      ];
+      const client = {
+        chat: async (req: any) => {
+          for (const m of req.messages ?? []) {
+            if (m.role === "user" && typeof m.content === "string") captured.push(m.content);
+          }
+          const content = responses.shift() ?? "<DONE/>";
+          return {
+            id: "r1", object: "chat.completion", created: Date.now(), model: "deepseek-v4-pro",
+            choices: [{ index: 0, message: { role: "assistant" as const, content }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          };
+        },
+        chatStream: async function* () { yield undefined as any; },
+      } as unknown as DeepSeekClient;
+
+      const state = await runRepair({ cwd: tmp, client, maxRounds: 1 });
+      const allUserContent = captured.join("\n---\n");
+
+      assert.equal(state.status, "verified");
+      assert.match(allUserContent, /PREVIOUS REPAIR RESPONSE HAD NO CHANGE BLOCK/);
+      assert.match(allUserContent, /src\/consumer\.ts/);
+      assert.match(fs.readFileSync(path.join(tmp, "src/consumer.ts"), "utf-8"), /missingHelper/);
+      assert.equal(
+        state.patches.some((patch) => patch.deterministic_assertion_repair),
+        false,
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("uses configured repair model routing", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-pipeline-test-"));
     try {

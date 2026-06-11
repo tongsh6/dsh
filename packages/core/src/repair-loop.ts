@@ -198,6 +198,7 @@ function formatRepairTargetFiles(files: string[]): string | null {
   return [
     "## FAILED ASSERTION TARGET FILES",
     `The failed structured assertions still target: ${files.join(", ")}`,
+    "The verification contract authorizes repair edits to these files even if the original plan omitted them.",
     "Primary repair target: emit a concrete change block that touches these files unless a later verification result already proves the assertion passes.",
   ].join("\n");
 }
@@ -206,6 +207,21 @@ function repairTargetFilesForPrompt(prevPatch: PatchRecord | undefined): string[
   return prevPatch?.missing_required_files?.length
     ? prevPatch.missing_required_files
     : (prevPatch?.repair_target_files ?? []);
+}
+
+function mergePromptTargetFiles(
+  prevPatch: PatchRecord | undefined,
+  activeTargetFiles: string[] = [],
+): string[] {
+  const targets = repairTargetFilesForPrompt(prevPatch);
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const file of [...targets, ...activeTargetFiles]) {
+    if (seen.has(file)) continue;
+    seen.add(file);
+    merged.push(file);
+  }
+  return merged;
 }
 
 export function buildRepairStallHint(
@@ -218,6 +234,9 @@ export function buildRepairStallHint(
   const missingLine = missing.length > 0
     ? `Files that still require repair attention: ${missing.join(", ")}`
     : "No explicit missing required file list is available; use the failed verification and previous patch record.";
+  const targetAuthorization = missing.length > 0
+    ? "These files are repair-authorized by missing required coverage or failed structured assertions, even if the original plan omitted them."
+    : null;
 
   const reason =
     prevPatch.repair_stall_reason === "empty_patch"
@@ -230,6 +249,7 @@ export function buildRepairStallHint(
     "## REPAIR STALL DETECTED",
     reason,
     missingLine,
+    targetAuthorization ?? "",
     "Do not spend another round only exploring. Use the evidence already available and emit a concrete change block that covers the missing target.",
     "If you need one file, output one change block for that file. If several files remain, output one change block per missing file.",
     buildRenameRepairGuidance(taskDescription) ?? "",
@@ -240,17 +260,39 @@ export function buildRepairStallHint(
 export function buildFinalRepairRequest(
   prevPatch: PatchRecord | undefined,
   taskDescription?: string,
+  activeTargetFiles: string[] = [],
 ): string {
-  const missing = repairTargetFilesForPrompt(prevPatch);
+  const missing = mergePromptTargetFiles(prevPatch, activeTargetFiles);
   return [
     "## SYSTEM: REPAIR TOOL ACCESS PAUSED",
     "You have used the available repair tool budget for this round.",
     missing.length > 0
-      ? `Files that still require repair attention: ${missing.join(", ")}`
+      ? [
+          `Files that still require repair attention: ${missing.join(", ")}`,
+          "These files are repair-authorized by missing required coverage or failed structured assertions, even if the original plan omitted them.",
+          "Emit at least one concrete change block that touches one of these files.",
+        ].join("\n")
       : "Use the verification failure and previous patch evidence already in context.",
     buildRenameRepairGuidance(taskDescription) ?? "",
     "Now emit the final repair change block. Do not call tools. Do not answer with prose only. Do not output <DONE/>.",
   ].filter(Boolean).join("\n");
+}
+
+function isNoChangeRepairParseError(error: unknown): boolean {
+  return error instanceof Error
+    && error.message.includes("No <CREATE>, <RENAME>, <PATCH>, <DELETE>, <PATCH type=\"search\">, or <INSERT> blocks found");
+}
+
+export function buildNoChangeRepairRequest(
+  prevPatch: PatchRecord | undefined,
+  taskDescription?: string,
+  activeTargetFiles: string[] = [],
+): string {
+  return [
+    "## SYSTEM: PREVIOUS REPAIR RESPONSE HAD NO CHANGE BLOCK",
+    "Your previous repair response did not contain any actionable change block, so it made no progress.",
+    buildFinalRepairRequest(prevPatch, taskDescription, activeTargetFiles),
+  ].join("\n");
 }
 
 function classifyRepairProgress(args: {
@@ -576,37 +618,6 @@ export async function runRepairLoop(
       : null;
     const repairStallHint = buildRepairStallHint(prevPatch, current.task.description);
 
-    const isCompilationError = failureHints?.includes("COMPILATION ERRORS") || failureHints?.includes("signature-mismatch") || false;
-    const isCompletionMode = incompleteHint !== null;
-
-    const completionConstraints = [
-      "CRITICAL TASK COMPLETION RULES:",
-      "1. Your PRIMARY goal is to COMPLETE the original task — the previous attempt was INCOMPLETE.",
-      "2. Focus on the uncovered files listed above. Read each one, understand what change is needed, then produce the change block.",
-      "3. You MAY add new functions, classes, imports, or variables as needed to complete the task.",
-      "4. Avoid re-modifying files that were already changed unless a failed verification assertion still targets that file or the previous change is wrong.",
-      "5. Produce one change block per uncovered file. Cover every file listed in the PATCH INCOMPLETE section.",
-      "6. If you're unsure what a file needs, use read_file to inspect it first.",
-      "7. After producing all change blocks, output <DONE/>.",
-    ].join("\n");
-
-    const repairConstraints = [
-      "CRITICAL REPAIR RULES:",
-      isCompilationError 
-        ? "1. Fix the compilation errors. You MAY need to modify multiple files (callers, interfaces, imports) to ensure type safety."
-        : "1. Make the SMALLEST possible change to fix the failure — change as few lines as possible.",
-      "2. NEVER delete or modify existing imports unless they are directly causing the test failure.",
-      "3. NEVER add new functions, classes, or variables that were not part of the original task.",
-      "4. NEVER restructure or reformat code that is unrelated to the failure.",
-      isCompilationError
-        ? "5. Ensure all cross-file dependencies are resolved. If you changed a signature, update ALL callers."
-        : "5. ONLY fix the specific error in the verify output. Do not make additional improvements.",
-      "6. If the original patch was wrong, revert to the original code and try a different minimal approach.",
-      "7. Preserve ALL existing code that is not related to the error. Every deleted line must be justified by the verify failure output.",
-      "8. If unified diff failed to apply in the previous round, use <PATCH type=\"search\" file=\"path\"> with SEARCH/REPLACE blocks instead. Copy the SEARCH block EXACTLY from the file content — this avoids line-number errors.",
-      "9. If you changed a function signature (parameters or return type), check ALL callers — they likely need updating, or you should revert the signature change.",
-    ].join("\n");
-
     const rawRepairAssertions = (current.plan?.verify_assertions ?? []) as unknown[];
     const parsedRepairAssertions = rawRepairAssertions
       .map((raw) => parseAssertion(raw))
@@ -626,8 +637,54 @@ export async function runRepairLoop(
     const semanticRepairHintBlock = formatSemanticRepairHints(semanticRepairHints);
     const repairTargetFileBlock = formatRepairTargetFiles(repairTargetFiles);
 
+    const isCompilationError = failureHints?.includes("COMPILATION ERRORS") || failureHints?.includes("signature-mismatch") || false;
+    const isCompletionMode = incompleteHint !== null;
+    const isFailedAssertionTargetMode = !isCompletionMode && repairTargetFiles.length > 0;
+
+    const completionConstraints = [
+      "CRITICAL TASK COMPLETION RULES:",
+      "1. Your PRIMARY goal is to COMPLETE the original task — the previous attempt was INCOMPLETE.",
+      "2. Focus on the uncovered files listed above. Read each one, understand what change is needed, then produce the change block.",
+      "3. You MAY add new functions, classes, imports, or variables as needed to complete the task.",
+      "4. Avoid re-modifying files that were already changed unless a failed verification assertion still targets that file or the previous change is wrong.",
+      "5. Produce one change block per uncovered file. Cover every file listed in the PATCH INCOMPLETE section.",
+      "6. If you're unsure what a file needs, use read_file to inspect it first.",
+      "7. After producing all change blocks, output <DONE/>.",
+    ].join("\n");
+
+    const failedAssertionTargetConstraints = [
+      "CRITICAL VERIFICATION-TARGET REPAIR RULES:",
+      "1. The failed structured verification assertions are authoritative for this repair round.",
+      `2. You MAY modify these failed assertion target files even if they were absent from the original plan's <FILES>: ${repairTargetFiles.join(", ")}`,
+      "3. Your PRIMARY task is to emit concrete change blocks that touch the failed assertion target files and make those assertions pass through a task-correct implementation.",
+      "4. You MAY add imports, functions, classes, or variables when required by the original task or failed verification contract; keep the change minimal and scoped.",
+      "5. Do not mark repair complete, output <DONE/>, or return prose-only while any failed assertion target remains unfixed.",
+      "6. Read each target file before writing SEARCH/REPLACE blocks.",
+    ].join("\n");
+
+    const repairConstraints = [
+      "CRITICAL REPAIR RULES:",
+      isCompilationError 
+        ? "1. Fix the compilation errors. You MAY need to modify multiple files (callers, interfaces, imports) to ensure type safety."
+        : "1. Make the SMALLEST possible change to fix the failure — change as few lines as possible.",
+      "2. NEVER delete or modify existing imports unless they are directly causing the test failure.",
+      "3. NEVER add new functions, classes, or variables that were not part of the original task.",
+      "4. NEVER restructure or reformat code that is unrelated to the failure.",
+      isCompilationError
+        ? "5. Ensure all cross-file dependencies are resolved. If you changed a signature, update ALL callers."
+        : "5. ONLY fix the specific error in the verify output. Do not make additional improvements.",
+      "6. If the original patch was wrong, revert to the original code and try a different minimal approach.",
+      "7. Preserve ALL existing code that is not related to the error. Every deleted line must be justified by the verify failure output.",
+      "8. If unified diff failed to apply in the previous round, use <PATCH type=\"search\" file=\"path\"> with SEARCH/REPLACE blocks instead. Copy the SEARCH block EXACTLY from the file content — this avoids line-number errors.",
+      "9. If you changed a function signature (parameters or return type), check ALL callers — they likely need updating, or you should revert the signature change.",
+    ].join("\n");
+
     const taskDescription = [
-      isCompletionMode ? completionConstraints : repairConstraints,
+      isCompletionMode
+        ? completionConstraints
+        : isFailedAssertionTargetMode
+          ? failedAssertionTargetConstraints
+          : repairConstraints,
       "",
       failedAssertionDiagnostics ?? "",
       "",
@@ -708,7 +765,14 @@ export async function runRepairLoop(
           continue;
         }
 
-        messages.push({ role: "user", content: buildFinalRepairRequest(current.patches.at(-1), current.task.description) });
+        messages.push({
+          role: "user",
+          content: buildFinalRepairRequest(
+            current.patches.at(-1),
+            current.task.description,
+            repairTargetFiles,
+          ),
+        });
         const finalStartedAt = Date.now();
         const finalResponse = await config.client.chat({
           model: config.target.model,
@@ -771,40 +835,85 @@ export async function runRepairLoop(
       applyRepairContent(content);
     } catch (e) {
       const firstApplyError = e instanceof Error ? e.message : String(e);
-      const deterministicRenameRepair =
-        prevVerify && parsedRepairAssertions.length > 0
-          ? buildRenameReferenceRepair({
-              cwd: config.cwd,
-              taskDescription: current.task.description,
-              assertions: parsedRepairAssertions,
-              results: prevVerify.results,
-            })
-          : null;
-      const deterministicAssertionRepair =
-        !deterministicRenameRepair && prevVerify && parsedRepairAssertions.length > 0
-          ? buildDeterministicAssertionRepair({
-              cwd: config.cwd,
-              assertions: parsedRepairAssertions,
-              results: prevVerify.results,
-            })
-          : null;
-      const deterministicRepair = deterministicRenameRepair ?? deterministicAssertionRepair;
 
-      if (deterministicRepair) {
-        try {
-          content = deterministicRepair.content;
-          deterministicReferenceRepairApplied = deterministicRenameRepair !== null;
-          deterministicAssertionRepairApplied = deterministicAssertionRepair !== null;
-          deterministicReferenceRepairHints = deterministicRepair.hints;
-          applyRepairContent(content);
-        } catch (deterministicError) {
-          applyError = [
-            firstApplyError,
-            `deterministic reference repair failed: ${deterministicError instanceof Error ? deterministicError.message : String(deterministicError)}`,
-          ].join("; ");
+      if (isNoChangeRepairParseError(e) && repairTargetFiles.length > 0) {
+        messages.push({ role: "assistant", content });
+        messages.push({
+          role: "user",
+          content: buildNoChangeRepairRequest(
+            current.patches.at(-1),
+            current.task.description,
+            repairTargetFiles,
+          ),
+        });
+        const retryStartedAt = Date.now();
+        const retryResponse = await config.client.chat({
+          model: config.target.model,
+          messages,
+          thinking: config.target.thinking,
+        });
+        recordDeepSeekUsage(current, {
+          phase: "repair",
+          model: config.target.model,
+          thinking: config.target.thinking,
+          durationMs: Date.now() - retryStartedAt,
+          response: retryResponse,
+        });
+
+        const retryChoice = retryResponse.choices[0];
+        if (retryChoice) {
+          const retrySalvage = recoverDsmlWrappedChange(retryChoice.message.content);
+          content = retrySalvage.content;
+          if (retrySalvage.recovered) dsmlSalvageApplied = true;
+          try {
+            applyRepairContent(content);
+          } catch (retryError) {
+            applyError = [
+              firstApplyError,
+              `no-change repair retry failed: ${retryError instanceof Error ? retryError.message : String(retryError)}`,
+            ].join("; ");
+          }
+        } else {
+          applyError = `${firstApplyError}; no-change repair retry returned no choice`;
         }
-      } else {
-        applyError = firstApplyError;
+      }
+
+      if (!patched && applyError === null) {
+        const deterministicRenameRepair =
+          prevVerify && parsedRepairAssertions.length > 0
+            ? buildRenameReferenceRepair({
+                cwd: config.cwd,
+                taskDescription: current.task.description,
+                assertions: parsedRepairAssertions,
+                results: prevVerify.results,
+              })
+            : null;
+        const deterministicAssertionRepair =
+          !deterministicRenameRepair && prevVerify && parsedRepairAssertions.length > 0
+            ? buildDeterministicAssertionRepair({
+                cwd: config.cwd,
+                assertions: parsedRepairAssertions,
+                results: prevVerify.results,
+              })
+            : null;
+        const deterministicRepair = deterministicRenameRepair ?? deterministicAssertionRepair;
+
+        if (deterministicRepair) {
+          try {
+            content = deterministicRepair.content;
+            deterministicReferenceRepairApplied = deterministicRenameRepair !== null;
+            deterministicAssertionRepairApplied = deterministicAssertionRepair !== null;
+            deterministicReferenceRepairHints = deterministicRepair.hints;
+            applyRepairContent(content);
+          } catch (deterministicError) {
+            applyError = [
+              firstApplyError,
+              `deterministic reference repair failed: ${deterministicError instanceof Error ? deterministicError.message : String(deterministicError)}`,
+            ].join("; ");
+          }
+        } else {
+          applyError = firstApplyError;
+        }
       }
     }
 

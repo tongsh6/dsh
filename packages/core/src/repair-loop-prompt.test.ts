@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildFinalRepairRequest,
+  buildNoChangeRepairRequest,
   buildRepairStallHint,
 } from "./repair-loop.js";
 import { detectRenameIntent } from "./rename-intent.js";
@@ -76,7 +77,53 @@ describe("repair-loop prompt helpers", () => {
 
     assert.match(stallPrompt ?? "", /Files that still require repair attention/);
     assert.match(stallPrompt ?? "", /src\/consumer\.ts/);
+    assert.match(stallPrompt ?? "", /repair-authorized/);
     assert.match(finalPrompt, /Files that still require repair attention/);
     assert.match(finalPrompt, /src\/consumer\.ts/);
+    assert.match(finalPrompt, /Emit at least one concrete change block/);
+  });
+
+  it("keeps active failed assertion target files in the first final repair request", () => {
+    const prevPatch: PatchRecord = {
+      round: 1,
+      phase: "patch",
+      patch: "<PATCH>...</PATCH>",
+      apply_status: "partial_ok",
+      files_changed: ["src/helpers.ts"],
+      coverage: "full",
+      covered_required_files: ["src/helpers.ts"],
+      missing_required_files: [],
+    };
+
+    const prompt = buildFinalRepairRequest(
+      prevPatch,
+      "Refactor shared helpers",
+      ["src/consumer.ts"],
+    );
+
+    assert.match(prompt, /Files that still require repair attention/);
+    assert.match(prompt, /src\/consumer\.ts/);
+    assert.match(prompt, /failed structured assertions/);
+    assert.match(prompt, /Emit at least one concrete change block/);
+  });
+
+  it("keeps target files in the no-change repair retry request", () => {
+    const prevPatch: PatchRecord = {
+      round: 1,
+      phase: "patch",
+      patch: "<PATCH>...</PATCH>",
+      apply_status: "ok",
+      files_changed: ["src/helpers.ts"],
+    };
+
+    const prompt = buildNoChangeRepairRequest(
+      prevPatch,
+      "Refactor shared helpers",
+      ["src/consumer.ts"],
+    );
+
+    assert.match(prompt, /PREVIOUS REPAIR RESPONSE HAD NO CHANGE BLOCK/);
+    assert.match(prompt, /src\/consumer\.ts/);
+    assert.match(prompt, /Do not answer with prose only/);
   });
 });

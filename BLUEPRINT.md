@@ -1,6 +1,6 @@
 # DSH 产品蓝图 v1.6
 
-> 状态: active | 最近同步: 2026-06-09
+> 状态: active | 最近同步: 2026-06-11
 >
 > 本文档描述 DSH 最终产品形态和分阶段演进路线。Spec/Plan/Task 三层文档均从本蓝图衍生。
 >
@@ -68,7 +68,7 @@ Phase 1                     Phase 2                     Phase 3
   模型被动"描述变更"      模型主动"调查→变更→验证"      模型自导"分解→执行→聚合"
 ```
 
-**当前状态（Phase 4 启动，2026-05-22 后）**：Phase 3 的基础工具集、ProjectIntelligence 主路径、PatchCoverage 状态机、DSML salvage 与严格验证门禁已作为底座落地。Phase 4 当前主线是 Route X：把文件编辑从 content-XML 变更描述迁到 DeepSeek-native `apply_patch` 工具通道；第一版必须保留 content-XML 双轨回退。2026-06-11 targeted residual run `260611121509` 证明 residual slice 生效：Card ON 9/9、Card OFF 7/9，native apply error 9 -> 3，invalid native rounds 5 -> 2，content XML 为 0，`DONE` tool-call 残余消失。Route X 仍默认 off；下一步先收敛 provider-dedup Card OFF 的 2 个 `repair_exhausted`，再进入 broader/stability 复审和默认开启讨论。
+**当前状态（Phase 4 启动，2026-05-22 后）**：Phase 3 的基础工具集、ProjectIntelligence 主路径、PatchCoverage 状态机、DSML salvage 与严格验证门禁已作为底座落地。Phase 4 当前主线是 Route X：把文件编辑从 content-XML 变更描述迁到 DeepSeek-native `apply_patch` 工具通道；第一版必须保留 content-XML 双轨回退。2026-06-11 targeted residual run `260611121509` 证明 residual slice 生效：Card ON 9/9、Card OFF 7/9，native apply error 9 -> 3，invalid native rounds 5 -> 2，content XML 为 0，`DONE` tool-call 残余消失。后续 provider-dedup 聚焦复跑 `260611132524` / `260611140036` / `260611143551` 均为 5/6，说明 failed-assertion target 授权和 no-change retry 已改善部分失败，但 repair 仍会在目标明确时输出空响应/无有效 change block。Route X 仍默认 off；下一步先收敛 repair 结构化契约与空响应 telemetry，再进入 broader/stability 复审和默认开启讨论。
 
 **Phase 2 目标**：引入基础工具集（`read_file`、`grep_files`、`exec_shell`），让模型在生成 patch 前能先探索代码库。从"一次响应包含全部变更"升级为"多轮工具调用 + 最终变更"。
 

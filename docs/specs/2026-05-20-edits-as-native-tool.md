@@ -205,14 +205,15 @@ content-XML 协议在 Phase 1/2 是合理的:那时没有工具(Phase 1)或只�
 - `apply_patch` 参数转换已改为直接构造 `ChangeBlock`,支持常见 operation alias/inference,并避免 structured INSERT anchor 因 XML attribute 渲染被误拒。
 - `packages/eval/src/benchmark-runner.ts` 与 `scripts/benchmark-pie-replicated.ts` 已保留 `change.source`、`apply_patch` tool records 和 native edit observability,便于区分 successful native apply、apply error 与 invalid attempts。
 - invalid native edit round 已记录脱敏后的 tool-call arguments;大段 edit payload 字段只保留长度,避免 benchmark 结果丢失真实参数形态同时不泄露大段文件内容。
-- 2026-06-11 residual 收敛实现已落地: native apply 失败会记录 `error_class` 并在 tool result 中返回 `hint`;benchmark summary 会按 native error class 聚合;`protocol_op: "DONE"` / `"<DONE/>"` 被识别为完成意图而不是文件编辑失败。该项已有本地单测/typecheck/scan 证据,DeepSeek targeted 复跑仍待外部数据传输风险授权。
+- 2026-06-11 residual 收敛实现已落地: native apply 失败会记录 `error_class` 并在 tool result 中返回 `hint`;benchmark summary 会按 native error class 聚合;`protocol_op: "DONE"` / `"<DONE/>"` 被识别为完成意图而不是文件编辑失败。授权后的 targeted run `260611121509` 已验证该 slice:Card ON 9/9,Card OFF 7/9,native apply error 9 -> 3,invalid native rounds 5 -> 2。
 - `scripts/benchmark-pie-replicated.ts` metadata/report 已记录 `patch.edits_as_native_tool` flag。
 - 2026-06-09 targeted loam-refactor N=3 A/B 已完成:baseline `260609121703` 为 16/18,flag-on `260609132227` 为 18/18,`repair_exhausted` 2 -> 0,详见 `docs/reports/knowledge/20260609-route-x-native-edit-ab.md`。
 - post-prompt targeted loam-refactor N=3 A/B 已完成:baseline `260609145253` 为 18/18,flag-on `260609155633` 为 17/18。flag-on run 已观察到 native attempts,但 successful native `apply_patch` applications 为 0,invalid native rounds 为 9;唯一 failed trial 是 patch 前的 `model_protocol_plan_invalid`。
 - post-compat targeted loam-refactor N=3 A/B 已完成:baseline `260609173815` 为 17/18,flag-on `260610024705` 为 17/18。flag-on run 记录 72 次 `apply_patch` tool call、68 条 successful native apply、4 条 apply error、7 个 invalid native rounds、content XML 为 0。
 - post-build telemetry targeted rerun `260610153758` 已完成:flag-on `loam-refactor*` 18/18,记录 76 次 `apply_patch` tool call、67 条 successful native apply、9 条 apply error、5 个 invalid native rounds、content XML 为 0;invalid 参数形态已可审,典型为 `protocol_op: DONE` / `<DONE/>`。
 - targeted residual run `260611121509` 已完成:Card ON 9/9,Card OFF 7/9;native apply error 9 -> 3,invalid native rounds 5 -> 2,content XML 为 0,`DONE` tool-call 残余消失。残余失败为 `loam-refactor-provider-dedup` Card OFF 2 个 `repair_exhausted`,未覆盖 `anthropic.ts`。
-- 当前结论:targeted successful native-call adoption 成立,residual slice 已降低 native edit 协议噪音;默认仍保持 flag off。下一步是 provider-dedup Card OFF repair convergence 与 broader/stability evidence,再进入默认开启前 ledger 复审。
+- provider-dedup 聚焦实现已补 failed-assertion target repair 授权、active target 传播到 final no-tools repair request、以及 repair prose/no-change 后的一次强制 change-block retry。聚焦复跑 `260611132524` / `260611140036` / `260611143551` 均为 5/6,说明问题已从单纯 target omission 收窄到 repair 阶段空响应/无有效 change block 仍会消耗轮次。
+- 当前结论:targeted successful native-call adoption 成立,residual slice 已降低 native edit 协议噪音;默认仍保持 flag off。下一步是 repair 结构化契约、空响应 telemetry 和 provider-dedup repair convergence,再进入 broader/stability evidence 与默认开启前 ledger 复审。
 
 ## 9. 禁止事项
 

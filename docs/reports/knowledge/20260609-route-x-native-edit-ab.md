@@ -271,6 +271,35 @@ Decision:
 
 Keep `patch.edits_as_native_tool` default `false`. The next work item is provider-dedup Card OFF repair convergence, then broader/stability evidence before any default-on discussion.
 
+## Provider-Dedup Repair Convergence Attempts (Diagnostic Evidence)
+
+After `260611121509`, the provider-dedup residual was worked as a focused repair-convergence slice rather than another broad Route X A/B. The implementation strengthened failed-assertion target authorization, carried active failed targets into the final no-tools repair request, and added one no-change repair retry that demands a concrete change block.
+
+Command shape:
+
+```bash
+PATCH_EDITS_AS_NATIVE_TOOL=true ./packages/core/node_modules/.bin/tsx scripts/benchmark-pie-replicated.ts --filter=loam-refactor-provider-dedup --reps=3 --seed=26060901 --lanes-per-repo=1
+```
+
+Audit caveat: the focused runs below were diagnostic reruns from a dirty local tree based on commit `5493444`; use them to classify residual behavior, not as default-on release evidence.
+
+| Run | Focused change under test | Card ON | Card OFF | Failure class |
+|-----|---------------------------|---------|----------|---------------|
+| `260611132524` | failed assertion target authorization | 2/3 | 3/3 | `repair_exhausted` 1 on Card ON |
+| `260611140036` | active target propagation into final repair request | 3/3 | 2/3 | `repair_exhausted` 1 on Card OFF |
+| `260611143551` | no-change repair retry | 2/3 | 3/3 | `repair_exhausted` 1 on Card ON |
+
+Interpretation:
+
+- The original Card OFF omission pattern is improved but not converged. Each focused N=3 run still finished 5/6, with the failing side alternating between Card ON and Card OFF.
+- Native edit adoption is not the blocker in these runs: summary telemetry still records content XML change records as 0.
+- The residual has moved from "failed target was omitted from repair authority" toward "repair may still emit no actionable change block or malformed/empty repair output even when `anthropic.ts` is known to be the failed assertion target."
+- Deterministic code-result assertion repair remained off; these runs are evidence about orchestration/prompt behavior, not system-synthesized business-code repair.
+
+Decision:
+
+Keep `patch.edits_as_native_tool` default `false`. Do not expand to broader/stability evidence until provider-dedup repair has a stronger structured-output contract and telemetry for no-change retry outcomes.
+
 Excluded partial runs:
 
 - `docs/reports/runlogs/260609165914-pie-replicated/`: interrupted baseline partial, 8/18.

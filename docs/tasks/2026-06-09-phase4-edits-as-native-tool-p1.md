@@ -6,7 +6,7 @@ type: deferred
 spec_ref: "docs/specs/2026-05-20-edits-as-native-tool.md"
 dependencies: ["phase4-agent-loop"]
 created: "2026-06-09"
-updated: "2026-06-10"
+updated: "2026-06-11"
 assignee: "ai"
 ---
 
@@ -106,3 +106,19 @@ assignee: "ai"
 - Residual impact: `protocol_op: "DONE"` / `"<DONE/>"` no longer appears as a native invalid/error class. Remaining native error classes were `invalid_patch_payload` (2) and `apply_failed` (1).
 - Residual failures: both failed trials were `loam-refactor-provider-dedup` Card OFF `repair_exhausted`; they changed `shared.ts` and `openai-compatible.ts` but did not cover `anthropic.ts`.
 - Boundary: this validates the residual error-class slice, but it is not a default-on decision. Default remains off until provider-dedup repair convergence and broader/stability evidence are reviewed.
+
+## Implementation Update 7 (2026-06-11)
+- Provider-dedup repair slice: failed structured assertion target files are now explicitly repair-authorized even when the original plan omitted them.
+- Final repair request now merges prior missing targets with active failed assertion target files, so a tool-budget pause does not drop `anthropic.ts` from the no-tools repair instruction.
+- A repair response with no actionable change block now gets one additional no-tools retry that explicitly requires a concrete change block for the failed assertion target.
+- Boundary: deterministic code-result assertion repair remains unregistered by default; this slice changes repair orchestration/prompt contract only and adds no fixture-specific code synthesis.
+- Local verification: `pnpm --filter @dsh/core test -- repair-loop-prompt.test.ts pipeline.test.ts`, `pnpm --filter @dsh/core typecheck`, `pnpm -r run build`, `git diff --check`, `./packages/core/node_modules/.bin/tsx scripts/check-tracked-items.ts`, and `pnpm run scan` passed before the focused external reruns.
+
+## Evidence Update 8 (2026-06-11)
+- Command shape: `PATCH_EDITS_AS_NATIVE_TOOL=true ./packages/core/node_modules/.bin/tsx scripts/benchmark-pie-replicated.ts --filter=loam-refactor-provider-dedup --reps=3 --seed=26060901 --lanes-per-repo=1`.
+- Audit caveat: these focused reruns were diagnostic runs from a dirty local tree based on commit `5493444`; use them to classify residual behavior, not as default-on release evidence.
+- `docs/reports/runlogs/260611132524-pie-replicated/`: Card ON 2/3, Card OFF 3/3, failure class `repair_exhausted` 1 on Card ON.
+- `docs/reports/runlogs/260611140036-pie-replicated/`: Card ON 3/3, Card OFF 2/3, failure class `repair_exhausted` 1 on Card OFF.
+- `docs/reports/runlogs/260611143551-pie-replicated/`: Card ON 2/3, Card OFF 3/3, failure class `repair_exhausted` 1 on Card ON.
+- Interpretation: the target authorization/final-target/no-change retry changes improved the original Card OFF omission pattern in some samples, but did not produce stable 6/6 convergence. The residual is now repair empty/no-change behavior despite known failed assertion targets, not lack of native edit adoption.
+- Boundary: keep `patch.edits_as_native_tool` default off. Next work should harden repair structured output/empty-response telemetry before another broader benchmark.
